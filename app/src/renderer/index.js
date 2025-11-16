@@ -1,8 +1,17 @@
-document.querySelector('#analyzeBtn').onclick = async () => {
-    const fileInput = document.querySelector('#audioFile');
-    const arrayBuffer = await fileInput.files[0].arrayBuffer();
+document.querySelector('#loadBtn').onclick = async () => {
+    const filePath = await window.api.selectAudioFile();
+    if (!filePath) return;
 
-    const analysis = await window.api.analyzeAudio(arrayBuffer);
+    const result = await window.api.load(filePath);
+    document.querySelector('#result').textContent = JSON.stringify(result, null, 2);
+}
 
-    document.querySelector('#result').innerText = JSON.stringify(analysis, null, 2);
+document.querySelector('#playBtn').onclick = async () => {
+    const result = await window.api.play();
+    document.querySelector('#result').textContent = JSON.stringify(result, null, 2);
+}
+
+document.querySelector('#pauseBtn').onclick = async () => {
+    const result = await window.api.pause();
+    document.querySelector('#result').textContent = JSON.stringify(result, null, 2);
 }
