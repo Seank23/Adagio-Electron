@@ -1,0 +1,9 @@
+appId: com.example.adagio
+productName: Adagio
+directories:
+  output: dist
+extraResources:
+  - from: engine/
+    to: engine/
+    filter:
+      - "**/*"

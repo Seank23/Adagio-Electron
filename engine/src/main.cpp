@@ -21,7 +21,7 @@ int main(int argc, char** argv)
                 if (loadSuccess == 0)
                 {
                     res.status = 500;
-                    res.set_content("{\"error\":\"failed to open file\"}", "application/json");
+                    res.set_content("{\"status\":\"failed to open file\"}", "application/json");
                     return;
                 }
                 res.set_content("{ \"status\": \"Audio loaded successfully.\" }", "application/json");
@@ -29,7 +29,7 @@ int main(int argc, char** argv)
             catch (const std::exception& e)
             {
                 res.status = 500;
-				res.set_content(std::string("{\"error\":\"") + e.what() + "\"}", "application/json");
+				res.set_content(std::string("{\"status\":\"") + e.what() + "\"}", "application/json");
             }
         });
 

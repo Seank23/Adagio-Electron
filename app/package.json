@@ -2,9 +2,12 @@
   "name": "adagio",
   "version": "0.0.1",
   "description": "",
-  "main": "src/main/main.js",
+  "main": "electron/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently \"npm:dev:ui\" \"npm:dev:electron\"",
+    "dev:ui": "cd ui && npm run dev",
+    "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "build": "cd ui && npm run build && electron-builder",
     "start": "electron ."
   },
   "keywords": [],
@@ -12,6 +15,9 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^39.2.0"
+    "concurrently": "^9.2.1",
+    "electron": "^39.2.0",
+    "electron-builder": "^26.0.12",
+    "wait-on": "^9.0.3"
   }
 }

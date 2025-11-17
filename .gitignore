@@ -41,4 +41,6 @@
 *.dwo
 
 app/node_modules/*
+app/ui/node_modules/*
 engine/build/*
+app/dist/*
