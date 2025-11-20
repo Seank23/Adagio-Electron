@@ -1,11 +1,10 @@
 #pragma once
-
-#include <kfr/base.hpp>
-#include <kfr/io.hpp>
-#include "AudioData.h"
+#include <string>
 
 namespace Adagio
 {
+	class AudioData;
+
 	class AudioFileHandler
 	{
 	public:

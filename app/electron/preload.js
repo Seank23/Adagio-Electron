@@ -5,5 +5,6 @@ contextBridge.exposeInMainWorld('api', {
     load: path => ipcRenderer.invoke('load-audio', path),
     play: () => ipcRenderer.invoke('play-audio'),
     pause: () => ipcRenderer.invoke('pause-audio'),
+    clear: () => ipcRenderer.invoke('clear-audio'),
     wsUrl: () => 'ws://127.0.0.1:5001'
 });

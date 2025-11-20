@@ -1,10 +1,18 @@
 #pragma once
+#include <memory>
+#include <string>
 
-#include "../Core/AudioUtils.h"
 #include "AudioFileHandler.h"
 
 namespace Adagio
 {
+	enum FileFormat
+	{
+		WAV, MP3, FLAC
+	};
+
+	class AudioData;
+
 	class FileIOService
 	{
 	public:
@@ -12,7 +20,7 @@ namespace Adagio
         void LoadAudio(std::string filepath, FileFormat format, AudioData& o_Audio) const;
 
 	private:
-		AudioFileHandler m_AudioFileHandler;
+		std::unique_ptr<AudioFileHandler> m_AudioFileHandler;
 	};
 }
 

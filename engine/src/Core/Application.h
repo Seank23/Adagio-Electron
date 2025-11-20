@@ -1,12 +1,15 @@
 #pragma once
-
-#include "../IO/PlaybackService.h"
-#include "../IO/FileIOService.h"
-#include "../Analysis/AnalysisService.h"
-#include "../API/Utils.h"
+#include <memory>
+#include <string>
 
 namespace Adagio
 {
+    enum PlayState;
+	class AudioData;
+    class AudioDecoder;
+	class FileIOService;
+	class PlaybackService;
+
 	class Application
 	{
 	public:
@@ -19,20 +22,15 @@ namespace Adagio
         void UpdateAudioState(PlayState state);
         PlayState GetAudioState() { return m_AudioState; }
 
-        std::vector<float> ConstructWaveformData();
-        float GetPlaybackSampleRate() { return m_AudioData->PlaybackSampleRate; }
-        float GetAudioDuration() { return m_AudioData->Duration; }
-        uint64_t GetAudioSampleCount() { return m_PlaybackService.GetSampleCount(); }
-        uint64_t GetAudioCurrentSample() { return m_PlaybackService.GetCurrentSample(); }
-
-        void SetPlaybackPosition(uint64_t sampleIndex) { m_PlaybackService.SetCurrentSample(sampleIndex); }
+        float GetPlaybackSampleRate();
+        float GetAudioDuration();
 
 	private:
-        FileIOService m_FileIOService;
-		PlaybackService m_PlaybackService;
-		AnalysisService m_AnalysisService;
+		std::shared_ptr<AudioDecoder> m_AudioDecoder;
+        std::unique_ptr<FileIOService> m_FileIOService;
+		std::unique_ptr<PlaybackService> m_PlaybackService;
 
-        AudioData* m_AudioData;
+        std::shared_ptr<AudioData> m_AudioData;
         bool m_AudioLoaded = false;
 
         PlayState m_AudioState;

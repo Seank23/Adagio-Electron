@@ -3,6 +3,7 @@
 #include <atomic>
 #include "httplib.h"
 #include "Core/Application.h"
+#include "API/Utils.h"
 
 int main(int argc, char** argv) 
 {
@@ -43,6 +44,12 @@ int main(int argc, char** argv)
         {
             app.UpdateAudioState(Adagio::PlayState::PAUSED);
             res.set_content("{ \"status\": \"Playback paused.\" }", "application/json");
+        });
+
+    svr.Post("/clear", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            app.ClearAudio();
+            res.set_content("{ \"status\": \"Audio file closed.\" }", "application/json");
         });
 
     std::thread serverThread([&]()
