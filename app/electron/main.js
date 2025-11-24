@@ -94,3 +94,8 @@ ipcMain.handle('clear-audio', async () => {
     const res = await fetch('http://127.0.0.1:5000/clear', { method: 'POST' });
     return res.json();
 });
+
+ipcMain.handle('change-volume', async (_, volume) => {
+    const res = await fetch('http://127.0.0.1:5000/volume', { method: 'POST', body: volume });
+    return res.json();
+});

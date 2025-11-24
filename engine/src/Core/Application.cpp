@@ -86,4 +86,6 @@ namespace Adagio
 
     float Application::GetPlaybackSampleRate() { return m_AudioData->PlaybackSampleRate; }
     float Application::GetAudioDuration() { return m_AudioData->Duration; }
+
+    void Application::SetVolume(float volume) { m_PlaybackService->SetVolume(volume); }
 }

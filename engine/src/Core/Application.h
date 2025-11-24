@@ -25,6 +25,8 @@ namespace Adagio
         float GetPlaybackSampleRate();
         float GetAudioDuration();
 
+		void SetVolume(float volume);
+
 	private:
 		std::shared_ptr<AudioDecoder> m_AudioDecoder;
         std::unique_ptr<FileIOService> m_FileIOService;

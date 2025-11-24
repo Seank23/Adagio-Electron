@@ -22,34 +22,41 @@ int main(int argc, char** argv)
                 if (loadSuccess == 0)
                 {
                     res.status = 500;
-                    res.set_content("{\"status\":\"failed to open file\"}", "application/json");
+                    res.set_content("{\"status\":{ \"type\":\"error\",\"message\":\"Failed to open file\"} }", "application/json");
                     return;
                 }
-                res.set_content("{ \"status\": \"Audio loaded successfully.\" }", "application/json");
+                res.set_content("{ \"status\":{ \"type\":\"success\",\"message\":\"Audio loaded successfully\" } }", "application/json");
             }
             catch (const std::exception& e)
             {
                 res.status = 500;
-				res.set_content(std::string("{\"status\":\"") + e.what() + "\"}", "application/json");
+				res.set_content(std::string("{\"status\":{ \"type\":\"error\",\"message\":\"Error\"} }") + e.what() + "\"}", "application/json");
             }
         });
 
     svr.Post("/play", [&](const httplib::Request& req, httplib::Response& res)
         {
             app.UpdateAudioState(Adagio::PlayState::PLAYING);
-            res.set_content("{ \"status\": \"Playback started.\" }", "application/json");
+            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback started\" } }", "application/json");
 		});
 
     svr.Post("/pause", [&](const httplib::Request& req, httplib::Response& res)
         {
             app.UpdateAudioState(Adagio::PlayState::PAUSED);
-            res.set_content("{ \"status\": \"Playback paused.\" }", "application/json");
+            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback paused\" } }", "application/json");
         });
 
     svr.Post("/clear", [&](const httplib::Request& req, httplib::Response& res)
         {
             app.ClearAudio();
-            res.set_content("{ \"status\": \"Audio file closed.\" }", "application/json");
+            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Audio file closed\" } }", "application/json");
+        });
+
+    svr.Post("/volume", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            float volume = std::stof(req.body) / 100.0f;
+            app.SetVolume(volume);
+            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Volume set\" } }", "application/json");
         });
 
     std::thread serverThread([&]()

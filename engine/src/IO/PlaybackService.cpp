@@ -1,6 +1,8 @@
 #include "PlaybackService.h"
 #include "../Core/AudioDecoder.h"
 
+#include <algorithm>
+
 #define MA_NO_WAV
 #define MA_NO_MP3
 #define MA_NO_FLAC
@@ -72,6 +74,11 @@ namespace Adagio
 		ma_device_stop(&m_PlaybackDevice);
 	}
 
+	void PlaybackService::SetVolume(float volume)
+	{
+		m_Volume = std::clamp(volume, 0.0f, 1.0f);
+	}
+
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)
 	{
 		const uint32_t samplesRequested = framesToRead * m_Decoder->GetAudioSource().Channels;
@@ -79,5 +86,9 @@ namespace Adagio
 		uint32_t samplesRead = playbackBuffer->Read(outBuffer, samplesRequested);
 		if (samplesRead < samplesRequested)
 			std::memset(outBuffer + samplesRead, 0, (samplesRequested - samplesRead) * sizeof(float));
+
+		float volume = m_Volume.load(std::memory_order_relaxed);
+		for (size_t i = 0; i < samplesRequested; i++)
+			outBuffer[i] *= volume;
 	}
 }
