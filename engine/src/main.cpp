@@ -4,9 +4,11 @@
 #include "httplib.h"
 #include "Core/Application.h"
 #include "API/Utils.h"
+#include "Core/WebSocketServer.h"
 
 int main(int argc, char** argv) 
 {
+    Adagio::WSServer wsServer(9001);
 	Adagio::Application app;
 
     std::atomic<bool> isRunning = false;
@@ -64,8 +66,12 @@ int main(int argc, char** argv)
             std::cout << "Starting server on http://127.0.0.1:5000\n";
             svr.listen("127.0.0.1", 5000);
         });
-
-    //std::signal(SIGINT, [](int){});
+    
+    std::thread wsThread([&]() 
+        {
+            wsServer.Start();
+        });
+    wsThread.detach();
 
 	serverThread.join();
     return 0;

@@ -46,7 +46,6 @@ function spawnEngine() {
     });
 }
 
-
 app.whenReady().then(() => {
     if (!isDev)
         spawnEngine();

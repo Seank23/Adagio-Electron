@@ -1,6 +1,7 @@
 #include "AudioDecoder.h"
 #include "../IO/AudioData.h"
 #include <iostream>
+#include "MessageQueue.h"
 
 namespace Adagio
 {
@@ -34,32 +35,40 @@ namespace Adagio
 			size_t totalSamples = m_FeederData.size();
 			size_t pos = 0;
 
-			while (m_FeederState.load(std::memory_order_acquire) != FeederState::TERMINATED && pos < totalSamples)
+			while (m_FeederState.load(std::memory_order_acquire) != FeederState::TERMINATED)
 			{
-				if (m_FeederState.load(std::memory_order_acquire) == FeederState::RUNNING)
+				if (pos < totalSamples)
 				{
-					size_t samplesRemaining = totalSamples - pos;
-					size_t toWrite = std::min(samplesRemaining, m_SamplesPerChunk);
-
-					const float* chunk = m_FeederData.data() + pos;
-					bool shouldSleep = false;
-					size_t minWritten = SIZE_MAX;
-					for (auto& [name, buffer] : m_Buffers)
+					if (m_FeederState.load(std::memory_order_acquire) == FeederState::RUNNING)
 					{
-						size_t written = buffer->Write(chunk, toWrite);
-						minWritten = std::min(minWritten, written);
-						if (written == 0) shouldSleep = true;
+						size_t samplesRemaining = totalSamples - pos;
+						size_t toWrite = std::min(samplesRemaining, m_SamplesPerChunk);
+
+						const float* chunk = m_FeederData.data() + pos;
+						bool shouldSleep = false;
+						size_t minWritten = SIZE_MAX;
+						for (auto& [name, buffer] : m_Buffers)
+						{
+							size_t written = buffer->Write(chunk, toWrite);
+							minWritten = std::min(minWritten, written);
+							if (written == 0) shouldSleep = true;
+						}
+						if (shouldSleep)
+							std::this_thread::sleep_for(std::chrono::milliseconds(2));
+						pos += minWritten;
 					}
-					if (shouldSleep)
-						std::this_thread::sleep_for(std::chrono::milliseconds(2));
-					pos += minWritten;
+					else
+					{
+						std::this_thread::sleep_for(std::chrono::milliseconds(10));
+					}
 				}
 				else
 				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(10));
+					m_FeederState.store(FeederState::STOPPED);
+					pos = 0;
+					MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
 				}
 			}
-			m_FeederState.store(FeederState::STOPPED);
 		});	
 	}
 

@@ -3,7 +3,7 @@ import { AudioContext, useAudioProvider } from './context/AudioContext';
 import HeaderBar from './components/HeaderBar';
 import FooterBar from './components/FooterBar';
 
-const { Header, Footer, Sider, Content } = Layout;
+const { Header, Footer, Content } = Layout;
 
 const App = () => {
   const [audioProvider] = useAudioProvider();

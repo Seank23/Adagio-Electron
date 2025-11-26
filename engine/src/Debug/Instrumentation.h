@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <fstream>
 #include <thread>
+#include "WebSocketServer.h"
 
 namespace Adagio
 {

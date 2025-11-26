@@ -7,5 +7,4 @@ contextBridge.exposeInMainWorld('api', {
     pause: () => ipcRenderer.invoke('pause-audio'),
     clear: () => ipcRenderer.invoke('clear-audio'),
     changeVolume: volume => ipcRenderer.invoke('change-volume', volume),
-    wsUrl: () => 'ws://127.0.0.1:5001'
 });
