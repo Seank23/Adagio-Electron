@@ -89,6 +89,11 @@ ipcMain.handle('pause-audio', async () => {
     return res.json();
 });
 
+ipcMain.handle('stop-audio', async () => {
+    const res = await fetch('http://127.0.0.1:5000/stop', { method: 'POST' });
+    return res.json();
+});
+
 ipcMain.handle('clear-audio', async () => {
     const res = await fetch('http://127.0.0.1:5000/clear', { method: 'POST' });
     return res.json();

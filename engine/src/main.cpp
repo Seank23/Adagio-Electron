@@ -11,8 +11,6 @@ int main(int argc, char** argv)
     Adagio::WSServer wsServer(9001);
 	Adagio::Application app;
 
-    std::atomic<bool> isRunning = false;
-
     httplib::Server svr;
 
     svr.Post("/load", [&](const httplib::Request& req, httplib::Response& res)
@@ -48,6 +46,12 @@ int main(int argc, char** argv)
             res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback paused\" } }", "application/json");
         });
 
+    svr.Post("/stop", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            app.UpdateAudioState(Adagio::PlayState::STOPPED);
+            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback stopped\" } }", "application/json");
+        });
+
     svr.Post("/clear", [&](const httplib::Request& req, httplib::Response& res)
         {
             app.ClearAudio();
@@ -74,5 +78,4 @@ int main(int argc, char** argv)
     wsThread.detach();
 
 	serverThread.join();
-    return 0;
 }

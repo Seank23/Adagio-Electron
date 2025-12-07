@@ -1,5 +1,6 @@
 #include "PlaybackService.h"
 #include "../Core/AudioDecoder.h"
+#include "../Core/MessageQueue.h"
 
 #include <algorithm>
 
@@ -36,12 +37,12 @@ namespace Adagio
 		m_PlaybackDevice = ma_device();
 		m_Decoder = decoder;
 
-		AudioData& audioSource = m_Decoder->GetAudioSource();
+		m_AudioSource = m_Decoder->GetAudioSource();
 
 		ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
 		deviceConfig.playback.format = ma_format_f32;
-		deviceConfig.playback.channels = audioSource.Channels;
-		deviceConfig.sampleRate = audioSource.PlaybackSampleRate;
+		deviceConfig.playback.channels = m_AudioSource->Channels;
+		deviceConfig.sampleRate = m_AudioSource->SampleRate;
 		deviceConfig.dataCallback = DataCallback;
         deviceConfig.pUserData = this;
 
@@ -54,7 +55,7 @@ namespace Adagio
 	{
 		ma_device_stop(&m_PlaybackDevice);
 		ma_device_uninit(&m_PlaybackDevice);
-		m_Decoder->Reset();
+		m_Decoder->Clear();
 	}
 
 	void PlaybackService::PlayAudio()
@@ -72,6 +73,8 @@ namespace Adagio
 	void PlaybackService::StopAudio()
 	{
 		ma_device_stop(&m_PlaybackDevice);
+		m_CurrentPlaybackFrame = 0;
+		m_Decoder->ResetAudio();
 	}
 
 	void PlaybackService::SetVolume(float volume)
@@ -81,7 +84,7 @@ namespace Adagio
 
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)
 	{
-		const uint32_t samplesRequested = framesToRead * m_Decoder->GetAudioSource().Channels;
+		const uint32_t samplesRequested = framesToRead * m_Decoder->GetAudioSource()->Channels;
 		RingBuffer<float>* playbackBuffer = m_Decoder->GetBuffer("Playback");
 		uint32_t samplesRead = playbackBuffer->Read(outBuffer, samplesRequested);
 		if (samplesRead < samplesRequested)
@@ -90,5 +93,25 @@ namespace Adagio
 		float volume = m_Volume.load(std::memory_order_relaxed);
 		for (size_t i = 0; i < samplesRequested; i++)
 			outBuffer[i] *= volume;
+
+		uint64_t currentFrame = m_CurrentPlaybackFrame.load(std::memory_order_relaxed);
+		currentFrame += framesToRead;
+		m_CurrentPlaybackFrame.store(currentFrame);
+
+		int updateCounter = m_PlaybackUpdateCounter.load(std::memory_order_relaxed);
+		if (updateCounter >= 4)
+		{
+			if (currentFrame >= m_AudioSource->SamplesPerChannel)
+			{
+				MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
+				return;
+			}
+			MessageQueue::Instance().Push(std::string("{\"type\":\"position\",\"value\":") + std::to_string(currentFrame) + "}");
+			m_PlaybackUpdateCounter.store(0);
+		}
+		else
+		{
+			m_PlaybackUpdateCounter.store(updateCounter + 1);
+		}
 	}
 }

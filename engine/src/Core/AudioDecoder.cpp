@@ -25,6 +25,7 @@ namespace Adagio
 		m_SamplesPerChunk = (int)m_FramesPerChunk * audioData->Channels;
 
 		m_FeederState = FeederState::STOPPED;
+		m_FeederPosition = 0;
 		LaunchFeeder();
 	}
 
@@ -33,10 +34,10 @@ namespace Adagio
 		m_FeederThread = std::thread([this]()
 		{
 			size_t totalSamples = m_FeederData.size();
-			size_t pos = 0;
 
 			while (m_FeederState.load(std::memory_order_acquire) != FeederState::TERMINATED)
 			{
+				uint64_t pos = m_FeederPosition.load(std::memory_order_acquire);
 				if (pos < totalSamples)
 				{
 					if (m_FeederState.load(std::memory_order_acquire) == FeederState::RUNNING)
@@ -55,7 +56,7 @@ namespace Adagio
 						}
 						if (shouldSleep)
 							std::this_thread::sleep_for(std::chrono::milliseconds(2));
-						pos += minWritten;
+						m_FeederPosition.store(pos + minWritten);
 					}
 					else
 					{
@@ -65,8 +66,6 @@ namespace Adagio
 				else
 				{
 					m_FeederState.store(FeederState::STOPPED);
-					pos = 0;
-					MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
 				}
 			}
 		});	
@@ -74,12 +73,18 @@ namespace Adagio
 
 	void AudioDecoder::AddBuffer(const std::string& bufferName, float durationSeconds)
 	{
-		size_t capacity = static_cast<size_t>(m_AudioSource->PlaybackSampleRate * m_AudioSource->Channels * durationSeconds);
+		size_t capacity = static_cast<size_t>(m_AudioSource->SampleRate * m_AudioSource->Channels * durationSeconds);
 		std::unique_ptr<RingBuffer<float>> buffer = std::make_unique<RingBuffer<float>>(capacity);
 		m_Buffers[bufferName] = std::move(buffer);
 	}
 
-	void AudioDecoder::Reset()
+	void AudioDecoder::ResetAudio()
+	{
+		m_FeederState = FeederState::STOPPED;
+		m_FeederPosition.store(0);
+	}
+
+	void AudioDecoder::Clear()
 	{
 		m_FeederState = FeederState::TERMINATED;
 		if (m_FeederThread.joinable())

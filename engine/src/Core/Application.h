@@ -22,9 +22,6 @@ namespace Adagio
         void UpdateAudioState(PlayState state);
         PlayState GetAudioState() { return m_AudioState; }
 
-        float GetPlaybackSampleRate();
-        float GetAudioDuration();
-
 		void SetVolume(float volume);
 
 	private:

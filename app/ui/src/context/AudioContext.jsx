@@ -1,34 +1,27 @@
-import { createContext, useMemo, useState, useCallback } from "react";
-import { useEngineEvents } from "../hooks/useEngineEvents";
-import { EVENT_TYPE } from "../utils/utils";
+/* eslint-disable react-hooks/exhaustive-deps */
+import { createContext, useMemo, useState } from "react";
+import _ from 'lodash';
 
 export const AudioContext = createContext(null);
 
 export function useAudioProvider() {
     const [status, setStatus] = useState({});
     const [fileOpen, setFileOpen] = useState(false);
-    const [audioPlaying, setAudioPlaying] = useState(false);
-
-    const eventCallback = useCallback(msg => {
-        switch (msg.type) {
-          case EVENT_TYPE.END_OF_PLAY:
-            console.log('Track finished');
-        }
-      }, []);
-    useEngineEvents(eventCallback);
 
     const returnObj = {
         status,
         setStatus,
         fileOpen,
         setFileOpen,
-        audioPlaying,
-        setAudioPlaying
     };
 
     const providerValue = useMemo(
-        () => returnObj, 
-        [status, setStatus, fileOpen, setFileOpen, audioPlaying, setAudioPlaying]
+        () => returnObj, [
+            status,
+            setStatus,
+            fileOpen,
+            setFileOpen,
+        ]
     );
 
     return [providerValue, returnObj];

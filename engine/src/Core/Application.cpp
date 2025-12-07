@@ -5,6 +5,7 @@
 #include "../IO/PlaybackService.h"
 #include "../API/Utils.h"
 #include "../Debug/Instrumentation.h"
+#include "MessageQueue.h"
 
 #include <filesystem>
 
@@ -47,6 +48,7 @@ namespace Adagio
 			m_AudioDecoder->Init(m_AudioData);
             m_AudioDecoder->AddBuffer("Playback", 5.0f);
 			m_PlaybackService->Init(m_AudioDecoder);
+            MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"totalSamples\":" + std::to_string(m_AudioData->SamplesPerChannel) + "} }");
         }
         return 1;
     }
@@ -83,9 +85,6 @@ namespace Adagio
             break;
         }
     }
-
-    float Application::GetPlaybackSampleRate() { return m_AudioData->PlaybackSampleRate; }
-    float Application::GetAudioDuration() { return m_AudioData->Duration; }
 
     void Application::SetVolume(float volume) { m_PlaybackService->SetVolume(volume); }
 }

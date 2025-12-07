@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
     load: path => ipcRenderer.invoke('load-audio', path),
     play: () => ipcRenderer.invoke('play-audio'),
     pause: () => ipcRenderer.invoke('pause-audio'),
+    stop: () => ipcRenderer.invoke('stop-audio'),
     clear: () => ipcRenderer.invoke('clear-audio'),
     changeVolume: volume => ipcRenderer.invoke('change-volume', volume),
 });

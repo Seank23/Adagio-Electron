@@ -1,15 +1,20 @@
-import { useContext, useState, useEffect, useRef } from 'react';
+/* eslint-disable react-hooks/exhaustive-deps */
+import { useContext, useEffect, useRef } from 'react';
 import { AudioContext } from '../context/AudioContext';
 import { theme, FloatButton, Card, Popover, Slider, Row } from 'antd';
 import { PlayCircleFilled, PauseCircleFilled } from '@ant-design/icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faVolumeHigh, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
 import Styled from '@emotion/styled';
+import { setIsPlaying, setIsStarted } from '../store/PlaybackSlice';
+import { useSelector, useDispatch } from 'react-redux';
 
 export const PlaybackControls = () => {
-  const { fileOpen, audioPlaying, setAudioPlaying, setStatus } = useContext(AudioContext);
+  const { fileOpen, setStatus } = useContext(AudioContext);
   const { token } = theme.useToken();
-  const [audioStarted, setAudioStarted] = useState(false);
+  const audioStarted = useSelector(state => state.playback.isStarted);
+  const audioPlaying = useSelector(state => state.playback.isPlaying);
+  const dispatch = useDispatch();
   const initialVolume = 20;
 
   useEffect(() => {
@@ -18,16 +23,16 @@ export const PlaybackControls = () => {
   
   useEffect(() => {
     if (!fileOpen)
-      setAudioStarted(false);
+      dispatch(setIsStarted(false));
     else if (fileOpen && audioPlaying)
-      setAudioStarted(true);
+      dispatch(setIsStarted(true));
   }, [audioStarted, fileOpen, audioPlaying]);
   const isPaused = audioStarted && !audioPlaying;
 
   const handlePlay = async () => {
     if (!audioPlaying) {
       const result = await window.api.play();
-      setAudioPlaying(true);
+      dispatch(setIsPlaying(true));
       setStatus(result.status);
     }
   };
@@ -35,7 +40,7 @@ export const PlaybackControls = () => {
   const handlePause = async () => {
     if (audioPlaying) {
       const result = await window.api.pause();
-      setAudioPlaying(false);
+      dispatch(setIsPlaying(false));
       setStatus(result.status);
     }
   };

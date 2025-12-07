@@ -20,7 +20,6 @@ export class WebSocketEngine {
     }
 
     addListener(callback) {
-        console.log(JSON.stringify(callback))
         this.listeners.push(callback);
     }
 
