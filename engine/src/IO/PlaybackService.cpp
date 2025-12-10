@@ -82,6 +82,12 @@ namespace Adagio
 		m_Volume = std::clamp(volume, 0.0f, 1.0f);
 	}
 
+	void PlaybackService::SeekToSample(uint64_t sample)
+	{
+		ma_device_stop(&m_PlaybackDevice);
+		//ma_decoder_seek_to_pcm_frame(&m_PlaybackDevice.decoder, sample);
+	}
+
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)
 	{
 		const uint32_t samplesRequested = framesToRead * m_Decoder->GetAudioSource()->Channels;

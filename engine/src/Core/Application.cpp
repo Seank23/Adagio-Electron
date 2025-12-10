@@ -6,6 +6,8 @@
 #include "../API/Utils.h"
 #include "../Debug/Instrumentation.h"
 #include "MessageQueue.h"
+#include "CommandQueue.h"
+
 
 #include <filesystem>
 
@@ -25,6 +27,69 @@ namespace Adagio
 	{
         ADAGIO_PROFILE_END_SESSION();
 	}
+
+    void Application::Run()
+    {
+        while (true)
+        {
+            ProcessCommands();
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		}
+    }
+
+    void Application::ProcessCommands()
+    {
+        Command cmd;
+        while (CommandQueue::Instance().Pop(cmd))
+        {
+            switch (cmd.Type)
+            {
+            case CommandType::Play:
+                UpdateAudioState(PlayState::PLAYING);
+                MessageQueue::Instance().Push("{\"type\":\"info\",\"value\":\"Playback started\"}");
+                break;
+            case CommandType::Pause:
+                UpdateAudioState(PlayState::PAUSED);
+                MessageQueue::Instance().Push("{\"type\":\"info\",\"value\":\"Playback paused\"}");
+                break;
+            case CommandType::Stop:
+                UpdateAudioState(PlayState::STOPPED);
+                MessageQueue::Instance().Push("{\"type\":\"info\",\"value\":\"Playback stopped\"}");
+                break;
+            case CommandType::Load:
+                try
+                {
+                    int success = LoadAudio(cmd.StrValue);
+                    if (success == -1)
+                        MessageQueue::Instance().Push("{\"type\":\"error\",\"value\":\"Failed to load audio file.\"}");
+                    else if (success == 1)
+						MessageQueue::Instance().Push("{\"type\":\"info\",\"value\":\"Audio file loaded successfully.\"}");
+
+                } catch (...)
+                {
+                    MessageQueue::Instance().Push("{\"type\":\"error\",\"value\":\"Failed to load audio file.\"}");
+				}
+                break;
+			case CommandType::Clear:
+                ClearAudio();
+                MessageQueue::Instance().Push("{\"type\":\"fileClosed\"}");
+				break;
+            case CommandType::Seek:
+                if (m_AudioLoaded)
+                {
+                    float targetSample = cmd.Value;
+                    if (targetSample < 0.0f) targetSample = 0.0f;
+                    if (targetSample > static_cast<float>(m_AudioData->SamplesPerChannel))
+                        targetSample = static_cast<float>(m_AudioData->SamplesPerChannel);
+                    m_PlaybackService->SeekToSample(static_cast<uint64_t>(targetSample));
+                }
+                break;
+            case CommandType::SetVolume:
+                m_PlaybackService->SetVolume(cmd.Value);
+                break;
+            }
+        }
+    }
 
     int Application::LoadAudio(std::string filePath)
     {
@@ -85,6 +150,4 @@ namespace Adagio
             break;
         }
     }
-
-    void Application::SetVolume(float volume) { m_PlaybackService->SetVolume(volume); }
 }

@@ -5,65 +5,64 @@
 #include "Core/Application.h"
 #include "API/Utils.h"
 #include "Core/WebSocketServer.h"
+#include "Core/CommandQueue.h"
 
 int main(int argc, char** argv) 
 {
-    Adagio::WSServer wsServer(9001);
 	Adagio::Application app;
 
     httplib::Server svr;
+    Adagio::WSServer wsServer(9001);
 
     svr.Post("/load", [&](const httplib::Request& req, httplib::Response& res)
         {
-            try
-            {
-                std::string path = req.body;
-				int loadSuccess = app.LoadAudio(path);
-                if (loadSuccess == 0)
-                {
-                    res.status = 500;
-                    res.set_content("{\"status\":{ \"type\":\"error\",\"message\":\"Failed to open file\"} }", "application/json");
-                    return;
-                }
-                res.set_content("{ \"status\":{ \"type\":\"success\",\"message\":\"Audio loaded successfully\" } }", "application/json");
-            }
-            catch (const std::exception& e)
-            {
-                res.status = 500;
-				res.set_content(std::string("{\"status\":{ \"type\":\"error\",\"message\":\"Error\"} }") + e.what() + "\"}", "application/json");
-            }
+            std::string path = req.body;
+            Adagio::CommandQueue::Instance().Push({ CommandType::Load, 0.0f, path });
+			res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
     svr.Post("/play", [&](const httplib::Request& req, httplib::Response& res)
         {
-            app.UpdateAudioState(Adagio::PlayState::PLAYING);
-            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback started\" } }", "application/json");
+            Adagio::CommandQueue::Instance().Push({ CommandType::Play });
+			res.set_content("{ \"status\": \"success\" }", "application/json");
 		});
 
     svr.Post("/pause", [&](const httplib::Request& req, httplib::Response& res)
         {
-            app.UpdateAudioState(Adagio::PlayState::PAUSED);
-            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback paused\" } }", "application/json");
+            Adagio::CommandQueue::Instance().Push({ CommandType::Pause });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
     svr.Post("/stop", [&](const httplib::Request& req, httplib::Response& res)
         {
-            app.UpdateAudioState(Adagio::PlayState::STOPPED);
-            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Playback stopped\" } }", "application/json");
+            Adagio::CommandQueue::Instance().Push({ CommandType::Stop });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
     svr.Post("/clear", [&](const httplib::Request& req, httplib::Response& res)
         {
-            app.ClearAudio();
-            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Audio file closed\" } }", "application/json");
+            Adagio::CommandQueue::Instance().Push({ CommandType::Clear });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
     svr.Post("/volume", [&](const httplib::Request& req, httplib::Response& res)
         {
             float volume = std::stof(req.body) / 100.0f;
-            app.SetVolume(volume);
-            res.set_content("{ \"status\":{ \"type\":\"info\",\"message\": \"Volume set\" } }", "application/json");
+            Adagio::CommandQueue::Instance().Push({ CommandType::SetVolume, volume });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
         });
+
+    svr.Post("/seek", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            float sample = std::stof(req.body);
+            Adagio::CommandQueue::Instance().Push({ CommandType::Seek, sample });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
+        });
+
+    std::thread appThread([&]()
+        {
+            app.Run();
+		});
 
     std::thread serverThread([&]()
         {
@@ -77,5 +76,6 @@ int main(int argc, char** argv)
         });
     wsThread.detach();
 
-	serverThread.join();
+    serverThread.join();
+	appThread.join();
 }

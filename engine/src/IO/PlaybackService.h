@@ -23,6 +23,7 @@ namespace Adagio
         void PauseAudio();
         void StopAudio();
 		void SetVolume(float volume);
+		void SeekToSample(uint64_t sample);
 
 	private:
 		std::shared_ptr<AudioDecoder> m_Decoder;

@@ -1,25 +1,20 @@
-import { useContext } from 'react';
-import { AudioContext } from '../context/AudioContext';
 import { PlaybackControls } from './PlaybackControls';
 import { Button, Row, Col } from 'antd';
+import { useSelector, useDispatch } from 'react-redux';
+import { setStatusMessage } from '../store/appSlice';
 
 const HeaderBar = () => {
-    const { fileOpen, setFileOpen, audioPlaying, setStatus } = useContext(AudioContext);
+  const dispatch = useDispatch();
+  const fileOpen = useSelector(state => state.app.isFileOpen);
+  const audioPlaying = useSelector(state => state.playback.isPlaying);
 
     const handleOpenCloseFile = async () => {
     if (fileOpen) {
-      const result = await window.api.clear();
-      setFileOpen(false);
-      setStatus(result.status);
+      await window.api.clear();
     } else {
       const file = await window.api.selectAudioFile();
-      setStatus({
-        type: 'loading',
-        message: 'Loading audio...'
-      });
-      const result = await window.api.load(file);
-      setFileOpen(true);
-      setStatus(result.status);
+      dispatch(setStatusMessage({ type: 'loading', message: 'Loading audio...' }));
+      await window.api.load(file);
     }
   };
 

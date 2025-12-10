@@ -16,15 +16,15 @@ namespace Adagio
 		Application();
 		virtual ~Application();
 
-        int LoadAudio(std::string filePath);
-        int ClearAudio();
-
-        void UpdateAudioState(PlayState state);
-        PlayState GetAudioState() { return m_AudioState; }
-
-		void SetVolume(float volume);
+		void Run();
 
 	private:
+		void ProcessCommands();
+		int LoadAudio(std::string filePath);
+		int ClearAudio();
+
+		void UpdateAudioState(PlayState state);
+
 		std::shared_ptr<AudioDecoder> m_AudioDecoder;
         std::unique_ptr<FileIOService> m_FileIOService;
 		std::unique_ptr<PlaybackService> m_PlaybackService;

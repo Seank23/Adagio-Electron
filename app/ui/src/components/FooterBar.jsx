@@ -1,18 +1,20 @@
-import { useContext, useEffect, useRef } from 'react';
-import { AudioContext } from '../context/AudioContext';
+import { useEffect, useRef } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
+import { resetStatus } from '../store/appSlice'; 
 import Styled from '@emotion/styled';
 import { theme } from 'antd';
 import { ExclamationCircleOutlined, CheckCircleOutlined, LoadingOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 const FooterBar = () => {
-    const { status, setStatus } = useContext(AudioContext);
     const { token } = theme.useToken();
+    const dispatch = useDispatch();
+    const status = useSelector(state => state.app.statusMessage);
     const statusTimeout = useRef(null);
 
     useEffect(() => {
         clearTimeout(statusTimeout.current);
         if (status?.type && status.type !== 'loading') {
-            statusTimeout.current = setTimeout(() => setStatus({}), 3000);
+            statusTimeout.current = setTimeout(() => dispatch(resetStatus()), 3000);
         }
     }, [status]);
 

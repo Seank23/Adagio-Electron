@@ -1,6 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useContext, useEffect, useRef } from 'react';
-import { AudioContext } from '../context/AudioContext';
+import { useEffect, useRef } from 'react';
 import { theme, FloatButton, Card, Popover, Slider, Row } from 'antd';
 import { PlayCircleFilled, PauseCircleFilled } from '@ant-design/icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -10,8 +9,8 @@ import { setIsPlaying, setIsStarted } from '../store/PlaybackSlice';
 import { useSelector, useDispatch } from 'react-redux';
 
 export const PlaybackControls = () => {
-  const { fileOpen, setStatus } = useContext(AudioContext);
   const { token } = theme.useToken();
+  const fileOpen = useSelector(state => state.app.isFileOpen);
   const audioStarted = useSelector(state => state.playback.isStarted);
   const audioPlaying = useSelector(state => state.playback.isPlaying);
   const dispatch = useDispatch();
@@ -31,17 +30,15 @@ export const PlaybackControls = () => {
 
   const handlePlay = async () => {
     if (!audioPlaying) {
-      const result = await window.api.play();
+      await window.api.play();
       dispatch(setIsPlaying(true));
-      setStatus(result.status);
     }
   };
 
   const handlePause = async () => {
     if (audioPlaying) {
-      const result = await window.api.pause();
+      await window.api.pause();
       dispatch(setIsPlaying(false));
-      setStatus(result.status);
     }
   };
 
