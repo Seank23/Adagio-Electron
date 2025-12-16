@@ -29,6 +29,7 @@ namespace Adagio
 		void LaunchFeeder();
 		void SetFeederState(FeederState state) { m_FeederState.store(state, std::memory_order_release); }
 
+		void SeekToSample(uint64_t sample);
 		void ResetAudio();
 		void Clear();
 

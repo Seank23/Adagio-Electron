@@ -71,6 +71,7 @@ namespace Adagio
 		{
 			m_WriteIndex.store(0, std::memory_order_release);
 			m_ReadIndex.store(0, std::memory_order_release);
+			m_Buffer.clear();
 		}
 
 	private:

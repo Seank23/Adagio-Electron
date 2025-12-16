@@ -16,6 +16,8 @@ export default function EngineEventRouter() {
         case EVENT_TYPE.FILE_CLOSED:
             dispatch(setIsFileOpen(false));
             dispatch(setStatusMessage({ type: 'info', message: 'Audio file closed' }));
+            dispatch(resetPlayback());
+            dispatch(setTotalSamples(0));
             break;
         case EVENT_TYPE.POSITION:
             dispatch(setCurrentSample(msg?.value));

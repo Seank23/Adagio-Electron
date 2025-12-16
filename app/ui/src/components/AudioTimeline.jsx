@@ -8,8 +8,8 @@ const AudioTimeline = () => {
     const currentSample = useSelector(state => state.playback.currentSample);
     const totalSamples = useSelector(state => state.playback.totalSamples);
 
-    const handleSeek = event => {
-        const newSample = parseFloat(event.target.value);
+    const handleSeek = value => {
+        const newSample = parseFloat(value);
         dispatch(setCurrentSample(newSample));
         window.api.seek(newSample);
     }
@@ -20,7 +20,7 @@ const AudioTimeline = () => {
 
     return (
         <>
-            <Timeline min={0} max={totalSamples} value={currentSample} />
+            <Timeline min={0} max={totalSamples} value={currentSample} onChange={handleSeek} />
         </>
     )
 };

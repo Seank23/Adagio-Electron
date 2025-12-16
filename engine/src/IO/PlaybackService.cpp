@@ -24,6 +24,7 @@ void DataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint
 namespace Adagio
 {
 	PlaybackService::PlaybackService()
+		: m_CurrentState(PlayState::NOT_STARTED)
 	{
 	}
 
@@ -34,6 +35,7 @@ namespace Adagio
 
     int PlaybackService::Init(std::shared_ptr<AudioDecoder> decoder)
 	{
+		m_CurrentState = PlayState::NOT_STARTED;
 		m_PlaybackDevice = ma_device();
 		m_Decoder = decoder;
 
@@ -53,6 +55,8 @@ namespace Adagio
 
 	void PlaybackService::Reset()
 	{
+		m_CurrentState = PlayState::NOT_STARTED;
+		m_CurrentPlaybackFrame = 0;
 		ma_device_stop(&m_PlaybackDevice);
 		ma_device_uninit(&m_PlaybackDevice);
 		m_Decoder->Clear();
@@ -60,18 +64,21 @@ namespace Adagio
 
 	void PlaybackService::PlayAudio()
 	{
+		m_CurrentState = PlayState::PLAYING;
 		ma_device_start(&m_PlaybackDevice);
 		m_Decoder->SetFeederState(FeederState::RUNNING);
 	}
 
     void PlaybackService::PauseAudio()
     {
+		m_CurrentState = PlayState::PAUSED;
         ma_device_stop(&m_PlaybackDevice);
 		m_Decoder->SetFeederState(FeederState::STOPPED);
     }
 
 	void PlaybackService::StopAudio()
 	{
+		m_CurrentState = PlayState::STOPPED;
 		ma_device_stop(&m_PlaybackDevice);
 		m_CurrentPlaybackFrame = 0;
 		m_Decoder->ResetAudio();
@@ -85,7 +92,15 @@ namespace Adagio
 	void PlaybackService::SeekToSample(uint64_t sample)
 	{
 		ma_device_stop(&m_PlaybackDevice);
-		//ma_decoder_seek_to_pcm_frame(&m_PlaybackDevice.decoder, sample);
+		m_Decoder->SetFeederState(FeederState::STOPPED);
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		m_Decoder->SeekToSample(sample);
+		m_CurrentPlaybackFrame = sample;
+		if (m_CurrentState == PlayState::PLAYING)
+		{
+			ma_device_start(&m_PlaybackDevice);
+			m_Decoder->SetFeederState(FeederState::RUNNING);
+		}
 	}
 
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)

@@ -78,6 +78,16 @@ namespace Adagio
 		m_Buffers[bufferName] = std::move(buffer);
 	}
 
+	void AudioDecoder::SeekToSample(uint64_t sample)
+	{
+		uint64_t targetPosition = sample * m_AudioSource->Channels;
+		if (targetPosition >= m_FeederData.size())
+			targetPosition = m_FeederData.size();
+		m_FeederPosition.store(targetPosition, std::memory_order_release);
+		for (auto& [name, buffer] : m_Buffers)
+			buffer->Clear();
+	}
+
 	void AudioDecoder::ResetAudio()
 	{
 		m_FeederState = FeederState::STOPPED;
