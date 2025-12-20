@@ -3,17 +3,18 @@ import { createSlice } from '@reduxjs/toolkit';
 const playbackSlice = createSlice({
     name: 'playback',
     initialState: {
-        currentSample: 0,
-        totalSamples: 0,
+        currentTime: 0.0,
+        duration: 0.0,
         isStarted: false,
         isPlaying: false,
+        waveformData: null,
     },
     reducers: {
-        setCurrentSample(state, action) {
-            state.currentSample = action.payload;
+        setCurrentTime(state, action) {
+            state.currentTime = action.payload;
         },
-        setTotalSamples(state, action) {
-            state.totalSamples = action.payload;
+        setDuration(state, action) {
+            state.duration = action.payload;
         },
         setIsStarted(state, action) {
             state.isStarted = action.payload;
@@ -21,13 +22,17 @@ const playbackSlice = createSlice({
         setIsPlaying(state, action) {
             state.isPlaying = action.payload;
         },
+        setWaveformData(state, action) {
+            state.waveformData = action.payload;
+        },
         resetPlayback(state) {
-            state.currentSample = 0;
+            state.currentTime = 0.0;
             state.isStarted = false;
             state.isPlaying = false;
+            state.waveformData = null;
         },
     },
 });
 
-export const { setCurrentSample, setTotalSamples, setIsPlaying, setIsStarted, resetPlayback } = playbackSlice.actions;
+export const { setCurrentTime, setDuration, setIsPlaying, setIsStarted, setWaveformData, resetPlayback } = playbackSlice.actions;
 export default playbackSlice.reducer;

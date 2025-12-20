@@ -7,6 +7,7 @@
 #include "../Debug/Instrumentation.h"
 #include "MessageQueue.h"
 #include "CommandQueue.h"
+#include "../IO/WaveformBuilder.h"
 
 
 #include <filesystem>
@@ -77,11 +78,12 @@ namespace Adagio
             case CommandType::Seek:
                 if (m_AudioLoaded)
                 {
-                    float targetSample = cmd.Value;
-                    if (targetSample < 0.0f) targetSample = 0.0f;
-                    if (targetSample > static_cast<float>(m_AudioData->SamplesPerChannel))
-                        targetSample = static_cast<float>(m_AudioData->SamplesPerChannel);
-                    m_PlaybackService->SeekToSample(static_cast<uint64_t>(targetSample));
+                    float seconds = cmd.Value;
+                    if (seconds < 0.0f) seconds = 0.0f;
+                    if (seconds > static_cast<float>(m_AudioData->Duration))
+                        seconds = static_cast<float>(m_AudioData->Duration);
+					uint64_t targetSample = static_cast<uint64_t>(seconds * m_AudioData->SampleRate);
+                    m_PlaybackService->SeekToSample(targetSample);
                 }
                 break;
             case CommandType::SetVolume:
@@ -110,10 +112,34 @@ namespace Adagio
         if (m_AudioData != nullptr)
         {
             m_AudioLoaded = true;
+			WaveformBuilder waveformBuilder;
+            std::thread waveformThread([&]()
+            {
+                waveformBuilder.BuildWaveform(m_AudioData);
+                std::string json = "{\"type\":\"waveformData\",\"value\":[";
+				auto& resolutions = waveformBuilder.GetAvailableResolutions();
+                for (int i = 0; i < resolutions.size(); i++)
+                {
+                    const auto& data = waveformBuilder.GetWaveformData(resolutions[i]);
+					json += "{\"resolution\":" + std::to_string(resolutions[i]) + ",\"peaks\":[";
+                    for (size_t j = 0; j < data.size(); ++j)
+                    {
+                        json += "{\"min\":" + std::to_string(data[j].Min) + ",\"max\":" + std::to_string(data[j].Max) + "}";
+                        if (j < data.size() - 1)
+                            json += ",";
+                    }
+                    json += "]}";
+                    if (i < resolutions.size() - 1)
+                        json += ",";
+                }
+				json += "]}";
+                MessageQueue::Instance().Push(json);
+			});
 			m_AudioDecoder->Init(m_AudioData);
             m_AudioDecoder->AddBuffer("Playback", 5.0f);
 			m_PlaybackService->Init(m_AudioDecoder);
-            MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"totalSamples\":" + std::to_string(m_AudioData->SamplesPerChannel) + "} }");
+            MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"duration\":" + std::to_string(m_AudioData->Duration) + "} }");
+            waveformThread.join();
         }
         return 1;
     }

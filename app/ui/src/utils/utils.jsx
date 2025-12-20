@@ -6,4 +6,5 @@ export const EVENT_TYPE = {
     SUCCESS: 'success',
     ERROR: 'error',
     INFO: 'info',
+    WAVEFORM_DATA: 'waveformData',
 };

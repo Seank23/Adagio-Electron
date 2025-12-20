@@ -54,8 +54,8 @@ int main(int argc, char** argv)
 
     svr.Post("/seek", [&](const httplib::Request& req, httplib::Response& res)
         {
-            float sample = std::stof(req.body);
-            Adagio::CommandQueue::Instance().Push({ CommandType::Seek, sample });
+            float seconds = std::stof(req.body);
+            Adagio::CommandQueue::Instance().Push({ CommandType::Seek, seconds });
             res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 

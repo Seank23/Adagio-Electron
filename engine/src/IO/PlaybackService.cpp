@@ -127,7 +127,8 @@ namespace Adagio
 				MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
 				return;
 			}
-			MessageQueue::Instance().Push(std::string("{\"type\":\"position\",\"value\":") + std::to_string(currentFrame) + "}");
+			float seconds = (float)currentFrame / m_AudioSource->SampleRate;
+			MessageQueue::Instance().Push(std::string("{\"type\":\"position\",\"value\":") + std::to_string(seconds) + "}");
 			m_PlaybackUpdateCounter.store(0);
 		}
 		else
