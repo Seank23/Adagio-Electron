@@ -7,7 +7,6 @@ namespace Adagio
 {
 	struct WaveformPeak
 	{
-		float Min;
 		float Max;
 	};
 

@@ -124,7 +124,7 @@ namespace Adagio
 					json += "{\"resolution\":" + std::to_string(resolutions[i]) + ",\"peaks\":[";
                     for (size_t j = 0; j < data.size(); ++j)
                     {
-                        json += "{\"min\":" + std::to_string(data[j].Min) + ",\"max\":" + std::to_string(data[j].Max) + "}";
+                        json += std::to_string(data[j].Max);
                         if (j < data.size() - 1)
                             json += ",";
                     }

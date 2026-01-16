@@ -4,6 +4,7 @@ import { theme } from 'antd';
 import { setCurrentTime } from '../store/PlaybackSlice';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
+import TimelineInterationHandler from './TimelineInterationHandler';
 
 const AudioTimeline = () => {
     const { token } = theme.useToken();
@@ -17,8 +18,9 @@ const AudioTimeline = () => {
     const waveSurferRef = useRef(null);
 
     const [waveSurferInitialized, setWaveSurferInitialized] = useState(false);
-    const minPxPerSec = useRef(10);
-    const [currentWaveform, setCurrentWaveform] = useState(null);
+    const minPxPerSec = useRef(1);
+    const currentWaveformRef = useRef(null);
+    const waveformBusyRef = useRef(false);
 
     const handleSeek = time => {
         dispatch(setCurrentTime(time));
@@ -26,11 +28,11 @@ const AudioTimeline = () => {
     }
 
     const getWaveformResolution = minPxPerSec => {
-        if (minPxPerSec > 200) return waveformData?.find(data => data.resolution === 512)?.peaks.map(p => p.max).flat();
-        if (minPxPerSec > 100) return waveformData?.find(data => data.resolution === 1024)?.peaks.map(p => p.max).flat();
-        if (minPxPerSec > 50) return waveformData?.find(data => data.resolution === 2048)?.peaks.map(p => p.max).flat();
-        if (minPxPerSec > 25) return waveformData?.find(data => data.resolution === 4096)?.peaks.map(p => p.max).flat();
-        return waveformData?.find(data => data.resolution === 8192)?.peaks.map(p => p.max).flat();
+        if (minPxPerSec > 200) return waveformData?.find(data => data.resolution === 512)?.peaks;
+        if (minPxPerSec > 100) return waveformData?.find(data => data.resolution === 1024)?.peaks;
+        if (minPxPerSec > 50) return waveformData?.find(data => data.resolution === 2048)?.peaks;
+        if (minPxPerSec > 25) return waveformData?.find(data => data.resolution === 4096)?.peaks;
+        return waveformData?.find(data => data.resolution === 8192)?.peaks;
     };
 
     useEffect(() => {
@@ -47,6 +49,8 @@ const AudioTimeline = () => {
             responsive: true,
             interact: true,
             normalize: true,
+            scrollParent: true,
+            minPxPerSec: minPxPerSec.current,
             plugins: [
                 TimelinePlugin.create({
                     container: timelineRef.current
@@ -54,7 +58,8 @@ const AudioTimeline = () => {
             ]
         });
         waveSurfer.setMuted(true);
-        waveSurfer.load(null, getWaveformResolution(minPxPerSec), duration);
+        currentWaveformRef.current = getWaveformResolution(minPxPerSec.current);
+        waveSurfer.load(null, currentWaveformRef.current, duration);
         waveSurfer.on('interaction', time => handleSeek(time));
         waveSurferRef.current = waveSurfer;
         setWaveSurferInitialized(true);
@@ -65,39 +70,48 @@ const AudioTimeline = () => {
     }, [waveformData, duration]);
 
     useEffect(() => {
-        if (!waveSurferRef.current) return;
-        waveSurferRef.current.load(null, currentWaveform, duration);
-        setTimeout(() => {
-            waveSurferRef.current.zoom(minPxPerSec.current);
-            waveSurferRef.current.seekTo(currentTime / duration);
-        }, 100);
-    }, [currentWaveform]);
-
-    useEffect(() => {
-        if (!waveSurferRef.current || !duration) return;
+        if (!waveSurferRef.current || !duration || waveformBusyRef.current) return;
         const ratio = currentTime / duration;
         waveSurferRef.current.seekTo(Math.min(Math.max(ratio, 0), 1));
-    });
+    }, [currentTime]);
 
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const onResize = e => {
-            e.preventDefault();
-            const delta = Math.sign(e.deltaY);
-            const newMinPxPerSec = Math.min(Math.max(minPxPerSec.current + delta * -5, 10), 800);
-            if (newMinPxPerSec !== minPxPerSec.current) {
-                minPxPerSec.current = newMinPxPerSec;
-                setCurrentWaveform(getWaveformResolution(newMinPxPerSec));
-            }
-        };
-        containerRef.current.addEventListener('wheel', onResize, { passive: false });
-    }, [waveSurferInitialized]);
+    const updateZoomLevel = (newPxPerSec) => {
+        if (newPxPerSec === minPxPerSec.current) return;
+        minPxPerSec.current = newPxPerSec;
+        const newWaveform = getWaveformResolution(newPxPerSec);
+        if (!waveformBusyRef.current && newWaveform.length !== currentWaveformRef.current.length) {
+            console.log("Loading new waveform resolution");
+            waveformBusyRef.current = true;
+            currentWaveformRef.current = newWaveform;
+            waveSurferRef.current.load(null, newWaveform, duration);
+            waveSurferRef.current.once("ready", () => {
+                waveSurferRef.current.zoom(newPxPerSec);
+                waveformBusyRef.current = false;
+            });
+        } else {
+            waveSurferRef.current.zoom(newPxPerSec);
+        }
+    };
 
     return (
-        <>
-            <div style={{ width: '100%' }} ref={containerRef} />
+        <div style={viewportStyle}>
+            <div style={containerStyle} ref={containerRef} />
             <div style={{ width: '100%' }} ref={timelineRef} />
-        </>
+            {waveSurferInitialized && <TimelineInterationHandler containerRef={containerRef} waveSurferRef={waveSurferRef} updateZoomLevel={updateZoomLevel} />}
+        </div>
     )
 };
 export default AudioTimeline;
+
+const viewportStyle = {
+    width: '100%',
+    overflow: 'hidden',
+    position: 'relative'
+};
+const containerStyle = {
+    width: '100%',
+    '& > div': {
+        transformOrigin: 'center center',
+        willChange: 'transform',
+    },
+};

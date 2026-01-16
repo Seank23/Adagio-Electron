@@ -22,7 +22,6 @@ namespace Adagio
 			size_t numPeaks = (totalFrames + framesPerPeak - 1) / framesPerPeak;
 			for (size_t i = 0; i < numPeaks; ++i)
 			{
-				float minVal = std::numeric_limits<float>::max();
 				float maxVal = std::numeric_limits<float>::lowest();
 				for (size_t j = 0; j < framesPerPeak; ++j)
 				{
@@ -31,11 +30,10 @@ namespace Adagio
 					for (int ch = 0; ch < audioData->Channels; ++ch)
 					{
 						float sample = audioData->PCMData[ch][frameIndex];
-						if (sample < minVal) minVal = sample;
 						if (sample > maxVal) maxVal = sample;
 					}
 				}
-				peaks.push_back({ minVal, maxVal });
+				peaks.push_back({ maxVal });
 			}
 			m_WaveformData[resolution] = peaks;
 		}
