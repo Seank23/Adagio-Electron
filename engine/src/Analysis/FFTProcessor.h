@@ -1,33 +1,36 @@
 #pragma once
-#include "AnalysisProcessor.h"
+#include "AnalysisStage.h"
+#include "AnalysisPipeline.h"
 
 #include <kfr/dft.hpp>
 
 namespace Adagio
 {
-	class FFTProcessor : public AnalysisProcessor
+	class FFTProcessor : public AnalysisStage
 	{
 	public:
-		virtual void* Execute(void* data, void* args) const
+		virtual void Execute(AnalysisContext* context) const override
 		{
-			auto dataCast = (kfr::univector<float>*)data;
-			const size_t frameLength = dataCast->size();
+			auto& data = context->Windowed;
+			const size_t frameLength = data.size();
 
 			kfr::univector<kfr::complex<float>> fftInput;
 			fftInput.resize(frameLength);
 			
-			auto dataPtr = dataCast->begin();
+			auto dataPtr = data.begin();
 			for (int i = 0; i < frameLength; i++)
 				fftInput[i] = kfr::complex<float>{ dataPtr[i], 0.0f };
 
 			auto fftOutputComplex = kfr::dft(fftInput);
-			kfr::univector<float>* fftOutputReal = new kfr::univector<float>;
+			kfr::univector<float> fftOutputReal;
 			for (int i = 0; i < fftOutputComplex.size(); i++)
 			{
-				float real = std::sqrt(std::pow(fftOutputComplex[i].real(), 2.0f) + std::pow(fftOutputComplex[i].imag(), 2.0f));
-				fftOutputReal->push_back(real);
+				float real = fftOutputComplex[i].real();
+				fftOutputReal.push_back(real);
 			}
-			return (void*)fftOutputReal;
+			fftOutputReal = fftOutputReal.truncate(fftOutputReal.size() / 2);
+			context->Spectrum = std::move(fftOutputComplex);
+			context->Magnitudes = std::move(fftOutputReal);
 		}
 	};
 }

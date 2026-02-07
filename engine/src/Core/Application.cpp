@@ -8,6 +8,7 @@
 #include "MessageQueue.h"
 #include "CommandQueue.h"
 #include "../IO/WaveformBuilder.h"
+#include "../Analysis/AnalysisService.h"
 
 
 #include <filesystem>
@@ -22,6 +23,7 @@ namespace Adagio
         m_AudioDecoder = std::make_unique<AudioDecoder>();
 		m_FileIOService = std::make_unique<FileIOService>();
         m_PlaybackService = std::make_unique<PlaybackService>();
+		m_AnalysisService = std::make_unique<AnalysisService>();
 	}
 
 	Application::~Application()
@@ -89,6 +91,12 @@ namespace Adagio
             case CommandType::SetVolume:
                 m_PlaybackService->SetVolume(cmd.Value);
                 break;
+			case CommandType::AnalyseFrame:
+                if (m_AudioLoaded)
+                {
+                    m_AnalysisService->RequestCurrentFrameAnalysis();
+                }
+				break;
             }
         }
     }
@@ -137,7 +145,9 @@ namespace Adagio
 			});
 			m_AudioDecoder->Init(m_AudioData);
             m_AudioDecoder->AddBuffer("Playback", 5.0f);
+            m_AudioDecoder->AddBuffer("Analysis", 5.0f);
 			m_PlaybackService->Init(m_AudioDecoder);
+			m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ m_AudioData->SampleRate, 8000 });
             MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"duration\":" + std::to_string(m_AudioData->Duration) + "} }");
             waveformThread.join();
         }
@@ -149,6 +159,7 @@ namespace Adagio
         try
         {
 			m_PlaybackService->Reset();
+			m_AnalysisService->Reset();
             m_AudioData->Clear();
             m_AudioLoaded = false;
         } catch (...)
@@ -167,12 +178,15 @@ namespace Adagio
             break;
         case PlayState::PLAYING:
             m_PlaybackService->PlayAudio();
+			m_AnalysisService->StartAnalysis();
             break;
         case PlayState::PAUSED:
             m_PlaybackService->PauseAudio();
+			m_AnalysisService->StopAnalysis();
             break;
         case PlayState::STOPPED:
             m_PlaybackService->StopAudio();
+			m_AnalysisService->StopAnalysis();
             break;
         }
     }

@@ -1,8 +1,9 @@
 import { useDispatch } from 'react-redux';
 import { useEngineEvents } from '../hooks/useEngineEvents';
-import { setDuration, setCurrentTime, setWaveformData, resetPlayback } from '../store/PlaybackSlice';
+import { setDuration, setCurrentTime, setWaveformData, resetPlayback } from '../store/playbackSlice';
 import { setStatusMessage, setIsFileOpen } from '../store/appSlice'; 
 import { EVENT_TYPE } from '../utils/utils';
+import { setSpectrumData, setSpectrumSR, setExecutionTime } from '../store/analysisSlice';
 
 export default function EngineEventRouter() {
     const dispatch = useDispatch();
@@ -38,6 +39,11 @@ export default function EngineEventRouter() {
         case EVENT_TYPE.WAVEFORM_DATA:
             console.log(msg?.value);
             dispatch(setWaveformData(msg?.value));
+            break;
+        case EVENT_TYPE.ANALYSIS:
+            dispatch(setSpectrumData(msg?.value?.magnitudes));
+            dispatch(setSpectrumSR(msg?.value?.sampleRate));
+            dispatch(setExecutionTime(msg?.executionTime));
             break;
         default:
             break;

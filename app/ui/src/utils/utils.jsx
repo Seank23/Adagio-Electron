@@ -7,4 +7,5 @@ export const EVENT_TYPE = {
     ERROR: 'error',
     INFO: 'info',
     WAVEFORM_DATA: 'waveformData',
+    ANALYSIS: 'analysis',
 };

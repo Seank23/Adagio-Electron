@@ -29,11 +29,18 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(ixwebsocket)
 
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.12.0
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 if (MSVC)
     add_compile_options(/fp:fast /arch:AVX2 /permissive)
 endif()
 
 target_include_directories(AdagioEngine PRIVATE include ${kfr_INCLUDE_DIRS} build/_deps/ixwebsocket-src)
-target_link_libraries(AdagioEngine PRIVATE kfr_dft kfr_dsp kfr_io ixwebsocket)
+target_link_libraries(AdagioEngine PRIVATE kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${ENGINE_SOURCES})

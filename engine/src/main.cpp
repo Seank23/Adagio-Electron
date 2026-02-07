@@ -59,6 +59,13 @@ int main(int argc, char** argv)
             res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
+    svr.Post("/requestAnalysis", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            float seconds = std::stof(req.body);
+            Adagio::CommandQueue::Instance().Push({ CommandType::AnalyseFrame });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
+        });
+
     std::thread appThread([&]()
         {
             app.Run();

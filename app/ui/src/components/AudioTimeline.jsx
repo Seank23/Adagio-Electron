@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
-import { setCurrentTime } from '../store/PlaybackSlice';
+import { setCurrentTime } from '../store/playbackSlice';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 import TimelineInterationHandler from './TimelineInterationHandler';

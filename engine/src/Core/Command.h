@@ -10,7 +10,8 @@ enum class CommandType
 	Load,
 	Clear,
 	Seek,
-	SetVolume
+	SetVolume,
+	AnalyseFrame
 };
 
 struct Command

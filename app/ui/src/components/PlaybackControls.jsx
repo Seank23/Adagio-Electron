@@ -5,7 +5,7 @@ import { PlayCircleFilled, PauseCircleFilled } from '@ant-design/icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faVolumeHigh, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
 import Styled from '@emotion/styled';
-import { setIsPlaying, setIsStarted } from '../store/PlaybackSlice';
+import { setIsPlaying, setIsStarted } from '../store/playbackSlice';
 import { useSelector, useDispatch } from 'react-redux';
 
 export const PlaybackControls = () => {
