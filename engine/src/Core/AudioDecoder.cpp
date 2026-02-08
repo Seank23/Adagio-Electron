@@ -84,6 +84,7 @@ namespace Adagio
 		if (targetPosition >= m_FeederData.size())
 			targetPosition = m_FeederData.size();
 		m_FeederPosition.store(targetPosition, std::memory_order_release);
+		SetLastPlaybackFrameTimestamp(0.0);
 		for (auto& [name, buffer] : m_Buffers)
 			buffer->Clear();
 	}
@@ -92,6 +93,7 @@ namespace Adagio
 	{
 		m_FeederState = FeederState::STOPPED;
 		m_FeederPosition.store(0);
+		SetLastPlaybackFrameTimestamp(0.0);
 	}
 
 	void AudioDecoder::Clear()

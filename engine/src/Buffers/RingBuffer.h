@@ -45,13 +45,13 @@ namespace Adagio
 			return toWrite;
 		}
 
-		size_t Read(T* outData, size_t count)
+		size_t Read(T* outData, size_t count, size_t readFrom = -1)
 		{
 			size_t available = GetAvailableCount();
 			if (available == 0) return 0;
 
 			size_t toRead = (count > available) ? available : count;
-			size_t readVal = m_ReadIndex.load(std::memory_order_relaxed);
+			size_t readVal = readFrom != -1 ? readFrom : m_ReadIndex.load(std::memory_order_relaxed);
 
 			size_t right = m_Capacity - readVal;
 			if (toRead <= right)

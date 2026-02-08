@@ -1,3 +1,4 @@
+#include "kfr/base.hpp"
 #include "AnalysisService.h"
 #include "AnalysisPipeline.h"
 #include "../Core/AudioDecoder.h"
@@ -5,10 +6,10 @@
 #include "../Core/MessageQueue.h"
 #include "../IO/AudioData.h"
 
-#include "kfr/base.hpp"
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <chrono>
+#include <kfr/dsp.hpp>
 
 namespace Adagio
 {
@@ -27,7 +28,11 @@ namespace Adagio
 		m_Params = params;
 		m_AudioSource = m_Decoder->GetAudioSource();
 
-		m_AnalysisBuffer = m_Decoder->GetBuffer("Analysis");
+		kfr::univector<float> preprocessed;
+		PreprocessStream(preprocessed);
+		m_AnalysisBuffer = std::make_unique<RingBuffer<float>>(preprocessed.size());
+		m_AnalysisBuffer->Write(preprocessed.data(), preprocessed.size());
+
 		m_Pipeline = std::make_unique<AnalysisPipeline>();
 		m_Pipeline->AddStage(std::make_unique<FFTProcessor>());
 	}
@@ -49,7 +54,6 @@ namespace Adagio
 			while (m_Running)
 			{
 				std::unique_ptr<AnalysisResult> result = ProcessCurrentFrame();
-				std::cout << "Analyzed frame: Magnitudes size = " << result->Magnitudes.size() << ", SampleRate = " << result->SampleRate << std::endl;
 				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 				MessageQueue::Instance().Push(json.dump());
 				std::this_thread::sleep_for(std::chrono::milliseconds(m_IntervalMs));
@@ -75,46 +79,52 @@ namespace Adagio
 	{
 		AudioFrame frame;
 		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
+		double deltaTime = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9 - m_Decoder->GetLastPlaybackFrameTimestamp();
+		int currentFrameStart = std::clamp(static_cast<int>((m_Decoder->GetPlaybackTime() + deltaTime) * m_Params.SampleRate), 0, (int)m_AnalysisBuffer->GetCapacity());
+		currentFrameStart -= m_Params.FrameLength / 2; // Center the frame around the current playback position
+		kfr::univector<float> samples(m_Params.FrameLength);
+		size_t samplesRead = m_AnalysisBuffer->Read(samples.data(), m_Params.FrameLength, currentFrameStart);
+		frame.Samples = samples;
+		
+		return m_Pipeline->ProcessFrame(frame);
+	}
+
+	void AnalysisService::PreprocessStream(kfr::univector<float>& outStream)
+	{
+		auto& sourcePcm = m_AudioSource->PCMData;
+		size_t sourceSamples = m_AudioSource->SamplesPerChannel;
 		int channels = m_AudioSource->Channels;
 
-		const size_t samplesRequested = static_cast<size_t>(m_Params.FrameLength);
-		kfr::univector<float> outBuffer;
-		outBuffer.resize(samplesRequested * channels);
-		uint32_t samplesRead = m_AnalysisBuffer->Read(outBuffer.data(), static_cast<uint32_t>(samplesRequested * channels));
-		outBuffer.resize(samplesRead);
-
-		// Mix down to mono. If multichannel, deinterleave then average channels.
-		kfr::univector<float> mono;
-		mono.resize(samplesRequested);
-
+		// Mix down to mono. If multichannel, average channels.
+		kfr::univector<float> mono(sourceSamples);
 		if (channels <= 1)
 		{
-			// copy samples and zero-pad if needed
-			size_t toCopy = std::min<size_t>(samplesRead, samplesRequested);
-			if (toCopy > 0)
-				std::copy(outBuffer.begin(), outBuffer.begin() + toCopy, mono.begin());
-			if (toCopy < samplesRequested)
-				std::fill(mono.begin() + toCopy, mono.end(), 0.0f);
+			if (sourceSamples > 0)
+				std::copy(sourcePcm[0].begin(), sourcePcm[0].begin() + sourceSamples, mono.begin());
 		}
 		else
 		{
-			size_t framesRead = samplesRead / static_cast<size_t>(channels);
-			kfr::univector2d<float> deinterleaved;
-			deinterleaved.resize(channels);
-			for (int c = 0; c < channels; ++c)
-				deinterleaved[c].resize(framesRead);
-			kfr::deinterleave<float>(deinterleaved, outBuffer);
-			for (size_t i = 0; i < framesRead; ++i)
+			for (size_t i = 0; i < sourceSamples; ++i)
 			{
 				float sum = 0.0f;
 				for (int c = 0; c < channels; ++c)
-					sum += deinterleaved[c][i];
+					sum += sourcePcm[c][i];
 				mono[i] = sum / static_cast<float>(channels);
 			}
-			if (framesRead < samplesRequested)
-				std::fill(mono.begin() + framesRead, mono.end(), 0.0f);
 		}
-		frame.Samples = std::move(mono);
-		return m_Pipeline->ProcessFrame(frame);
+		if (m_Params.SampleRate == m_AudioSource->SampleRate)
+		{
+			outStream = std::move(mono);
+			return;
+		}
+		// Filter to prevent aliasing before resampling
+		auto filterParams = kfr::to_sos<float>(kfr::iir_lowpass(kfr::butterworth<float>(12), m_Params.SampleRate / 2.0f, m_AudioSource->SampleRate));
+		kfr::univector<float> filtered = kfr::iir(mono, filterParams);
+
+		// Resample to target sample rate
+		kfr::samplerate_converter<float> resampler = kfr::resampler<float>(kfr::resample_quality::high, m_Params.SampleRate, m_AudioSource->SampleRate);
+		size_t outputSamples = resampler.output_size_for_input(sourceSamples);
+		outStream.resize(outputSamples);
+		resampler.process(outStream, filtered);
 	}
 }

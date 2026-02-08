@@ -3,6 +3,8 @@
 #include "../Core/MessageQueue.h"
 
 #include <algorithm>
+#include <chrono>
+#include <iostream>
 
 #define MA_NO_WAV
 #define MA_NO_MP3
@@ -119,6 +121,10 @@ namespace Adagio
 		currentFrame += framesToRead;
 		m_CurrentPlaybackFrame.store(currentFrame);
 
+		double seconds = (double)currentFrame / (double)m_AudioSource->SampleRate;
+		m_Decoder->SetPlaybackTime(seconds);
+		m_Decoder->SetLastPlaybackFrameTimestamp(std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9);
+
 		int updateCounter = m_PlaybackUpdateCounter.load(std::memory_order_relaxed);
 		if (updateCounter >= 4)
 		{
@@ -127,7 +133,6 @@ namespace Adagio
 				MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
 				return;
 			}
-			float seconds = (float)currentFrame / m_AudioSource->SampleRate;
 			MessageQueue::Instance().Push(std::string("{\"type\":\"position\",\"value\":") + std::to_string(seconds) + "}");
 			m_PlaybackUpdateCounter.store(0);
 		}

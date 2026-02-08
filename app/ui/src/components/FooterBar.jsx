@@ -9,6 +9,8 @@ const FooterBar = () => {
     const { token } = theme.useToken();
     const dispatch = useDispatch();
     const status = useSelector(state => state.app.statusMessage);
+    const excutionTime = useSelector(state => state.analysis.executionTime);
+    const isPlaying = useSelector(state => state.playback.isPlaying);
     const statusTimeout = useRef(null);
 
     useEffect(() => {
@@ -18,9 +20,10 @@ const FooterBar = () => {
         }
     }, [status]);
 
-    const StatusDiv = Styled.div`
+    const Container = Styled.div`
         display: flex;
-        justify-content: end;
+        flex-direction: row;
+        justify-content: space-between;
     `;
 
     const iconMap = {
@@ -32,7 +35,10 @@ const FooterBar = () => {
     };
 
     return (
-        <StatusDiv>{status?.type && iconMap[status.type]}{status?.message && status.message}</StatusDiv>
+        <Container>
+            <div>{isPlaying && `Execution time: ${excutionTime.toFixed(2)}ms`}</div>
+            <div>{status?.type && iconMap[status.type]}{status?.message && status.message}</div>
+        </Container>
     );
 };
 export default FooterBar;

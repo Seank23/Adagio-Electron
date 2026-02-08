@@ -43,7 +43,7 @@ export default function EngineEventRouter() {
         case EVENT_TYPE.ANALYSIS:
             dispatch(setSpectrumData(msg?.value?.magnitudes));
             dispatch(setSpectrumSR(msg?.value?.sampleRate));
-            dispatch(setExecutionTime(msg?.executionTime));
+            dispatch(setExecutionTime(msg?.value?.executionTimeMs));
             break;
         default:
             break;
