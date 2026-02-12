@@ -49,6 +49,7 @@ namespace Adagio
 		std::unique_ptr<RingBuffer<float>> m_AnalysisBuffer;
 		AnalysisParams m_Params;
 		int m_IntervalMs;
+		int m_RollingAvgCount;
 		std::atomic<bool> m_Running{ false };
 	};
 }

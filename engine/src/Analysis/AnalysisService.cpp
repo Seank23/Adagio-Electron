@@ -14,7 +14,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(50), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(8), m_AnalysisBuffer(nullptr)
 	{
 	}
 
@@ -51,9 +51,26 @@ namespace Adagio
 		m_Running = true;
 		m_AnalysisThread = std::thread([this]()
 		{
+			std::unique_ptr<AnalysisResult> result = nullptr;
+			std::vector<std::vector<float>> rollingAvg;
 			while (m_Running)
 			{
-				std::unique_ptr<AnalysisResult> result = ProcessCurrentFrame();
+				result = ProcessCurrentFrame();
+				if (m_RollingAvgCount > 1)
+				{
+					auto& data = result->Magnitudes;
+					rollingAvg.push_back(data);
+					if (rollingAvg.size() > m_RollingAvgCount)
+						rollingAvg.erase(rollingAvg.begin());
+					for (size_t i = 0; i < data.size(); i++)
+					{
+						float sum = 0.0f;
+						for (const auto& vec : rollingAvg)
+							sum += vec[i];
+						data[i] = sum / static_cast<float>(rollingAvg.size());
+					}
+					result->Magnitudes = data;
+				}
 				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 				MessageQueue::Instance().Push(json.dump());
 				std::this_thread::sleep_for(std::chrono::milliseconds(m_IntervalMs));
@@ -77,15 +94,14 @@ namespace Adagio
 
 	std::unique_ptr<AnalysisResult> AnalysisService::ProcessCurrentFrame()
 	{
-		AudioFrame frame;
-		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
 		double deltaTime = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9 - m_Decoder->GetLastPlaybackFrameTimestamp();
-		int currentFrameStart = std::clamp(static_cast<int>((m_Decoder->GetPlaybackTime() + deltaTime) * m_Params.SampleRate), 0, (int)m_AnalysisBuffer->GetCapacity());
-		currentFrameStart -= m_Params.FrameLength / 2; // Center the frame around the current playback position
+		int currentFrameStart = std::clamp(static_cast<int>((m_Decoder->GetPlaybackTime() + deltaTime) * m_Params.SampleRate - m_Params.FrameLength / static_cast<float>(2)), 0, (int)m_AnalysisBuffer->GetCapacity());
 		kfr::univector<float> samples(m_Params.FrameLength);
 		size_t samplesRead = m_AnalysisBuffer->Read(samples.data(), m_Params.FrameLength, currentFrameStart);
+
+		AudioFrame frame;
+		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
 		frame.Samples = samples;
-		
 		return m_Pipeline->ProcessFrame(frame);
 	}
 

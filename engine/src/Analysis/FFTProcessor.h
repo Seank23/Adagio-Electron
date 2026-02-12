@@ -2,6 +2,7 @@
 #include "AnalysisStage.h"
 #include "AnalysisPipeline.h"
 
+#include <kfr/dsp.hpp>
 #include <kfr/dft.hpp>
 
 namespace Adagio
@@ -11,8 +12,12 @@ namespace Adagio
 	public:
 		virtual void Execute(AnalysisContext* context) const override
 		{
-			auto& data = context->Windowed;
+			auto& data = context->Samples;
 			const size_t frameLength = data.size();
+
+			kfr::univector<float> window = kfr::window_hamming<float>(frameLength);
+			for (size_t i = 0; i < data.size(); ++i)
+				data[i] = data[i] * window[i];
 
 			kfr::univector<kfr::complex<float>> fftInput;
 			fftInput.resize(frameLength);
@@ -31,6 +36,11 @@ namespace Adagio
 			fftOutputReal = fftOutputReal.truncate(fftOutputReal.size() / 2);
 			context->Spectrum = std::move(fftOutputComplex);
 			context->Magnitudes = std::move(fftOutputReal);
+		}
+
+		virtual AnalysisStageType GetType() const override
+		{
+			return AnalysisStageType::Processor;
 		}
 	};
 }

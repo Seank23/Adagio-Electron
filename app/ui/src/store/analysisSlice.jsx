@@ -5,20 +5,18 @@ const analysisSlice = createSlice({
     initialState: {
         spectrumData: [],
         spectrumSR: 0,
+        maxSpectrumValue: 0,
         executionTime: 0,
     },
     reducers: {
-        setSpectrumData: (state, action) => {
-            state.spectrumData = action.payload;
-        },
-        setSpectrumSR: (state, action) => {
-            state.spectrumSR = action.payload;
-        },
-        setExecutionTime: (state, action) => {
-            state.executionTime = action.payload;
+        setAnalysisData: (state, action) => {
+            state.spectrumData = action.payload?.magnitudes;
+            state.spectrumSR = action.payload?.sampleRate;
+            state.maxSpectrumValue = action.payload?.maxMagnitude;
+            state.executionTime = action.payload?.executionTimeMs;
         },
     },
 });
 
-export const { setSpectrumData, setSpectrumSR, setExecutionTime } = analysisSlice.actions;
+export const { setAnalysisData } = analysisSlice.actions;
 export default analysisSlice.reducer;

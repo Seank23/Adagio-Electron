@@ -97,7 +97,7 @@ const AudioTimeline = () => {
         <div style={viewportStyle}>
             <div style={containerStyle} ref={containerRef} />
             <div style={{ width: '100%' }} ref={timelineRef} />
-            {waveSurferInitialized && <TimelineInterationHandler containerRef={containerRef} waveSurferRef={waveSurferRef} updateZoomLevel={updateZoomLevel} />}
+            {/* {waveSurferInitialized && <TimelineInterationHandler containerRef={containerRef} waveSurferRef={waveSurferRef} updateZoomLevel={updateZoomLevel} />} */}
         </div>
     )
 };

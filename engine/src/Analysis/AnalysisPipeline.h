@@ -13,6 +13,7 @@ namespace Adagio
 	{
 		const AudioFrame& Frame;
 
+		kfr::univector<float> Samples;
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
@@ -21,6 +22,7 @@ namespace Adagio
 	struct AnalysisResult
 	{
 		std::vector<float> Magnitudes;
+		float MaxMagnitude;
 		float SampleRate;
 		float ExecutionTimeMs;
 	};

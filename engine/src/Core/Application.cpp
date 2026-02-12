@@ -146,7 +146,7 @@ namespace Adagio
 			m_AudioDecoder->Init(m_AudioData);
             m_AudioDecoder->AddBuffer("Playback", 5.0f);
 			m_PlaybackService->Init(m_AudioDecoder);
-			m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 2000 });
+			m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 });
             MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"duration\":" + std::to_string(m_AudioData->Duration) + "} }");
             waveformThread.join();
         }
