@@ -17,6 +17,8 @@ namespace Adagio
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
+
+		nlohmann::json Settings;
 	};
 
 	struct AnalysisResult
@@ -40,6 +42,7 @@ namespace Adagio
 
 	private:
 		std::vector<std::unique_ptr<AnalysisStage>> m_Stages;
+		nlohmann::json m_Settings;
 	};
 }
 

@@ -14,10 +14,23 @@ namespace Adagio
 		{
 			auto& data = context->Samples;
 			const size_t frameLength = data.size();
+			nlohmann::json settings = context->Settings;
 
-			kfr::univector<float> window = kfr::window_hamming<float>(frameLength);
-			for (size_t i = 0; i < data.size(); ++i)
-				data[i] = data[i] * window[i];
+			if (settings.contains("WINDOW"))
+			{
+				std::string windowType = settings["WINDOW"].get<std::string>();
+				if (windowType == "Hamming")
+					data *= kfr::window_hamming<float>(frameLength);
+				else if (windowType == "Hann")
+					data *= kfr::window_hann<float>(frameLength);
+				else if (windowType == "BlackmannHarris")
+					data *= kfr::window_blackman_harris<float>(frameLength);
+			}
+			else
+			{
+				// Default to Hamming window
+				data *= kfr::window_hamming<float>(frameLength);
+			}
 
 			kfr::univector<kfr::complex<float>> fftInput;
 			fftInput.resize(frameLength);
@@ -41,6 +54,18 @@ namespace Adagio
 		virtual AnalysisStageType GetType() const override
 		{
 			return AnalysisStageType::Processor;
+		}
+
+		virtual nlohmann::json GetSettings() const override
+		{
+			return nlohmann::json::parse(R"({
+				"WINDOW": {
+					"name": "Window Function",
+					"type": "enum",	
+					"options": ["Rectangle","Hamming","Hann","BlackmannHarris"],
+					"default": "Hamming"
+				}
+			})");
 		}
 	};
 }

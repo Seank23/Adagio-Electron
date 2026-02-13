@@ -16,6 +16,11 @@ namespace Adagio
 
 	void AnalysisPipeline::AddStage(std::unique_ptr<AnalysisStage> stage)
 	{
+		std::string name = stage->GetName();
+		m_Settings[name] = {};
+		auto settings = stage->GetSettings();
+		for (auto& it : settings.items())
+			m_Settings[name][it.key()] = it.value()["default"];
 		m_Stages.push_back(std::move(stage));
 	}
 
@@ -26,6 +31,7 @@ namespace Adagio
 		context.Samples = frame.Samples;
 		for (const auto& stage : m_Stages)
 		{
+			context.Settings = m_Settings[stage->GetName()];
 			stage->Execute(&context);
 		}
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
