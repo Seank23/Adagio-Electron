@@ -2,9 +2,11 @@
 #include "AnalysisService.h"
 #include "AnalysisPipeline.h"
 #include "../Core/AudioDecoder.h"
-#include "FFTProcessor.h"
 #include "../Core/MessageQueue.h"
 #include "../IO/AudioData.h"
+#include "FFTProcessor.h"
+#include "HPSDownsamplerProcessor.h"
+#include "SpectrumFilterProcessor.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -14,7 +16,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(8), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(16), m_AnalysisBuffer(nullptr)
 	{
 	}
 
@@ -35,6 +37,8 @@ namespace Adagio
 
 		m_Pipeline = std::make_unique<AnalysisPipeline>();
 		m_Pipeline->AddStage(std::make_unique<FFTProcessor>());
+		m_Pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
+		m_Pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
 	}
 
 	void AnalysisService::Reset()
