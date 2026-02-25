@@ -9,6 +9,7 @@
 namespace Adagio
 {
 	class AudioDecoder;
+	class TimeProcessor;
 
 	class PlaybackService
 	{
@@ -25,6 +26,7 @@ namespace Adagio
         void StopAudio();
 		void SetVolume(float volume);
 		void SeekToSample(uint64_t sample);
+		void SetSpeed(float speed);
 
 	private:
 		std::shared_ptr<AudioDecoder> m_Decoder;
@@ -36,6 +38,7 @@ namespace Adagio
 		std::atomic<uint64_t> m_CurrentPlaybackFrame{ 0 };
 		std::atomic<int> m_PlaybackUpdateCounter{ 0 };
 		PlayState m_CurrentState;
+		std::unique_ptr<TimeProcessor> m_TimeProcessor;
 	};
 }
 

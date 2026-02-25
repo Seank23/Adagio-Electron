@@ -86,6 +86,7 @@ export const PlaybackControls = () => {
           max={100}
           defaultValue={100}
           tooltip={{ formatter: value => `Speed: ${value}%` }}
+          onChange={async value => await window.api.changeSpeed(value)}
         />
       </Row>
     </Container>

@@ -66,6 +66,13 @@ int main(int argc, char** argv)
             res.set_content("{ \"status\": \"success\" }", "application/json");
         });
 
+    svr.Post("/speed", [&](const httplib::Request& req, httplib::Response& res)
+        {
+            float speed = std::stof(req.body) / 100.0f;
+            Adagio::CommandQueue::Instance().Push({ CommandType::SetSpeed, speed });
+            res.set_content("{ \"status\": \"success\" }", "application/json");
+        });
+
     std::thread appThread([&]()
         {
             app.Run();

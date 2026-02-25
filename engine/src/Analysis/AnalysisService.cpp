@@ -16,7 +16,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(16), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(8), m_AnalysisBuffer(nullptr)
 	{
 	}
 

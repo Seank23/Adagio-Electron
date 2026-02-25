@@ -36,11 +36,37 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
+include(ExternalProject)
+
+set(RUBBERBAND_SOURCE_DIR ${CMAKE_SOURCE_DIR}/external/rubberband)
+
+ExternalProject_Add(
+    rubberband_external
+    SOURCE_DIR ${RUBBERBAND_SOURCE_DIR}
+    CONFIGURE_COMMAND ""   # No CMake configure step
+    BUILD_COMMAND
+        msbuild otherbuilds/rubberband-library.vcxproj
+        /p:Configuration=Release
+        /p:Platform=x64
+    BUILD_IN_SOURCE 1
+    INSTALL_COMMAND ""
+)
+
+add_library(rubberband STATIC IMPORTED GLOBAL)
+
+set_target_properties(rubberband PROPERTIES
+        IMPORTED_LOCATION
+        ${RUBBERBAND_SOURCE_DIR}/otherbuilds/x64/Release/rubberband-library.lib
+        INTERFACE_INCLUDE_DIRECTORIES
+        ${RUBBERBAND_SOURCE_DIR}
+    )
+add_dependencies(rubberband rubberband_external)
+
 if (MSVC)
     add_compile_options(/fp:fast /arch:AVX2 /permissive)
 endif()
 
 target_include_directories(AdagioEngine PRIVATE include ${kfr_INCLUDE_DIRS} build/_deps/ixwebsocket-src)
-target_link_libraries(AdagioEngine PRIVATE kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json)
+target_link_libraries(AdagioEngine PRIVATE kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json rubberband)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${ENGINE_SOURCES})

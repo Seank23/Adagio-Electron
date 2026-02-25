@@ -43,4 +43,5 @@
 app/node_modules/*
 app/ui/node_modules/*
 engine/build/*
+engine/external/*
 app/dist/*

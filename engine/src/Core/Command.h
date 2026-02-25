@@ -11,6 +11,7 @@ enum class CommandType
 	Clear,
 	Seek,
 	SetVolume,
+	SetSpeed,
 	AnalyseFrame
 };
 

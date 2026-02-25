@@ -97,6 +97,15 @@ namespace Adagio
                     m_AnalysisService->RequestCurrentFrameAnalysis();
                 }
 				break;
+            case CommandType::SetSpeed:
+                if (m_AudioLoaded)
+                {
+                    float speed = cmd.Value;
+                    if (speed < 0.2f) speed = 0.2f;
+                    if (speed > 2.0f) speed = 2.0f;
+                    m_PlaybackService->SetSpeed(speed);
+                }
+                break;
             }
         }
     }
@@ -146,7 +155,7 @@ namespace Adagio
 			m_AudioDecoder->Init(m_AudioData);
             m_AudioDecoder->AddBuffer("Playback", 5.0f);
 			m_PlaybackService->Init(m_AudioDecoder);
-			m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 });
+			m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 2048 });
             MessageQueue::Instance().Push("{\"type\":\"fileLoaded\",\"value\":{\"duration\":" + std::to_string(m_AudioData->Duration) + "} }");
             waveformThread.join();
         }

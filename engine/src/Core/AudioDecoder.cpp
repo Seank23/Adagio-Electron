@@ -98,6 +98,7 @@ namespace Adagio
 
 	void AudioDecoder::Clear()
 	{
+		ResetAudio();
 		m_FeederState = FeederState::TERMINATED;
 		if (m_FeederThread.joinable())
 			m_FeederThread.join();
