@@ -29,7 +29,6 @@ const playbackSlice = createSlice({
             state.currentTime = 0.0;
             state.isStarted = false;
             state.isPlaying = false;
-            state.waveformData = null;
         },
     },
 });

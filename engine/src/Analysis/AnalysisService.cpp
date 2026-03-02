@@ -7,6 +7,7 @@
 #include "FFTProcessor.h"
 #include "HPSDownsamplerProcessor.h"
 #include "SpectrumFilterProcessor.h"
+#include "PeakExtractor.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -16,7 +17,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(8), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
 	{
 	}
 
@@ -39,6 +40,7 @@ namespace Adagio
 		m_Pipeline->AddStage(std::make_unique<FFTProcessor>());
 		m_Pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
 		m_Pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
+		m_Pipeline->AddStage(std::make_unique<PeakExtractor>());
 	}
 
 	void AnalysisService::Reset()
@@ -105,6 +107,7 @@ namespace Adagio
 
 		AudioFrame frame;
 		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
+		frame.FrameLength = static_cast<uint32_t>(m_Params.FrameLength);
 		frame.Samples = samples;
 		return m_Pipeline->ProcessFrame(frame);
 	}

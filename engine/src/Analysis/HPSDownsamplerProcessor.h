@@ -36,6 +36,7 @@ namespace Adagio
 				Downsample(downsampled, data, i + 2);
 				spectrums.push_back(std::move(downsampled));
 			}
+			float maxVal = *std::max_element(data.begin(), data.end());
 
 			kfr::univector<float> productSpectrum(frameLength);
 			for (int i = 0; i < frameLength; i++)
@@ -49,6 +50,7 @@ namespace Adagio
 					productSpectrum[i] *= productSpectrum[i];
 				if (std::isnan(productSpectrum[i]))
 					productSpectrum[i] = 0.0f;
+				productSpectrum[i] /= maxVal > 0.0f ? maxVal : 1.0f;
 			}
 
 			if (interpolationFactor > 1)

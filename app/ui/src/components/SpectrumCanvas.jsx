@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { theme } from 'antd';
-import _ from 'lodash';
+ 
+const MIN_FREQ = 50;
+const X_AXIS_PADDING = 20;
+const MAX_Y_VALUES = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
 
 const SpectrumCanvas = () => {
     const { token } = theme.useToken();
@@ -10,51 +13,69 @@ const SpectrumCanvas = () => {
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
     const isFileOpen = useSelector(state => state.app.isFileOpen);
     const maxSpectrumValue = useSelector(state => state.analysis.maxSpectrumValue);
+    const localMedianData = useSelector(state => state.analysis.localMedianData);
     const showLogScale = useSelector(state => state.settings.showLogScale);
 
-    const [maxValueArray, setMaxValueArray] = useState([]);
-    const [meanMaxValue, setMeanMaxValue] = useState(1);
-    
-    const MAX_VAL_ARRAY_SIZE = 100;
-    const MIN_FREQ = 50;
-    const X_AXIS_PADDING = 20;
-    const MAX_Y_VALUES = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+    const peaks = useSelector(state => state.analysis.spectrumPeaks);
 
-    const width = canvasRef.current?.parentElement?.clientWidth || 1000;
+    const meanMaxValue = maxSpectrumValue || 1;
+    const [canvasWidth, setCanvasWidth] = useState(1000);
 
-    const freqToXLog = (freq, width) => {
-        const minLog = Math.log10(MIN_FREQ);
-        const maxLog = Math.log10(spectrumSR / 2);
-        const logFreq = Math.log10(freq);
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        const parent = canvas?.parentElement;
 
-        return (
-            (logFreq - minLog) /
-            (maxLog - minLog)
-        ) * width;
-    };
+        if (!parent) {
+            return;
+        }
 
-    const freqToX = (freq, width) => {
-        return (freq / (spectrumSR / 2)) * width;
-    };
+        const updateWidth = () => {
+            setCanvasWidth(parent.clientWidth || 1000);
+        };
 
-    const binToFreq = (binIndex) => {
-        return binIndex * (spectrumSR / spectrumData.length);
-    };
+        updateWidth();
 
-    const magToY = (mag, height) => {
-        return (height - X_AXIS_PADDING) - ((mag / meanMaxValue) * height);
-    };
+        const observer = new ResizeObserver(updateWidth);
+        observer.observe(parent);
+
+        return () => observer.disconnect();
+    }, [isFileOpen]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
         const context = canvas?.getContext('2d');
         let animationFrame;
 
+        const freqToXLog = (freq, width) => {
+            const minLog = Math.log10(MIN_FREQ);
+            const maxLog = Math.log10(spectrumSR / 2);
+            const logFreq = Math.log10(freq);
+
+            return (
+                (logFreq - minLog) /
+                (maxLog - minLog)
+            ) * width;
+        };
+
+        const freqToX = (freq, width) => {
+            return (freq / (spectrumSR / 2)) * width;
+        };
+
+        const binToFreq = (binIndex, dataLength = spectrumData.length) => {
+            return binIndex * (spectrumSR / dataLength);
+        };
+
+        const magToY = (mag, height) => {
+            return (height - X_AXIS_PADDING) - ((mag / meanMaxValue) * height) * 0.9;
+        };
+
         const draw = () => {
             animationFrame = requestAnimationFrame(draw);
             context.clearRect(0, 0, canvas.width, canvas.height);
 
             drawSpectrum();
+            drawLocalMedian();
+            drawPeaks();
             drawXAxis();
             drawYAxis();
         };
@@ -81,6 +102,89 @@ const SpectrumCanvas = () => {
                 context.lineTo(canvas.width, canvas.height - X_AXIS_PADDING);
                 context.stroke();
             } 
+        };
+
+        const drawLocalMedian = () => {
+            if (!localMedianData || localMedianData.length === 0) {
+                return;
+            }
+
+            context.lineWidth = 2;
+            context.strokeStyle = token.colorError;
+            context.beginPath();
+
+            let started = false;
+
+            for (let i = 0; i < localMedianData.length; i++) {
+                const freq = binToFreq(localMedianData[i].bin);
+                if (freq < MIN_FREQ || freq > spectrumSR / 2) {
+                    continue;
+                }
+
+                const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
+                const y = magToY(localMedianData[i].magnitude, canvas.height);
+
+                if (!started) {
+                    context.moveTo(x, y);
+                    started = true;
+                } else {
+                    context.lineTo(x, y);
+                }
+            }
+
+            if (started) {
+                context.stroke();
+            }
+        };
+
+        const drawPeaks = () => {
+            if (!peaks || peaks.length === 0 || !spectrumData || spectrumData.length === 0) {
+                return;
+            }
+
+            context.fillStyle = token.colorError;
+
+            peaks.forEach(peak => {
+                let freq;
+                let mag;
+
+                if (typeof peak === 'number') {
+                    const bin = peak;
+                    freq = binToFreq(bin);
+                    mag = spectrumData[bin];
+                } else if (Array.isArray(peak)) {
+                    const [peakX, peakY] = peak;
+                    freq = peakX;
+                    mag = peakY;
+                } else if (typeof peak === 'object' && peak !== null) {
+                    const bin = peak.bin ?? peak.index;
+                    freq = peak.freq ?? peak.frequency ?? peak.hz;
+                    mag = peak.mag ?? peak.magnitude ?? peak.value;
+
+                    if (freq === undefined && bin !== undefined) {
+                        freq = binToFreq(bin);
+                    }
+
+                    if (mag === undefined && bin !== undefined) {
+                        mag = spectrumData[bin];
+                    }
+                }
+
+                if (freq === undefined || mag === undefined || Number.isNaN(freq) || Number.isNaN(mag)) {
+                    return;
+                }
+
+                if (freq < MIN_FREQ || freq > spectrumSR / 2) {
+                    return;
+                }
+
+                const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
+                const y = magToY(mag, canvas.height);
+
+                context.beginPath();
+                context.arc(x, y, 3, 0, Math.PI * 2);
+                context.fill();
+            });
         };
 
         const drawXAxis = () => {
@@ -135,26 +239,15 @@ const SpectrumCanvas = () => {
                 context.fillText(mag, 8, y + 4);
             }
         };
-        if (canvas && context) {
+        if (canvas && context && spectrumSR > 0) {
             draw();
         }
         return () => cancelAnimationFrame(animationFrame);
-    }, [spectrumData]);
-
-    useEffect(() => {
-        setMaxValueArray(prev => {
-            const newArray = [...prev, maxSpectrumValue];
-            if (newArray.length > MAX_VAL_ARRAY_SIZE) {
-                newArray.shift();
-            }
-            return newArray;
-        });
-        setMeanMaxValue(_.mean(maxValueArray) || 1);
-    }, [maxSpectrumValue]);
+    }, [spectrumData, localMedianData, peaks, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, canvasWidth]);
 
     return (
         <>
-            {isFileOpen && <canvas ref={canvasRef} width={width} height={300} />}
+            {isFileOpen && <canvas ref={canvasRef} width={canvasWidth} height={300} />}
         </>
     );
 }

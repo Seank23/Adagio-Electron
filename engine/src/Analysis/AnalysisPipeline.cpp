@@ -36,8 +36,11 @@ namespace Adagio
 		}
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
 		result->Magnitudes = std::vector<float>(context.Magnitudes.begin(), context.Magnitudes.end());
+		result->Peaks = std::move(context.Peaks);
 		result->MaxMagnitude = *std::max_element(result->Magnitudes.begin(), result->Magnitudes.end());
 		result->SampleRate = static_cast<float>(frame.SampleRate);
+		result->LocalMedian = std::move(context.LocalMedian);
+
 		auto endTime = std::chrono::high_resolution_clock::now();
 		result->ExecutionTimeMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
 		return std::move(result);
@@ -45,14 +48,23 @@ namespace Adagio
 
 	nlohmann::json AnalysisPipeline::GetResultJson(const AnalysisResult& result)
 	{
+		nlohmann::json peaksJson;
+		for (const auto& peak : result.Peaks)
+			peaksJson.push_back({ {"frequency", peak.first}, {"magnitude", peak.second} });
+		nlohmann::json medianJson;
+		for (const auto& median : result.LocalMedian)
+			medianJson.push_back({ {"bin", median.first}, {"magnitude", median.second} });
+
 		return
 		{
 			{"type", "analysis"},
 			{"value", {
+					{"executionTimeMs", result.ExecutionTimeMs},
 					{"sampleRate", result.SampleRate},
 					{"magnitudes", result.Magnitudes},
 					{"maxMagnitude", result.MaxMagnitude},
-					{"executionTimeMs", result.ExecutionTimeMs}
+					{"peaks", peaksJson},
+					{"localMedian", medianJson}
 				}
 			}
 		};

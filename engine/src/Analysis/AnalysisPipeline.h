@@ -17,6 +17,8 @@ namespace Adagio
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
+		std::vector<std::pair<float, float>> Peaks;
+		std::vector<std::pair<size_t, float>> LocalMedian;
 
 		nlohmann::json Settings;
 	};
@@ -24,6 +26,8 @@ namespace Adagio
 	struct AnalysisResult
 	{
 		std::vector<float> Magnitudes;
+		std::vector<std::pair<float, float>> Peaks;
+		std::vector<std::pair<size_t, float>> LocalMedian;
 		float MaxMagnitude;
 		float SampleRate;
 		float ExecutionTimeMs;

@@ -40,15 +40,14 @@ namespace Adagio
 				fftInput[i] = kfr::complex<float>{ dataPtr[i], 0.0f };
 
 			auto fftOutputComplex = kfr::dft(fftInput);
-			kfr::univector<float> fftOutputReal;
+			kfr::univector<float> fftOutputMagnitude;
+
 			for (int i = 0; i < fftOutputComplex.size(); i++)
-			{
-				float real = fftOutputComplex[i].real();
-				fftOutputReal.push_back(real);
-			}
-			fftOutputReal = fftOutputReal.truncate(fftOutputReal.size() / 2);
+				fftOutputMagnitude.push_back(std::abs(fftOutputComplex[i]));
+
+			fftOutputMagnitude = fftOutputMagnitude.truncate(fftOutputMagnitude.size() / 2);
 			context->Spectrum = std::move(fftOutputComplex);
-			context->Magnitudes = std::move(fftOutputReal);
+			context->Magnitudes = std::move(fftOutputMagnitude);
 		}
 
 		virtual AnalysisStageType GetType() const override
