@@ -27,32 +27,29 @@ namespace Adagio
 	std::unique_ptr<AnalysisResult> AnalysisPipeline::ProcessFrame(const AudioFrame& frame)
 	{
 		auto startTime = std::chrono::high_resolution_clock::now();
-		AnalysisContext context{ frame };
-		context.Samples = frame.Samples;
+		std::unique_ptr<AnalysisContext> context = std::make_unique<AnalysisContext>(frame);
+		context->Samples = frame.Samples;
 		for (const auto& stage : m_Stages)
 		{
-			context.Settings = m_Settings[stage->GetName()];
-			stage->Execute(&context);
+			context->Settings = m_Settings[stage->GetName()];
+			stage->Execute(context.get());
 		}
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
-		result->Magnitudes = std::vector<float>(context.Magnitudes.begin(), context.Magnitudes.end());
-		result->Peaks = std::move(context.Peaks);
-		result->MaxMagnitude = *std::max_element(result->Magnitudes.begin(), result->Magnitudes.end());
+		result->MaxMagnitude = *std::max_element(context->Magnitudes.begin(), context->Magnitudes.end());
 		result->SampleRate = static_cast<float>(frame.SampleRate);
-		result->LocalMedian = std::move(context.LocalMedian);
-
 		auto endTime = std::chrono::high_resolution_clock::now();
 		result->ExecutionTimeMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
+		result->Context = std::move(context);
 		return std::move(result);
 	}
 
 	nlohmann::json AnalysisPipeline::GetResultJson(const AnalysisResult& result)
 	{
-		nlohmann::json peaksJson;
-		for (const auto& peak : result.Peaks)
-			peaksJson.push_back({ {"frequency", peak.first}, {"magnitude", peak.second} });
+		nlohmann::json notesJson;
+		for (const auto& note : result.Context->Notes)
+			notesJson.push_back({ {"name", note.Name} , {"frequency", note.PeakInfo.Frequency}, {"magnitude", note.PeakInfo.Magnitude}, {"score", note.PeakInfo.Score}, {"errorCents", note.ErrorCents} });
 		nlohmann::json medianJson;
-		for (const auto& median : result.LocalMedian)
+		for (const auto& median : result.Context->LocalMedian)
 			medianJson.push_back({ {"bin", median.first}, {"magnitude", median.second} });
 
 		return
@@ -61,10 +58,10 @@ namespace Adagio
 			{"value", {
 					{"executionTimeMs", result.ExecutionTimeMs},
 					{"sampleRate", result.SampleRate},
-					{"magnitudes", result.Magnitudes},
+					{"magnitudes", result.Context->Magnitudes},
 					{"maxMagnitude", result.MaxMagnitude},
-					{"peaks", peaksJson},
-					{"localMedian", medianJson}
+					{"localMedian", medianJson},
+					{"notes", notesJson}
 				}
 			}
 		};

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { theme } from 'antd';
+import RollingNotesHeatMap from './RollingNotesHeatMap';
  
 const MIN_FREQ = 50;
 const X_AXIS_PADDING = 20;
@@ -16,7 +17,7 @@ const SpectrumCanvas = () => {
     const localMedianData = useSelector(state => state.analysis.localMedianData);
     const showLogScale = useSelector(state => state.settings.showLogScale);
 
-    const peaks = useSelector(state => state.analysis.spectrumPeaks);
+    const notes = useSelector(state => state.analysis.notes);
 
     const meanMaxValue = maxSpectrumValue || 1;
     const [canvasWidth, setCanvasWidth] = useState(1000);
@@ -75,7 +76,7 @@ const SpectrumCanvas = () => {
 
             drawSpectrum();
             drawLocalMedian();
-            drawPeaks();
+            drawNotes();
             drawXAxis();
             drawYAxis();
         };
@@ -137,38 +138,36 @@ const SpectrumCanvas = () => {
             }
         };
 
-        const drawPeaks = () => {
-            if (!peaks || peaks.length === 0 || !spectrumData || spectrumData.length === 0) {
+        const drawNotes = () => {
+            if (!notes || notes.length === 0 || !spectrumData || spectrumData.length === 0) {
                 return;
             }
 
-            context.fillStyle = token.colorError;
+            context.font = '12px sans-serif';
+            context.textAlign = 'left';
+            context.textBaseline = 'middle';
 
-            peaks.forEach(peak => {
-                let freq;
-                let mag;
+            const getNoteLabelColor = (errorCents) => {
+                const absError = Math.abs(errorCents);
 
-                if (typeof peak === 'number') {
-                    const bin = peak;
-                    freq = binToFreq(bin);
-                    mag = spectrumData[bin];
-                } else if (Array.isArray(peak)) {
-                    const [peakX, peakY] = peak;
-                    freq = peakX;
-                    mag = peakY;
-                } else if (typeof peak === 'object' && peak !== null) {
-                    const bin = peak.bin ?? peak.index;
-                    freq = peak.freq ?? peak.frequency ?? peak.hz;
-                    mag = peak.mag ?? peak.magnitude ?? peak.value;
-
-                    if (freq === undefined && bin !== undefined) {
-                        freq = binToFreq(bin);
-                    }
-
-                    if (mag === undefined && bin !== undefined) {
-                        mag = spectrumData[bin];
-                    }
+                if (absError <= 10) {
+                    return token.colorSuccess;
                 }
+
+                if (absError <= 20) {
+                    return token.colorWarning;
+                }
+
+                return token.colorError;
+            };
+
+            notes.forEach(note => {
+                const freq = note.frequency;
+                const mag = note.magnitude;
+                const noteLabel = note.name || '';
+                const parsedErrorCents = Number(note.errorCents);
+                const errorCents = Number.isFinite(parsedErrorCents) ? parsedErrorCents : 0;
+                const noteColor = getNoteLabelColor(errorCents);
 
                 if (freq === undefined || mag === undefined || Number.isNaN(freq) || Number.isNaN(mag)) {
                     return;
@@ -184,6 +183,15 @@ const SpectrumCanvas = () => {
                 context.beginPath();
                 context.arc(x, y, 3, 0, Math.PI * 2);
                 context.fill();
+
+                const textX = Math.min(x + 6, canvas.width - 36);
+                const textY = Math.max(8, Math.min(y, canvas.height - X_AXIS_PADDING - 8));
+
+                context.strokeStyle = token.colorBgContainer;
+                context.lineWidth = 3;
+                context.strokeText(noteLabel, textX, textY);
+                context.fillStyle = noteColor;
+                context.fillText(noteLabel, textX, textY);
             });
         };
 
@@ -243,11 +251,22 @@ const SpectrumCanvas = () => {
             draw();
         }
         return () => cancelAnimationFrame(animationFrame);
-    }, [spectrumData, localMedianData, peaks, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, canvasWidth]);
+    }, [spectrumData, localMedianData, notes, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, token.colorBgContainer, token.colorSuccess, token.colorWarning, canvasWidth]);
 
     return (
         <>
-            {isFileOpen && <canvas ref={canvasRef} width={canvasWidth} height={300} />}
+            {isFileOpen && (
+                <>
+                    <canvas ref={canvasRef} width={canvasWidth} height={300} />
+                    <RollingNotesHeatMap
+                        notes={notes}
+                        width={canvasWidth}
+                        minFreq={MIN_FREQ}
+                        maxFreq={spectrumSR / 2}
+                        showLogScale={showLogScale}
+                    />
+                </>
+            )}
         </>
     );
 }

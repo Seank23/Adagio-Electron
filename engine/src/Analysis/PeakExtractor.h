@@ -201,9 +201,9 @@ namespace Adagio
 				return a.freq < b.freq;
 			});
 
-			std::vector<std::pair<float, float>> peaks(selected.size());
+			std::vector<Peak> peaks(selected.size());
 			for (size_t i = 0; i < selected.size(); ++i)
-				peaks[i] = { selected[i].freq, selected[i].mag };
+				peaks[i] = { selected[i].freq, selected[i].mag, selected[i].score };
 
 			context->Peaks = std::move(peaks);
 			context->LocalMedian = std::move(localMedianArray);

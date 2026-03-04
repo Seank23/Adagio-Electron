@@ -8,6 +8,7 @@
 #include "HPSDownsamplerProcessor.h"
 #include "SpectrumFilterProcessor.h"
 #include "PeakExtractor.h"
+#include "NoteDetector.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -41,6 +42,7 @@ namespace Adagio
 		m_Pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
 		m_Pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
 		m_Pipeline->AddStage(std::make_unique<PeakExtractor>());
+		m_Pipeline->AddStage(std::make_unique<NoteDetector>());
 	}
 
 	void AnalysisService::Reset()
@@ -58,13 +60,13 @@ namespace Adagio
 		m_AnalysisThread = std::thread([this]()
 		{
 			std::unique_ptr<AnalysisResult> result = nullptr;
-			std::vector<std::vector<float>> rollingAvg;
+			std::vector<kfr::univector<float>> rollingAvg;
 			while (m_Running)
 			{
 				result = ProcessCurrentFrame();
+				auto data = result->Context->Magnitudes;
 				if (m_RollingAvgCount > 1)
 				{
-					auto& data = result->Magnitudes;
 					rollingAvg.push_back(data);
 					if (rollingAvg.size() > m_RollingAvgCount)
 						rollingAvg.erase(rollingAvg.begin());
@@ -75,7 +77,7 @@ namespace Adagio
 							sum += vec[i];
 						data[i] = sum / static_cast<float>(rollingAvg.size());
 					}
-					result->Magnitudes = data;
+					result->Context->Magnitudes = data;
 				}
 				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 				MessageQueue::Instance().Push(json.dump());

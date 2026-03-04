@@ -9,6 +9,20 @@ namespace Adagio
 {
 	class AnalysisStage;
 
+	struct Peak
+	{
+		float Frequency;
+		float Magnitude;
+		float Score;
+	};
+
+	struct Note
+	{
+		std::string Name;
+		Peak PeakInfo;
+		float ErrorCents;
+	};
+
 	struct AnalysisContext
 	{
 		const AudioFrame& Frame;
@@ -17,17 +31,16 @@ namespace Adagio
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
-		std::vector<std::pair<float, float>> Peaks;
+		std::vector<Peak> Peaks;
 		std::vector<std::pair<size_t, float>> LocalMedian;
+		std::vector<Note> Notes;
 
 		nlohmann::json Settings;
 	};
 
 	struct AnalysisResult
 	{
-		std::vector<float> Magnitudes;
-		std::vector<std::pair<float, float>> Peaks;
-		std::vector<std::pair<size_t, float>> LocalMedian;
+		std::unique_ptr<AnalysisContext> Context;
 		float MaxMagnitude;
 		float SampleRate;
 		float ExecutionTimeMs;
