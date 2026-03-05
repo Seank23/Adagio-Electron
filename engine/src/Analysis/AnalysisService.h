@@ -51,6 +51,7 @@ namespace Adagio
 		int m_IntervalMs;
 		int m_RollingAvgCount;
 		std::atomic<bool> m_Running{ false };
+		double m_AnalysisTimestamp = 0.0;
 	};
 }
 

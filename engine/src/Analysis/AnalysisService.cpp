@@ -103,13 +103,15 @@ namespace Adagio
 	std::unique_ptr<AnalysisResult> AnalysisService::ProcessCurrentFrame()
 	{
 		double deltaTime = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9 - m_Decoder->GetLastPlaybackFrameTimestamp();
-		int currentFrameStart = std::clamp(static_cast<int>((m_Decoder->GetPlaybackTime() + deltaTime) * m_Params.SampleRate - m_Params.FrameLength / static_cast<float>(2)), 0, (int)m_AnalysisBuffer->GetCapacity());
+		m_AnalysisTimestamp = m_Decoder->GetPlaybackTime() + deltaTime;
+		int currentFrameStart = std::clamp(static_cast<int>(m_AnalysisTimestamp * m_Params.SampleRate - m_Params.FrameLength / static_cast<float>(2)), 0, (int)m_AnalysisBuffer->GetCapacity());
 		kfr::univector<float> samples(m_Params.FrameLength);
 		size_t samplesRead = m_AnalysisBuffer->Read(samples.data(), m_Params.FrameLength, currentFrameStart);
 
 		AudioFrame frame;
 		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
 		frame.FrameLength = static_cast<uint32_t>(m_Params.FrameLength);
+		frame.Timestamp = m_AnalysisTimestamp;
 		frame.Samples = samples;
 		return m_Pipeline->ProcessFrame(frame);
 	}

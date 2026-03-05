@@ -31,6 +31,8 @@ namespace Adagio
 			nlohmann::json settings = context->Settings;
 
 			const float errorThreshold = settings.value("ERROR_THRESHOLD", 25.0f);
+			const float rollingWindowTime = settings.value("ROLLING_WINDOW", 5.0f);
+			const double timestamp = context->Frame.Timestamp;
 
 			std::vector<Note> notes;
 			for (size_t i = 0; i < data.size(); i++)
@@ -45,9 +47,27 @@ namespace Adagio
 					continue;
 
 				std::string noteName = NoteNames.at(note) + std::to_string(octave);
-				notes.push_back({ noteName, data[i], error });
+				notes.push_back({ noteName, data[i], error, timestamp });
+			}
+
+			auto& rollingNotes = context->PersistentData->RollingNotes;
+			rollingNotes.insert(rollingNotes.end(), notes.begin(), notes.end());
+			for (size_t i = 0; i < rollingNotes.size();)
+			{
+				if (timestamp - rollingNotes[i].Timestamp > rollingWindowTime)
+					rollingNotes.erase(rollingNotes.begin() + i);
+				else
+					i++;
+			}
+
+			std::map<int, float> noteScores;
+			for (const auto& note : rollingNotes)
+			{
+				int roundedFrequency = std::round(note.PeakInfo.Frequency);
+				noteScores[roundedFrequency] += note.PeakInfo.Score;
 			}
 			context->Notes = std::move(notes);
+			context->NoteScores = std::move(noteScores);
 		}
 
 		virtual AnalysisStageType GetType() const override
@@ -64,6 +84,13 @@ namespace Adagio
 					"min": 0.0,
 					"max": 50.0,	
 					"default": 25.0
+				},
+				"ROLLING_WINDOW": {
+					"name": "Rolling Window",
+					"type": "float",	
+					"min": 0.0,
+					"max": 10.0,	
+					"default": 5.0
 				}
 			})");
 		}

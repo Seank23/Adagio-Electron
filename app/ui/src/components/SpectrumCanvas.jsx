@@ -259,7 +259,6 @@ const SpectrumCanvas = () => {
                 <>
                     <canvas ref={canvasRef} width={canvasWidth} height={300} />
                     <RollingNotesHeatMap
-                        notes={notes}
                         width={canvasWidth}
                         minFreq={MIN_FREQ}
                         maxFreq={spectrumSR / 2}

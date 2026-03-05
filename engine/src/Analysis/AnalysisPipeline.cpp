@@ -3,11 +3,13 @@
 
 #include <chrono>
 #include <algorithm>
+#include <iostream>
 
 namespace Adagio
 {
 	AnalysisPipeline::AnalysisPipeline()
 	{
+		m_PersistentData = std::make_unique<PersistentData>();
 	}
 
 	AnalysisPipeline::~AnalysisPipeline()
@@ -28,6 +30,7 @@ namespace Adagio
 	{
 		auto startTime = std::chrono::high_resolution_clock::now();
 		std::unique_ptr<AnalysisContext> context = std::make_unique<AnalysisContext>(frame);
+		context->PersistentData = m_PersistentData.get();
 		context->Samples = frame.Samples;
 		for (const auto& stage : m_Stages)
 		{
@@ -47,10 +50,20 @@ namespace Adagio
 	{
 		nlohmann::json notesJson;
 		for (const auto& note : result.Context->Notes)
-			notesJson.push_back({ {"name", note.Name} , {"frequency", note.PeakInfo.Frequency}, {"magnitude", note.PeakInfo.Magnitude}, {"score", note.PeakInfo.Score}, {"errorCents", note.ErrorCents} });
+			notesJson.push_back({ 
+				{"name", note.Name}, 
+				{"frequency", note.PeakInfo.Frequency},
+				{"magnitude", note.PeakInfo.Magnitude},
+				{"score", note.PeakInfo.Score},
+				{"errorCents", note.ErrorCents},
+				{"timestamp", note.Timestamp}
+			});
 		nlohmann::json medianJson;
 		for (const auto& median : result.Context->LocalMedian)
 			medianJson.push_back({ {"bin", median.first}, {"magnitude", median.second} });
+		nlohmann::json noteScoresJson;
+		for (const auto& pair : result.Context->NoteScores)
+			noteScoresJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
 
 		return
 		{
@@ -61,7 +74,8 @@ namespace Adagio
 					{"magnitudes", result.Context->Magnitudes},
 					{"maxMagnitude", result.MaxMagnitude},
 					{"localMedian", medianJson},
-					{"notes", notesJson}
+					{"notes", notesJson},
+					{"noteScores", noteScoresJson}
 				}
 			}
 		};

@@ -8,6 +8,7 @@ const analysisSlice = createSlice({
         spectrumSR: 0,
         maxSpectrumValue: 0,
         executionTime: 0,
+        noteScores: [],
         localMedianData: [],
     },
     reducers: {
@@ -17,7 +18,8 @@ const analysisSlice = createSlice({
             state.spectrumSR = action.payload?.sampleRate;
             state.maxSpectrumValue = action.payload?.maxMagnitude;
             state.executionTime = action.payload?.executionTimeMs;
-            state.localMedianData = action.payload?.localMedian;
+            state.noteScores = action.payload?.noteScores || [];
+            state.localMedianData = action.payload?.localMedian || [];
         },
     },
 });

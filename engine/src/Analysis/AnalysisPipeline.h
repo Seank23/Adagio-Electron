@@ -21,11 +21,18 @@ namespace Adagio
 		std::string Name;
 		Peak PeakInfo;
 		float ErrorCents;
+		double Timestamp;
+	};
+
+	struct PersistentData
+	{
+		std::vector<Note> RollingNotes;
 	};
 
 	struct AnalysisContext
 	{
 		const AudioFrame& Frame;
+		PersistentData* PersistentData;
 
 		kfr::univector<float> Samples;
 		kfr::univector<float> Windowed;
@@ -34,6 +41,7 @@ namespace Adagio
 		std::vector<Peak> Peaks;
 		std::vector<std::pair<size_t, float>> LocalMedian;
 		std::vector<Note> Notes;
+		std::map<int, float> NoteScores;
 
 		nlohmann::json Settings;
 	};
@@ -60,6 +68,8 @@ namespace Adagio
 	private:
 		std::vector<std::unique_ptr<AnalysisStage>> m_Stages;
 		nlohmann::json m_Settings;
+
+		std::unique_ptr<PersistentData> m_PersistentData;
 	};
 }
 
