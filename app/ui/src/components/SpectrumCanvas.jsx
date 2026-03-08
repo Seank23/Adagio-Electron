@@ -3,9 +3,9 @@ import { useSelector } from 'react-redux';
 import { theme } from 'antd';
 import RollingNotesHeatMap from './RollingNotesHeatMap';
  
-const MIN_FREQ = 50;
+const MIN_FREQ = 100;
 const X_AXIS_PADDING = 20;
-const MAX_Y_VALUES = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
+const MAX_Y_VALUES = [1, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
 
 const SpectrumCanvas = () => {
     const { token } = theme.useToken();
@@ -14,7 +14,6 @@ const SpectrumCanvas = () => {
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
     const isFileOpen = useSelector(state => state.app.isFileOpen);
     const maxSpectrumValue = useSelector(state => state.analysis.maxSpectrumValue);
-    const localMedianData = useSelector(state => state.analysis.localMedianData);
     const showLogScale = useSelector(state => state.settings.showLogScale);
 
     const notes = useSelector(state => state.analysis.notes);
@@ -75,7 +74,6 @@ const SpectrumCanvas = () => {
             context.clearRect(0, 0, canvas.width, canvas.height);
 
             drawSpectrum();
-            drawLocalMedian();
             drawNotes();
             drawXAxis();
             drawYAxis();
@@ -103,39 +101,6 @@ const SpectrumCanvas = () => {
                 context.lineTo(canvas.width, canvas.height - X_AXIS_PADDING);
                 context.stroke();
             } 
-        };
-
-        const drawLocalMedian = () => {
-            if (!localMedianData || localMedianData.length === 0) {
-                return;
-            }
-
-            context.lineWidth = 2;
-            context.strokeStyle = token.colorError;
-            context.beginPath();
-
-            let started = false;
-
-            for (let i = 0; i < localMedianData.length; i++) {
-                const freq = binToFreq(localMedianData[i].bin);
-                if (freq < MIN_FREQ || freq > spectrumSR / 2) {
-                    continue;
-                }
-
-                const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
-                const y = magToY(localMedianData[i].magnitude, canvas.height);
-
-                if (!started) {
-                    context.moveTo(x, y);
-                    started = true;
-                } else {
-                    context.lineTo(x, y);
-                }
-            }
-
-            if (started) {
-                context.stroke();
-            }
         };
 
         const drawNotes = () => {
@@ -208,12 +173,15 @@ const SpectrumCanvas = () => {
             context.lineTo(canvas.width, canvas.height - X_AXIS_PADDING);
             context.stroke();
 
-            for (let freq = 0; freq <= spectrumSR / 2; freq += 500) {
+            const logTicks = [50, 100, 200, 300, 500, 1000, 2000, 3000, 5000];
+            const linearTicks = [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
+            const ticks = showLogScale ? logTicks : linearTicks;
+            ticks.forEach(freq => {
                 const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
 
                 context.beginPath();
                 context.moveTo(x, canvas.height - X_AXIS_PADDING);
-                context.lineTo(x, canvas.height - X_AXIS_PADDING + 6);
+                context.lineTo(x, canvas.height - X_AXIS_PADDING + 5);
                 context.stroke();
 
                 context.fillText(
@@ -221,7 +189,7 @@ const SpectrumCanvas = () => {
                     x + 2,
                     canvas.height - 4
                 );
-            }
+            });
         };
 
         const drawYAxis = () => {
@@ -233,15 +201,16 @@ const SpectrumCanvas = () => {
             context.moveTo(0, 0);
             context.lineTo(0, canvas.height);
             context.stroke();
-            const ticksCount = 10;
+            const ticksCount = 5;
             const roundedMax = MAX_Y_VALUES.find(val => val >= meanMaxValue) || meanMaxValue;
 
             for (let mag = 0; mag <= roundedMax; mag += roundedMax / ticksCount) {
+                if (mag === 0) continue;
                 const y = magToY(mag, canvas.height);
 
                 context.beginPath();
                 context.moveTo(0, y);
-                context.lineTo(6, y);
+                context.lineTo(5, y);
                 context.stroke();
 
                 context.fillText(mag, 8, y + 4);
@@ -251,7 +220,7 @@ const SpectrumCanvas = () => {
             draw();
         }
         return () => cancelAnimationFrame(animationFrame);
-    }, [spectrumData, localMedianData, notes, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, token.colorBgContainer, token.colorSuccess, token.colorWarning, canvasWidth]);
+    }, [spectrumData, notes, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, token.colorBgContainer, token.colorSuccess, token.colorWarning, canvasWidth]);
 
     return (
         <>

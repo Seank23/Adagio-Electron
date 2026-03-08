@@ -14,8 +14,9 @@ namespace Adagio
 	class PeakExtractor : public AnalysisStage
 	{
 	public:
-		virtual void Execute(AnalysisContext* context) const override
+		virtual void Execute(AnalysisContext* context) override
 		{
+			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t bins = data.size();
 			if (bins < 3)
@@ -26,13 +27,13 @@ namespace Adagio
 
 			nlohmann::json settings = context->Settings;
 
-			const float minFreq = settings.value("MIN_FREQ", 50.0f);
-			const float maxFreqSetting = settings.value("MAX_FREQ", 5000.0f);
-			const float minSemitoneDistance = settings.value("MIN_SEMITONE_DISTANCE", 0.25f);
-			const int maxPeaks = settings.value("MAX_PEAKS", 16);
-			const bool useDb = settings.value("USE_DB", false);
-			const float minProminence = settings.value("MIN_PROMINENCE", useDb ? 3.0f : 0.1f);
-			const float minSnr = settings.value("MIN_SNR", useDb ? 8.0f : 0.5f);
+			const float minFreq = GetSetting<float>(settings, "MIN_FREQ");
+			const float maxFreqSetting = GetSetting<float>(settings, "MAX_FREQ");
+			const float minSemitoneDistance = GetSetting<float>(settings, "MIN_SEMITONE_DISTANCE");
+			const int maxPeaks = GetSetting<int>(settings, "MAX_PEAKS");
+			const float minProminence = GetSetting<float>(settings, "MIN_PROMINENCE");
+			const float minSnr = GetSetting<float>(settings, "MIN_SNR");
+			const float scoreThreshold = GetSetting<float>(settings, "SCORE_THRESHOLD");
 
 			const float sampleRate = static_cast<float>(context->Frame.SampleRate);
 			const float binToFreq = sampleRate / static_cast<float>(bins);
@@ -50,16 +51,8 @@ namespace Adagio
 
 			// Build the working spectrum in the chosen domain.
 			std::vector<float> spectrum(bins);
-			if (useDb)
-			{
-				for (size_t i = 0; i < bins; ++i)
-					spectrum[i] = ToDb(data[i]);
-			}
-			else
-			{
-				for (size_t i = 0; i < bins; ++i)
-					spectrum[i] = data[i];
-			}
+			for (size_t i = 0; i < bins; ++i)
+				spectrum[i] = data[i];
 
 			// Spectral whitening + peak detection in a single pass.
 			// Uses a reusable scratch buffer with nth_element for the
@@ -118,8 +111,8 @@ namespace Adagio
 				if (prominence < minProminence * localMedian)
 					continue;
 
-				const float interpolatedBin = ParabolicInterpolation(spectrum, static_cast<int>(i));
-				const float freq = interpolatedBin * binToFreq;
+				//const float interpolatedBin = ParabolicInterpolation(spectrum, static_cast<int>(i));
+				const float freq = i * binToFreq;
 				if (freq < minFreq || freq > maxFreq)
 					continue;
 
@@ -155,15 +148,23 @@ namespace Adagio
 			const float specRange = (maxSpec - minSpec > 1e-6f) ? (maxSpec - minSpec) : 1.0f;
 			const float promRange = (maxProm - minProm > 1e-6f) ? (maxProm - minProm) : 1.0f;
 
-			constexpr float wSnr = 0.45f;
+			constexpr float wSnr = 0.25f;
 			constexpr float wMag = 0.30f;
-			constexpr float wProm = 0.25f;
+			constexpr float wProm = 0.45f;
 			for (auto& c : candidates)
 			{
 				const float normSnr = (c.whitened - minWhitened) / whiteRange;
 				const float normMag = (c.specVal - minSpec) / specRange;
 				const float normProm = (c.prominence - minProm) / promRange;
 				c.score = wSnr * normSnr + wMag * normMag + wProm * normProm;
+			}
+
+			for (size_t i = 0; i < candidates.size();)
+			{
+				if (candidates[i].score < scoreThreshold)
+					candidates.erase(candidates.begin() + i);
+				else
+					i++;
 			}
 
 			// Sort by composite score (highest first).
@@ -217,11 +218,6 @@ namespace Adagio
 		virtual nlohmann::json GetSettings() const override
 		{
 			return nlohmann::json::parse(R"json({
-				"USE_DB": {
-					"name": "Use dB Scale",
-					"type": "bool",
-					"default": false
-				},
 				"MIN_FREQ": {
 					"name": "Minimum Frequency (Hz)",
 					"type": "float",
@@ -248,7 +244,7 @@ namespace Adagio
 					"type": "float",
 					"min": 0.001,
 					"max": 30.0,
-					"default": 1.0
+					"default": 0.1
 				},
 				"MIN_SEMITONE_DISTANCE": {
 					"name": "Min Peak Distance (semitones)",
@@ -263,6 +259,13 @@ namespace Adagio
 					"min": 1,
 					"max": 64,
 					"default": 16
+				},
+				"SCORE_THRESHOLD": {
+					"name": "Score Threshold",
+					"type": "float",
+					"min": 0.0,
+					"max": 1.0,
+					"default": 0.05
 				}
 			})json");
 		}

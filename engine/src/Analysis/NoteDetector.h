@@ -25,13 +25,14 @@ namespace Adagio
 		};
 
 	public:
-		virtual void Execute(AnalysisContext* context) const override
+		virtual void Execute(AnalysisContext* context) override
 		{
+			AnalysisStage::Execute(context);
 			auto& data = context->Peaks;
 			nlohmann::json settings = context->Settings;
 
-			const float errorThreshold = settings.value("ERROR_THRESHOLD", 25.0f);
-			const float rollingWindowTime = settings.value("ROLLING_WINDOW", 5.0f);
+			const float errorThreshold = GetSetting<float>(settings, "ERROR_THRESHOLD");
+			const float rollingWindowTime = GetSetting<float>(settings, "ROLLING_WINDOW");
 			const double timestamp = context->Frame.Timestamp;
 
 			std::vector<Note> notes;
@@ -88,9 +89,9 @@ namespace Adagio
 				"ROLLING_WINDOW": {
 					"name": "Rolling Window",
 					"type": "float",	
-					"min": 0.0,
-					"max": 10.0,	
-					"default": 5.0
+					"min": 0.1,
+					"max": 50.0,	
+					"default": 10.0
 				}
 			})");
 		}

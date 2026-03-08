@@ -9,22 +9,25 @@ namespace Adagio
 	class SpectrumFilterProcessor : public AnalysisStage
 	{
 	public:
-		virtual void Execute(AnalysisContext* context) const override
+		virtual void Execute(AnalysisContext* context) override
 		{
+			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t frameLength = data.size();
 			nlohmann::json settings = context->Settings;
 
-			if (settings.contains("ENABLED") && settings["ENABLED"].get<std::string>() == "Yes")
+			const std::string enabled = GetSetting<std::string>(settings, "ENABLED");
+
+			if (enabled == "Yes")
 			{
-				float lowCutC1 = settings["LOW_CUT_C1"].get<float>();
-				float lowCutC2 = settings["LOW_CUT_C2"].get<float>();
-				float highCutC1 = settings["HIGH_CUT_C1"].get<float>();
-				float highCutC2 = settings["HIGH_CUT_C2"].get<float>(); 
+				float lowCutC1 = GetSetting<float>(settings, "LOW_CUT_C1");
+				float lowCutC2 = GetSetting<float>(settings, "LOW_CUT_C2");
+				float highCutC1 = GetSetting<float>(settings, "HIGH_CUT_C1");
+				float highCutC2 = GetSetting<float>(settings, "HIGH_CUT_C2");
 				kfr::univector<float> filtered(frameLength);
 				for (size_t i = 0; i < frameLength; i++)
 				{
-					float freq = (i * context->Frame.SampleRate) / (frameLength * 2);
+					float freq = (i * context->Frame.SampleRate) / frameLength;
 					if (freq < lowCutC1)
 						filtered[i] = 0.0f;
 					else if (freq < lowCutC2)
@@ -59,14 +62,14 @@ namespace Adagio
 					"type": "float",	
 					"min": 0.0,
 					"max": 20000.0,
-					"default": 50.0
+					"default": 100.0
 				},
 				"LOW_CUT_C2": {
 					"name": "Low Cut C2",
 					"type": "float",	
 					"min": 0.0,
 					"max": 20000.0,
-					"default": 100.0
+					"default": 200.0
 				},
 				"HIGH_CUT_C1": {
 					"name": "High Cut C1",

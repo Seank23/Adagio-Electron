@@ -18,7 +18,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(3), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_IntervalMs(5), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
 	{
 	}
 
@@ -81,7 +81,8 @@ namespace Adagio
 				}
 				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 				MessageQueue::Instance().Push(json.dump());
-				std::this_thread::sleep_for(std::chrono::milliseconds(m_IntervalMs));
+				int uSSleepTime = (m_IntervalMs - result->ExecutionTimeMs) * 1000;
+				std::this_thread::sleep_for(std::chrono::microseconds(uSSleepTime));
 			}
 		});
 	}

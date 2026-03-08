@@ -9,17 +9,18 @@ namespace Adagio
 	class HPSDownsamplerProcessor : public AnalysisStage
 	{
 	public:
-		virtual void Execute(AnalysisContext* context) const override
+		virtual void Execute(AnalysisContext* context) override
 		{
+			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t frameLength = data.size();
 			nlohmann::json settings = context->Settings;
 
-			float floor = settings["FLOOR"].get<float>();
-			int harmonics = settings["HARMONICS"].get<int>();
-			float magScale = settings["MAG_SCALE"].get<float>();
-			std::string shouldSquare = settings["SQUARE"].get<std::string>();
-			int interpolationFactor = settings["INTERP_FACTOR"].get<int>();
+			const int floor = GetSetting<float>(settings, "FLOOR");
+			int harmonics = GetSetting<int>(settings, "HARMONICS");
+			float magScale = GetSetting<float>(settings, "MAG_SCALE");
+			std::string shouldSquare = GetSetting<std::string>(settings, "SQUARE");
+			int interpolationFactor = GetSetting<int>(settings, "INTERP_FACTOR");
 
 			if (floor > 0.0f)
 			{

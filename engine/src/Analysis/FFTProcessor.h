@@ -10,27 +10,21 @@ namespace Adagio
 	class FFTProcessor : public AnalysisStage
 	{
 	public:
-		virtual void Execute(AnalysisContext* context) const override
+		virtual void Execute(AnalysisContext* context) override
 		{
+			AnalysisStage::Execute(context);
 			auto& data = context->Samples;
 			const size_t frameLength = data.size();
 			nlohmann::json settings = context->Settings;
 
-			if (settings.contains("WINDOW"))
-			{
-				std::string windowType = settings["WINDOW"].get<std::string>();
-				if (windowType == "Hamming")
-					data *= kfr::window_hamming<float>(frameLength);
-				else if (windowType == "Hann")
-					data *= kfr::window_hann<float>(frameLength);
-				else if (windowType == "BlackmannHarris")
-					data *= kfr::window_blackman_harris<float>(frameLength);
-			}
-			else
-			{
-				// Default to Hamming window
+			const std::string windowType = GetSetting<std::string>(settings, "WINDOW");
+
+			if (windowType == "Hamming")
 				data *= kfr::window_hamming<float>(frameLength);
-			}
+			else if (windowType == "Hann")
+				data *= kfr::window_hann<float>(frameLength);
+			else if (windowType == "BlackmannHarris")
+				data *= kfr::window_blackman_harris<float>(frameLength);
 
 			kfr::univector<kfr::complex<float>> fftInput;
 			fftInput.resize(frameLength);
