@@ -19,6 +19,7 @@ namespace Adagio
 	struct Note
 	{
 		std::string Name;
+		int Midi;
 		Peak PeakInfo;
 		float ErrorCents;
 		double Timestamp;
@@ -40,8 +41,11 @@ namespace Adagio
 		kfr::univector<float> Magnitudes;
 		std::vector<Peak> Peaks;
 		std::vector<std::pair<size_t, float>> LocalMedian;
+
 		std::vector<Note> Notes;
-		std::map<int, float> NoteScores;
+		std::map<int, float> FrequencyHistogram;
+		std::array<double, 12> NoteHistogram;
+		std::string DetectedKey;
 
 		nlohmann::json Settings;
 	};

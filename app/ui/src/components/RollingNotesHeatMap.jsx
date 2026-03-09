@@ -24,7 +24,7 @@ const getHeatColor = (intensity, highColor) => {
 const RollingNotesHeatMap = ({ width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFAULT_MAX_FREQ, showLogScale = false }) => {
     const { token } = theme.useToken();
     const primaryHeatColor = token.colorPrimary;
-    const noteScores = useSelector(state => state.analysis.noteScores);
+    const noteScores = useSelector(state => state.analysis.frequencyHistogram);
 
     const { samples, maxScore, safeMinFreq, safeMaxFreq } = useMemo(() => {
         const safeMin = Number.isFinite(minFreq) ? minFreq : DEFAULT_MIN_FREQ;

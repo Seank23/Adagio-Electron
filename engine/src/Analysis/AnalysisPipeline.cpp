@@ -61,9 +61,9 @@ namespace Adagio
 		nlohmann::json medianJson;
 		for (const auto& median : result.Context->LocalMedian)
 			medianJson.push_back({ {"bin", median.first}, {"magnitude", median.second} });
-		nlohmann::json noteScoresJson;
-		for (const auto& pair : result.Context->NoteScores)
-			noteScoresJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
+		nlohmann::json frequencyHistogramJson;
+		for (const auto& pair : result.Context->FrequencyHistogram)
+			frequencyHistogramJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
 
 		return
 		{
@@ -75,7 +75,8 @@ namespace Adagio
 					{"maxMagnitude", result.MaxMagnitude},
 					{"localMedian", medianJson},
 					{"notes", notesJson},
-					{"noteScores", noteScoresJson}
+					{"frequencyHistogram", frequencyHistogramJson},
+					{"detectedKey", result.Context->DetectedKey}
 				}
 			}
 		};

@@ -1,6 +1,7 @@
 #pragma once
 #include "AnalysisStage.h"
 #include "AnalysisPipeline.h"
+#include "AnalysisUtils.h"
 
 namespace Adagio
 {
@@ -8,21 +9,6 @@ namespace Adagio
 	{
 	private:
 		const float C0 = 16.3516f;
-
-		std::map<int, std::string> NoteNames = {
-			{0, "C"},
-			{1, "Db"},
-			{2, "D"},
-			{3, "Eb"},
-			{4, "E"},
-			{5, "F"},
-			{6, "Gb"},
-			{7, "G"},
-			{8, "Ab"},
-			{9, "A"},
-			{10, "Bb"},
-			{11, "B"}
-		};
 
 	public:
 		virtual void Execute(AnalysisContext* context) override
@@ -39,7 +25,8 @@ namespace Adagio
 			for (size_t i = 0; i < data.size(); i++)
 			{
 				float frequencyRatio = std::log2(data[i].Frequency / C0);
-				int note = static_cast<int>(std::round(frequencyRatio * 12)) % 12;
+				int midi = static_cast<int>(std::round(frequencyRatio * 12));
+				int note = midi % 12;
 				int octave = static_cast<int>(std::floor(frequencyRatio));
 				float error = 12.0f * (frequencyRatio - octave) - note;
 				error *= 100.0f; // Convert to cents
@@ -48,7 +35,7 @@ namespace Adagio
 					continue;
 
 				std::string noteName = NoteNames.at(note) + std::to_string(octave);
-				notes.push_back({ noteName, data[i], error, timestamp });
+				notes.push_back({ noteName, midi, data[i], error, timestamp });
 			}
 
 			auto& rollingNotes = context->PersistentData->RollingNotes;
@@ -61,14 +48,7 @@ namespace Adagio
 					i++;
 			}
 
-			std::map<int, float> noteScores;
-			for (const auto& note : rollingNotes)
-			{
-				int roundedFrequency = std::round(note.PeakInfo.Frequency);
-				noteScores[roundedFrequency] += note.PeakInfo.Score;
-			}
 			context->Notes = std::move(notes);
-			context->NoteScores = std::move(noteScores);
 		}
 
 		virtual AnalysisStageType GetType() const override

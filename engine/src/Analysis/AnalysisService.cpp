@@ -9,6 +9,7 @@
 #include "SpectrumFilterProcessor.h"
 #include "PeakExtractor.h"
 #include "NoteDetector.h"
+#include "KeyDetector.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -43,6 +44,7 @@ namespace Adagio
 		m_Pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
 		m_Pipeline->AddStage(std::make_unique<PeakExtractor>());
 		m_Pipeline->AddStage(std::make_unique<NoteDetector>());
+		m_Pipeline->AddStage(std::make_unique<KeyDetector>());
 	}
 
 	void AnalysisService::Reset()
