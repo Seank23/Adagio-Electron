@@ -8,8 +8,10 @@ const analysisSlice = createSlice({
         spectrumSR: 0,
         maxSpectrumValue: 0,
         executionTime: 0,
-        frequencyHistogram: [],
+        keyHistogram: [],
+        chordHistogram: [],
         detectedKey: null,
+        predictedChords: [],
     },
     reducers: {
         setAnalysisData: (state, action) => {
@@ -18,8 +20,10 @@ const analysisSlice = createSlice({
             state.spectrumSR = action.payload?.sampleRate;
             state.maxSpectrumValue = action.payload?.maxMagnitude;
             state.executionTime = action.payload?.executionTimeMs;
-            state.frequencyHistogram = action.payload?.frequencyHistogram || [];
+            state.keyHistogram = action.payload?.keyHistogram || [];
+            state.chordHistogram = action.payload?.chordHistogram || [];
             state.detectedKey = action.payload?.detectedKey;
+            state.predictedChords = action.payload?.predictedChords || [];
         },
     },
 });

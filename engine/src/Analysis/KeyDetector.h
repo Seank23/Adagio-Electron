@@ -79,8 +79,7 @@ namespace Adagio
 			else
 				keyName = NoteNames.at(bestKey) + " Major";
 
-			context->FrequencyHistogram = frequencyHistogram;
-			context->NoteHistogram = notesHistogram;
+			context->KeyFrequencyHistogram = frequencyHistogram;
 			context->DetectedKey = keyName;
 		}
 

@@ -9,7 +9,7 @@ const MainContent = () => {
     const isFileOpen = useSelector(state => state.app.isFileOpen);
 
     const DividerBar = Styled('div')`
-        height: 100px;
+        height: 50px;
         width: 100%;
     `;
 
@@ -17,8 +17,8 @@ const MainContent = () => {
         <Row style={rowStyle}>
             <AudioTimeline />
             <DividerBar />
-            <SpectrumCanvas />
             {isFileOpen && <AnalysisSection />}
+            {isFileOpen && <SpectrumCanvas />}
         </Row>
     )
 };

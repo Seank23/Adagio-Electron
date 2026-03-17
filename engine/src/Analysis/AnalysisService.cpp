@@ -10,6 +10,7 @@
 #include "PeakExtractor.h"
 #include "NoteDetector.h"
 #include "KeyDetector.h"
+#include "ChordPredictor.h"
 
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -45,6 +46,7 @@ namespace Adagio
 		m_Pipeline->AddStage(std::make_unique<PeakExtractor>());
 		m_Pipeline->AddStage(std::make_unique<NoteDetector>());
 		m_Pipeline->AddStage(std::make_unique<KeyDetector>());
+		m_Pipeline->AddStage(std::make_unique<ChordPredictor>());
 	}
 
 	void AnalysisService::Reset()

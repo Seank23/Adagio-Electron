@@ -25,9 +25,22 @@ namespace Adagio
 		double Timestamp;
 	};
 
+	struct Chord
+	{
+		std::string Name;
+		std::string Root;
+		std::string Quality;
+		std::vector<Note> Notes;
+		int RootOccurences;
+		int NumExtentions;
+		int FifthOmitted;
+		double Probability;
+	};
+
 	struct PersistentData
 	{
 		std::vector<Note> RollingNotes;
+		Chord PreviousChord;
 	};
 
 	struct AnalysisContext
@@ -40,11 +53,11 @@ namespace Adagio
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
 		std::vector<Peak> Peaks;
-		std::vector<std::pair<size_t, float>> LocalMedian;
 
 		std::vector<Note> Notes;
-		std::map<int, float> FrequencyHistogram;
-		std::array<double, 12> NoteHistogram;
+		std::map<int, float> KeyFrequencyHistogram;
+		std::map<int, float> ChordFrequencyHistogram;
+		std::vector<Chord> PredictedChords;
 		std::string DetectedKey;
 
 		nlohmann::json Settings;

@@ -1,0 +1,1 @@
+export const MIN_FREQ = 100;

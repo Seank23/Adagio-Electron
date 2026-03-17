@@ -5,6 +5,7 @@ const appSlice = createSlice({
     initialState: {
         statusMessage: {type: '', message: ''},
         isFileOpen: false,
+        canvasWidth: 1000,
     },
     reducers: {
         setStatusMessage: (state, action) => {
@@ -16,8 +17,11 @@ const appSlice = createSlice({
         setIsFileOpen: (state, action) => {
             state.isFileOpen = action.payload;
         },
+        setCanvasWidth: (state, action) => {
+            state.canvasWidth = action.payload;
+        },
     },
 });
 
-export const { setStatusMessage, resetStatus, setIsFileOpen } = appSlice.actions;
+export const { setStatusMessage, resetStatus, setIsFileOpen, setCanvasWidth } = appSlice.actions;
 export default appSlice.reducer;

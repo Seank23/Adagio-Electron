@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { theme } from 'antd';
-import { useSelector } from 'react-redux';
 import { clamp01, toRgbChannels } from '../utils/utils';
 
 const DEFAULT_MIN_FREQ = 50;
@@ -21,10 +20,9 @@ const getHeatColor = (intensity, highColor) => {
     return `rgb(${red}, ${green}, ${blue})`;
 };
 
-const RollingNotesHeatMap = ({ width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFAULT_MAX_FREQ, showLogScale = false }) => {
+const RollingNotesHeatMap = ({ histogram, width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFAULT_MAX_FREQ, showLogScale = false }) => {
     const { token } = theme.useToken();
     const primaryHeatColor = token.colorPrimary;
-    const noteScores = useSelector(state => state.analysis.frequencyHistogram);
 
     const { samples, maxScore, safeMinFreq, safeMaxFreq } = useMemo(() => {
         const safeMin = Number.isFinite(minFreq) ? minFreq : DEFAULT_MIN_FREQ;
@@ -41,7 +39,7 @@ const RollingNotesHeatMap = ({ width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFA
         const activeRadius = Math.max(1, Math.ceil(sigmaInSamples * 3));
         const twoSigmaSquared = 2 * sigmaInSamples * sigmaInSamples;
 
-        noteScores.forEach(entry => {
+        histogram.forEach(entry => {
             if (entry.frequency < safeMin || entry.frequency > safeMax) {
                 return;
             }
@@ -69,7 +67,7 @@ const RollingNotesHeatMap = ({ width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFA
             safeMinFreq: safeMin,
             safeMaxFreq: safeMax
         };
-    }, [noteScores, minFreq, maxFreq, width, showLogScale]);
+    }, [histogram, minFreq, maxFreq, width, showLogScale]);
 
     const heatGradient = useMemo(() => {
 

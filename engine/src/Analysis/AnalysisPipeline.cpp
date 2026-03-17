@@ -1,5 +1,6 @@
 #include "AnalysisPipeline.h"
 #include "AnalysisStage.h"
+#include "AnalysisUtils.h"
 
 #include <chrono>
 #include <algorithm>
@@ -58,12 +59,15 @@ namespace Adagio
 				{"errorCents", note.ErrorCents},
 				{"timestamp", note.Timestamp}
 			});
-		nlohmann::json medianJson;
-		for (const auto& median : result.Context->LocalMedian)
-			medianJson.push_back({ {"bin", median.first}, {"magnitude", median.second} });
-		nlohmann::json frequencyHistogramJson;
-		for (const auto& pair : result.Context->FrequencyHistogram)
-			frequencyHistogramJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
+		nlohmann::json keyHistogramJson;
+		for (const auto& pair : result.Context->KeyFrequencyHistogram)
+			keyHistogramJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
+		nlohmann::json chordHistogramJson;
+		for (const auto& pair : result.Context->ChordFrequencyHistogram)
+			chordHistogramJson.push_back({ {"frequency", pair.first}, {"score", pair.second} });
+		nlohmann::json chordsJson;
+		for (const auto& chord : result.Context->PredictedChords)
+			chordsJson.push_back({ {"name", chord.Name}, {"probability", chord.Probability} });
 
 		return
 		{
@@ -73,10 +77,11 @@ namespace Adagio
 					{"sampleRate", result.SampleRate},
 					{"magnitudes", result.Context->Magnitudes},
 					{"maxMagnitude", result.MaxMagnitude},
-					{"localMedian", medianJson},
 					{"notes", notesJson},
-					{"frequencyHistogram", frequencyHistogramJson},
-					{"detectedKey", result.Context->DetectedKey}
+					{"keyHistogram", keyHistogramJson},
+					{"chordHistogram", chordHistogramJson},
+					{"detectedKey", result.Context->DetectedKey},
+					{"predictedChords", chordsJson},
 				}
 			}
 		};

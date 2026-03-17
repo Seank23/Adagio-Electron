@@ -69,9 +69,9 @@ namespace Adagio
 				"ROLLING_WINDOW": {
 					"name": "Rolling Window",
 					"type": "float",	
-					"min": 0.1,
+					"min": 5.0,
 					"max": 50.0,	
-					"default": 10.0
+					"default": 20.0
 				}
 			})");
 		}

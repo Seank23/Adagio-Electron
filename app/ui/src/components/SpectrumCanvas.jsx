@@ -1,15 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useSelector } from 'react-redux';
+import React, { useEffect, useRef } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
-import RollingNotesHeatMap from './RollingNotesHeatMap';
- 
-const MIN_FREQ = 100;
+import { setCanvasWidth } from '../store/appSlice';
+import { MIN_FREQ } from '../constants';
+
 const X_AXIS_PADDING = 20;
 const MAX_Y_VALUES = [1, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
 
 const SpectrumCanvas = () => {
     const { token } = theme.useToken();
+    const dispatch = useDispatch();
+
     const canvasRef = useRef(null);
+    const canvasWidth = useSelector(state => state.app.canvasWidth);
     const spectrumData = useSelector(state => state.analysis.spectrumData);
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
     const isFileOpen = useSelector(state => state.app.isFileOpen);
@@ -19,7 +22,6 @@ const SpectrumCanvas = () => {
     const notes = useSelector(state => state.analysis.notes);
 
     const meanMaxValue = maxSpectrumValue || 1;
-    const [canvasWidth, setCanvasWidth] = useState(1000);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -30,7 +32,7 @@ const SpectrumCanvas = () => {
         }
 
         const updateWidth = () => {
-            setCanvasWidth(parent.clientWidth || 1000);
+            dispatch(setCanvasWidth(parent.clientWidth || 1000));
         };
 
         updateWidth();
@@ -39,7 +41,7 @@ const SpectrumCanvas = () => {
         observer.observe(parent);
 
         return () => observer.disconnect();
-    }, [isFileOpen]);
+    }, [isFileOpen, dispatch]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -227,12 +229,6 @@ const SpectrumCanvas = () => {
             {isFileOpen && (
                 <>
                     <canvas ref={canvasRef} width={canvasWidth} height={300} />
-                    <RollingNotesHeatMap
-                        width={canvasWidth}
-                        minFreq={MIN_FREQ}
-                        maxFreq={spectrumSR / 2}
-                        showLogScale={showLogScale}
-                    />
                 </>
             )}
         </>

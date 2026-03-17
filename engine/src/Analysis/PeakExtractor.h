@@ -207,7 +207,6 @@ namespace Adagio
 				peaks[i] = { selected[i].freq, selected[i].mag, selected[i].score };
 
 			context->Peaks = std::move(peaks);
-			context->LocalMedian = std::move(localMedianArray);
 		}
 
 		virtual AnalysisStageType GetType() const override
