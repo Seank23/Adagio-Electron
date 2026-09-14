@@ -22,6 +22,35 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(kfr)
 
+# kfr points every configuration's libraries at the same kfr-build/lib folder, so a
+# Release build overwrites the Debug libs (or vice versa). MSBuild still considers
+# them up to date, and the link fails with LNK2038. Give each configuration its own
+# folder. Single-config generators (Ninja) use a build tree per config, so skip them.
+function(separate_kfr_config_outputs dir)
+    get_property(targets DIRECTORY ${dir} PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS targets)
+        get_target_property(type ${target} TYPE)
+        if(type STREQUAL "STATIC_LIBRARY")
+            foreach(config IN LISTS CMAKE_CONFIGURATION_TYPES)
+                string(TOUPPER ${config} config_upper)
+                set_target_properties(${target} PROPERTIES
+                    ARCHIVE_OUTPUT_DIRECTORY_${config_upper} ${kfr_BINARY_DIR}/lib/${config})
+            endforeach()
+        endif()
+    endforeach()
+    get_property(subdirs DIRECTORY ${dir} PROPERTY SUBDIRECTORIES)
+    foreach(subdir IN LISTS subdirs)
+        separate_kfr_config_outputs(${subdir})
+    endforeach()
+endfunction()
+separate_kfr_config_outputs(${kfr_SOURCE_DIR})
+
+# We only use IXWebSocket's server over localhost, so permessage-deflate (and the
+# zlib it drags in) buys us nothing. Without this, IXWebSocket's
+# find_package(ZLIB REQUIRED) fails on Windows, where there is no system zlib.
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+set(USE_TLS OFF CACHE BOOL "" FORCE)
+
 FetchContent_Declare(
   ixwebsocket
   GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
@@ -39,15 +68,21 @@ FetchContent_MakeAvailable(nlohmann_json)
 include(ExternalProject)
 
 set(RUBBERBAND_SOURCE_DIR ${CMAKE_SOURCE_DIR}/external/rubberband)
+set(RUBBERBAND_LIB_DIR ${RUBBERBAND_SOURCE_DIR}/otherbuilds/x64)
 
+# RubberBand's vcxproj hardcodes PlatformToolset v142 (VS 2019). Override it with
+# the toolset of the compiler CMake is actually using, so it builds on any VS.
+# Debug engine builds need the Debug library: mixing /MDd and /MD fails to link
+# with LNK2038 (_ITERATOR_DEBUG_LEVEL / RuntimeLibrary mismatch).
 ExternalProject_Add(
     rubberband_external
     SOURCE_DIR ${RUBBERBAND_SOURCE_DIR}
     CONFIGURE_COMMAND ""   # No CMake configure step
     BUILD_COMMAND
         msbuild otherbuilds/rubberband-library.vcxproj
-        /p:Configuration=Release
+        /p:Configuration=$<IF:$<CONFIG:Debug>,Debug,Release>
         /p:Platform=x64
+        /p:PlatformToolset=v${MSVC_TOOLSET_VERSION}
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ""
 )
@@ -55,8 +90,11 @@ ExternalProject_Add(
 add_library(rubberband STATIC IMPORTED GLOBAL)
 
 set_target_properties(rubberband PROPERTIES
-        IMPORTED_LOCATION
-        ${RUBBERBAND_SOURCE_DIR}/otherbuilds/x64/Release/rubberband-library.lib
+        IMPORTED_CONFIGURATIONS "DEBUG;RELEASE"
+        IMPORTED_LOCATION_DEBUG ${RUBBERBAND_LIB_DIR}/Debug/rubberband-library.lib
+        IMPORTED_LOCATION_RELEASE ${RUBBERBAND_LIB_DIR}/Release/rubberband-library.lib
+        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
+        MAP_IMPORTED_CONFIG_MINSIZEREL Release
         INTERFACE_INCLUDE_DIRECTORIES
         ${RUBBERBAND_SOURCE_DIR}
     )
