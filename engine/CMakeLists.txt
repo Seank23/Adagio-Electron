@@ -6,14 +6,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(ADAGIO_BUILD_TESTS "Build the AdagioTests unit test target" ON)
+
 include(FetchContent)
 
+# Everything except main.cpp goes into AdagioCore so the test target can link the
+# engine without pulling in a second main(). AdagioEngine is the thin executable.
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.h
 )
+list(REMOVE_ITEM ENGINE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp)
 
-add_executable(AdagioEngine ${ENGINE_SOURCES})
+add_library(AdagioCore STATIC ${ENGINE_SOURCES})
+add_executable(AdagioEngine src/main.cpp)
+target_link_libraries(AdagioEngine PRIVATE AdagioCore)
+
+# kfr only defaults KFR_ENABLE_DFT to ON under Clang; for MSVC it is OFF, which
+# drops the kfr_dft target entirely and leaves FFTProcessor's kfr::dft calls
+# unresolved at link time. A fresh clone cannot build without this.
+set(KFR_ENABLE_DFT ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
   kfr
@@ -54,7 +66,7 @@ set(USE_TLS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
   ixwebsocket
   GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-  GIT_TAG        master
+  GIT_TAG        v12.0.1
 )
 FetchContent_MakeAvailable(ixwebsocket)
 
@@ -67,7 +79,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 include(ExternalProject)
 
-set(RUBBERBAND_SOURCE_DIR ${CMAKE_SOURCE_DIR}/external/rubberband)
+set(RUBBERBAND_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/rubberband)
 set(RUBBERBAND_LIB_DIR ${RUBBERBAND_SOURCE_DIR}/otherbuilds/x64)
 
 # RubberBand's vcxproj hardcodes PlatformToolset v142 (VS 2019). Override it with
@@ -101,10 +113,35 @@ set_target_properties(rubberband PROPERTIES
 add_dependencies(rubberband rubberband_external)
 
 if (MSVC)
-    add_compile_options(/fp:fast /arch:AVX2 /permissive)
+    # These have to be target options. add_compile_options() only feeds targets
+    # created after the call, and add_executable() used to run 87 lines earlier,
+    # so the flags never reached the engine (B1). PUBLIC so AdagioEngine and
+    # AdagioTests compile with the same floating-point model as AdagioCore.
+    target_compile_options(AdagioCore PUBLIC /fp:fast /arch:AVX2 /permissive-)
 endif()
 
-target_include_directories(AdagioEngine PRIVATE include ${kfr_INCLUDE_DIRS} build/_deps/ixwebsocket-src)
-target_link_libraries(AdagioEngine PRIVATE kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json rubberband)
+# ixwebsocket already exports its own include directory, so there is no need to
+# hardcode a path under build/_deps (which only existed for one build tree).
+target_include_directories(AdagioCore PUBLIC include ${kfr_INCLUDE_DIRS})
+target_link_libraries(AdagioCore PUBLIC kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json rubberband)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${ENGINE_SOURCES})
+
+if (ADAGIO_BUILD_TESTS)
+    enable_testing()
+
+    FetchContent_Declare(
+        doctest
+        GIT_REPOSITORY https://github.com/doctest/doctest.git
+        GIT_TAG v2.5.3
+    )
+    FetchContent_MakeAvailable(doctest)
+
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS tests/*.cpp)
+    add_executable(AdagioTests ${TEST_SOURCES})
+    target_link_libraries(AdagioTests PRIVATE AdagioCore doctest::doctest)
+
+    list(APPEND CMAKE_MODULE_PATH ${doctest_SOURCE_DIR}/scripts/cmake)
+    include(doctest)
+    doctest_discover_tests(AdagioTests)
+endif()

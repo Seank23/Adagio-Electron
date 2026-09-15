@@ -46,5 +46,5 @@ engine/build/*
 engine/external/*
 app/dist/*
 
-.vs/*
-engine/out/build/*
+.vs/
+engine/out/

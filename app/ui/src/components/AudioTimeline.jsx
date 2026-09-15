@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCurrentTime } from '../store/playbackSlice';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
-import TimelineInterationHandler from './TimelineInterationHandler';
 
 const AudioTimeline = () => {
     const { token } = theme.useToken();
@@ -17,7 +16,6 @@ const AudioTimeline = () => {
     const timelineRef = useRef(null);
     const waveSurferRef = useRef(null);
 
-    const [waveSurferInitialized, setWaveSurferInitialized] = useState(false);
     const minPxPerSec = useRef(1);
     const currentWaveformRef = useRef(null);
     const waveformBusyRef = useRef(false);
@@ -46,10 +44,8 @@ const AudioTimeline = () => {
             cursorColor: token.colorPrimaryActive,
             barWidth: 2,
             barGap: 0,
-            responsive: true,
             interact: true,
             normalize: true,
-            scrollParent: true,
             minPxPerSec: minPxPerSec.current,
             plugins: [
                 TimelinePlugin.create({
@@ -62,7 +58,6 @@ const AudioTimeline = () => {
         waveSurfer.load(null, currentWaveformRef.current, duration);
         waveSurfer.on('interaction', time => handleSeek(time));
         waveSurferRef.current = waveSurfer;
-        setWaveSurferInitialized(true);
 
         return () => {
             waveSurfer.destroy();
@@ -75,29 +70,10 @@ const AudioTimeline = () => {
         waveSurferRef.current.seekTo(Math.min(Math.max(ratio, 0), 1));
     }, [currentTime]);
 
-    const updateZoomLevel = (newPxPerSec) => {
-        if (newPxPerSec === minPxPerSec.current) return;
-        minPxPerSec.current = newPxPerSec;
-        const newWaveform = getWaveformResolution(newPxPerSec);
-        if (!waveformBusyRef.current && newWaveform.length !== currentWaveformRef.current.length) {
-            console.log("Loading new waveform resolution");
-            waveformBusyRef.current = true;
-            currentWaveformRef.current = newWaveform;
-            waveSurferRef.current.load(null, newWaveform, duration);
-            waveSurferRef.current.once("ready", () => {
-                waveSurferRef.current.zoom(newPxPerSec);
-                waveformBusyRef.current = false;
-            });
-        } else {
-            waveSurferRef.current.zoom(newPxPerSec);
-        }
-    };
-
     return (
         <div style={viewportStyle}>
             <div style={containerStyle} ref={containerRef} />
             <div style={{ width: '100%' }} ref={timelineRef} />
-            {/* {waveSurferInitialized && <TimelineInterationHandler containerRef={containerRef} waveSurferRef={waveSurferRef} updateZoomLevel={updateZoomLevel} />} */}
         </div>
     )
 };

@@ -10,7 +10,6 @@
 #include "../IO/WaveformBuilder.h"
 #include "../Analysis/AnalysisService.h"
 
-
 #include <filesystem>
 
 namespace Adagio

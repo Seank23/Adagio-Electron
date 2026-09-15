@@ -135,18 +135,6 @@ namespace Adagio
 				}
 			})");
 		}
-
-	private:
-		bool Contains(const std::vector<int>& vec, int value)
-		{
-			return std::find(vec.begin(), vec.end(), value) != vec.end();
-		}
-
-		void Remove(std::vector<int>& vec, int value)
-		{
-			vec.erase(std::remove(vec.begin(), vec.end(), value), vec.end());
-		}
-
 		std::string GetChordQuality(std::vector<int> intervals, int& outFifthOmitted)
 		{
 			outFifthOmitted = 0;
@@ -327,6 +315,18 @@ namespace Adagio
 				outFifthOmitted += 1;
 			}
 			return "N/A";
+		}
+
+
+	private:
+		bool Contains(const std::vector<int>& vec, int value)
+		{
+			return std::find(vec.begin(), vec.end(), value) != vec.end();
+		}
+
+		void Remove(std::vector<int>& vec, int value)
+		{
+			vec.erase(std::remove(vec.begin(), vec.end(), value), vec.end());
 		}
 
 		std::string AddRemainingNotes(const std::vector<int>& intervals)

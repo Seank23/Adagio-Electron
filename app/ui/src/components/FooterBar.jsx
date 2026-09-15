@@ -36,7 +36,7 @@ const FooterBar = () => {
 
     return (
         <Container>
-            <div>{isPlaying && `Execution time: ${excutionTime.toFixed(2)}ms`}</div>
+            <div>{isPlaying && `Execution time: ${Number(excutionTime ?? 0).toFixed(2)}ms`}</div>
             <div>{status?.type && iconMap[status.type]}{status?.message && status.message}</div>
         </Container>
     );

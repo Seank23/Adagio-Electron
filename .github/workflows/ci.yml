@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  engine:
+    name: Engine (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      # RubberBand is not fetched by CMake yet: engine/external/rubberband is
+      # gitignored and the build drives its checked-in vcxproj through msbuild.
+      # Phase 6 replaces this with FetchContent over single/RubberBandSingle.cpp,
+      # and this step goes away with it.
+      - name: Fetch RubberBand
+        run: git clone --depth 1 --branch v4.0.0 https://github.com/breakfastquay/rubberband.git engine/external/rubberband
+
+      - name: Configure
+        run: cmake -S engine -B engine/build
+
+      - name: Build
+        run: cmake --build engine/build --config Release
+
+      # Cases that reproduce a known bug carry doctest::should_fail, so a green
+      # run here means "the bugs behave exactly as the review described". A
+      # should_fail case that starts passing is the signal that a fix landed and
+      # the decoration should come off.
+      - name: Test
+        run: ctest --test-dir engine/build -C Release --output-on-failure
+
+  ui:
+    name: UI lint
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: app/ui
+
+      - name: Lint
+        run: npm run lint
+        working-directory: app/ui

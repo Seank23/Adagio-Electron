@@ -1,1 +1,1 @@
-export const MIN_FREQ = 100;
+export const MIN_FREQ = 50;
