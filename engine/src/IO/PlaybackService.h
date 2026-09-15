@@ -10,6 +10,9 @@ namespace Adagio
 	class AudioDecoder;
 	class TimeProcessor;
 
+	template<typename T>
+	class RingBuffer;
+
 	class PlaybackService
 	{
 	public:
@@ -35,6 +38,8 @@ namespace Adagio
 		void UninitDevice();
 
 		std::shared_ptr<AudioDecoder> m_Decoder;
+		// Owned by the decoder; cached to keep name lookups out of the audio callback.
+		RingBuffer<float>* m_PlaybackBuffer = nullptr;
 		ma_device m_PlaybackDevice{};
 
 		bool m_DeviceInitialised = false;

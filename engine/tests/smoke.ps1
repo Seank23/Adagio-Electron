@@ -8,10 +8,11 @@
     reads atomics, so a reply proves the command thread is alive and the state
     machine is still coherent.
 
-    A 2-second 440 Hz stereo tone is generated as the fixture, so the script needs
-    no audio file of its own. It is written with an upper-case .WAV extension on
-    purpose - the loader used to compare extensions case-sensitively with no else
-    branch, and marked the file loaded anyway.
+    440 Hz stereo tones are generated as fixtures, so the script needs no audio
+    file of its own. The 2-second one is written with an upper-case .WAV extension
+    on purpose - the loader used to compare extensions case-sensitively with no
+    else branch, and marked the file loaded anyway. The 8-second one outlasts the
+    engine's 5-second playback buffer.
 
 .EXAMPLE
     pwsh engine/tests/smoke.ps1
@@ -28,18 +29,24 @@ $script:Failures = @()
 $script:Skipped = @()
 
 function New-ToneWav {
-    param([string]$Path, [double]$Seconds = 2.0, [int]$SampleRate = 44100, [double]$Frequency = 440.0)
+    param([string]$Path, [int]$Seconds = 2, [int]$SampleRate = 44100, [int]$Frequency = 440)
 
     $channels = 2
-    $frames = [int]($Seconds * $SampleRate)
-    $dataBytes = $frames * $channels * 2
-    $pcm = New-Object byte[] $dataBytes
-    for ($i = 0; $i -lt $frames; $i++) {
+    $bytesPerFrame = $channels * 2
+    $dataBytes = $Seconds * $SampleRate * $bytesPerFrame
+
+    # Per-sample PowerShell is slow; a whole-number frequency lets one second tile without clicks.
+    $second = New-Object byte[] ($SampleRate * $bytesPerFrame)
+    for ($i = 0; $i -lt $SampleRate; $i++) {
         $value = [int16](20000 * [Math]::Sin(2 * [Math]::PI * $Frequency * $i / $SampleRate))
         $bytes = [BitConverter]::GetBytes($value)
-        $offset = $i * 4
-        $pcm[$offset] = $bytes[0]; $pcm[$offset + 1] = $bytes[1]
-        $pcm[$offset + 2] = $bytes[0]; $pcm[$offset + 3] = $bytes[1]
+        $offset = $i * $bytesPerFrame
+        $second[$offset] = $bytes[0]; $second[$offset + 1] = $bytes[1]
+        $second[$offset + 2] = $bytes[0]; $second[$offset + 3] = $bytes[1]
+    }
+    $pcm = New-Object byte[] $dataBytes
+    for ($offset = 0; $offset -lt $dataBytes; $offset += $second.Length) {
+        [Array]::Copy($second, 0, $pcm, $offset, $second.Length)
     }
 
     $stream = [System.IO.File]::Create($Path)
@@ -96,6 +103,18 @@ function Wait-Handled {
     return $null
 }
 
+# One sample can't tell a stalled playhead from a slow machine, so wait for a position instead.
+function Wait-Status {
+    param([scriptblock]$Until, [int]$TimeoutMs = 5000)
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    while ((Get-Date) -lt $deadline) {
+        $status = Get-Status
+        if ($null -ne $status -and (& $Until $status)) { return $status }
+        Start-Sleep -Milliseconds 25
+    }
+    return $null
+}
+
 function Get-Handled {
     $status = Get-Status
     if ($null -eq $status) { return -1 }
@@ -138,9 +157,11 @@ function Test-Case {
 $fixtureDir = Join-Path ([System.IO.Path]::GetTempPath()) "adagio-smoke-$PID"
 New-Item -ItemType Directory -Path $fixtureDir -Force | Out-Null
 $tonePath = Join-Path $fixtureDir 'Tone.WAV'
+$longTonePath = Join-Path $fixtureDir 'LongTone.wav'
 $textPath = Join-Path $fixtureDir 'notaudio.txt'
 Write-Host 'Generating fixtures...'
 New-ToneWav -Path $tonePath
+New-ToneWav -Path $longTonePath -Seconds 8
 Set-Content -Path $textPath -Value 'not audio'
 
 if (-not (Test-Path $EnginePath)) {
@@ -201,27 +222,42 @@ try {
             if ($status.state -ne 'ready') { throw "expected ready, got $($status.state)" }
         }
 
-        Write-Host "`nPlayback (X4, T1, T7)"
+        Write-Host "`nPlayback (X4, T1, T7, T11)"
         Test-Case 'play to the end at 50% speed' {
             Invoke-Commands @(@('speed', '50'), 'play') | Out-Null
-            # 2 s of audio at half speed is 4 s of wall clock; allow generous slack.
-            Start-Sleep -Seconds 7
-            $status = Get-Status
+            # The playhead reaches the duration only once the stretcher's tail has been flushed.
+            $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 10000
+            if ($null -eq $status) { throw "never reached the end: position stopped at $((Get-Status).position)" }
             if ($status.state -ne 'playing') { throw "expected still playing, got $($status.state)" }
-            if ($status.position -lt 1.5) { throw "position stalled at $($status.position)" }
         }
 
+        # The feeder has written the whole 2 s track by now, so these seeks start from end of file (T10).
         Test-Case 'seek to 0.2 s before the end' {
-            Invoke-Commands @(@('speed', '100'), @('seek', '1.8')) | Out-Null
-            Start-Sleep -Milliseconds 1500
-            Get-Status | Out-Null
+            $status = Invoke-Commands @(@('speed', '100'), @('seek', '1.8'))
+            if ($status.position -gt 1.95) { throw "seek did not take: position $($status.position)" }
+            $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 3000
+            if ($null -eq $status) { throw "stalled after the seek: position $((Get-Status).position)" }
         }
 
         Test-Case 'seek backwards while playing' {
-            Invoke-Commands @(, @('seek', '0.2')) | Out-Null
-            Start-Sleep -Milliseconds 800
-            $status = Get-Status
-            if ($status.position -gt 1.5) { throw "seek did not take: position $($status.position)" }
+            $status = Invoke-Commands @(, @('seek', '0.2'))
+            if ($status.position -gt 0.5) { throw "seek did not take: position $($status.position)" }
+            $status = Wait-Status { param($s) $s.position -ge 0.7 } 3000
+            if ($null -eq $status) { throw "stalled after the seek: position $((Get-Status).position)" }
+        }
+
+        Write-Host "`nSeeking once the feeder has written the whole track (T10)"
+        Test-Case 'seek back from the last 5 s of an 8 s track' {
+            # From 6.5 s the feeder reaches end of file at once, leaving most of the buffer free.
+            Invoke-Commands @(@('load', $longTonePath), 'play', @('seek', '6.5')) | Out-Null
+            if ($null -eq (Wait-Status { param($s) $s.position -ge 6.7 } 3000)) { throw 'playback did not start after seeking to 6.5 s' }
+
+            # Dropping the refilled post-seek audio would run the track out early and jump the playhead to 8 s.
+            $status = Invoke-Commands @(, @('seek', '1.0'))
+            if ($status.position -gt 1.3) { throw "seek did not take: position $($status.position)" }
+            $status = Wait-Status { param($s) $s.position -ge 6.5 } 8000
+            if ($null -eq $status) { throw "stalled after seeking back: position $((Get-Status).position)" }
+            if ($status.position -gt 7.5) { throw "skipped ahead after seeking back: position $($status.position)" }
         }
 
         Write-Host "`nTeardown (X3)"

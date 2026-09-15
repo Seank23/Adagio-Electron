@@ -78,3 +78,55 @@ TEST_CASE("T6: Clear leaves the buffer usable")
 	CHECK(buffer.Read(out.data(), out.size()) == source.size());
 	CHECK(out == source);
 }
+
+// T10: dropping the whole buffer on a seek also dropped post-seek audio the feeder had already written.
+TEST_CASE("T10: DropToMark drops what came before the mark and keeps what came after")
+{
+	Adagio::RingBuffer<float> buffer(16);
+
+	// Park both indices near the end of storage so the kept audio wraps around.
+	std::vector<float> filler(12, 0.0f);
+	REQUIRE(buffer.Write(filler.data(), filler.size()) == filler.size());
+	REQUIRE(buffer.Read(filler.data(), filler.size()) == filler.size());
+
+	std::vector<float> beforeSeek(6, -1.0f);
+	std::vector<float> afterSeek = { 1.0f, 2.0f, 3.0f, 4.0f, 5.0f };
+	REQUIRE(buffer.Write(beforeSeek.data(), beforeSeek.size()) == beforeSeek.size());
+	buffer.MarkWritePosition(7);
+	REQUIRE(buffer.Write(afterSeek.data(), afterSeek.size()) == afterSeek.size());
+
+	CHECK(buffer.DropToMark(7));
+	CHECK(buffer.GetAvailableCount() == afterSeek.size());
+
+	std::vector<float> out(afterSeek.size(), 0.0f);
+	CHECK(buffer.Read(out.data(), out.size()) == afterSeek.size());
+	CHECK(out == afterSeek);
+}
+
+TEST_CASE("T10: DropToMark waits for the mark carrying its own tag")
+{
+	Adagio::RingBuffer<float> buffer(16);
+	std::vector<float> source(4, 1.0f);
+	REQUIRE(buffer.Write(source.data(), source.size()) == source.size());
+
+	CHECK_FALSE(buffer.DropToMark(1));
+	buffer.MarkWritePosition(1);
+	CHECK_FALSE(buffer.DropToMark(2));
+	CHECK(buffer.GetAvailableCount() == source.size());
+}
+
+TEST_CASE("T10: DropToMark never moves the reader backwards")
+{
+	// The callback can read past a fresh mark in the block before it notices the seek.
+	Adagio::RingBuffer<float> buffer(32);
+	std::vector<float> source(10, 1.0f);
+	REQUIRE(buffer.Write(source.data(), source.size()) == source.size());
+	buffer.MarkWritePosition(3);
+	REQUIRE(buffer.Write(source.data(), source.size()) == source.size());
+
+	std::vector<float> out(15);
+	REQUIRE(buffer.Read(out.data(), out.size()) == out.size());
+
+	CHECK(buffer.DropToMark(3));
+	CHECK(buffer.GetAvailableCount() == 5);
+}

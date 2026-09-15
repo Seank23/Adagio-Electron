@@ -178,15 +178,13 @@ Choose deliberately — the distinction carries meaning here:
 
 ## 9. Comments
 
-- Use `//` line comments to explain **why**, not restate the code. Reserve them for non-obvious rationale, invariants, and gotchas:
+- **Keep comments to a minimum.** Write one only to explain *why* something non-obvious was done: a workaround, an invariant the code relies on, or a gotcha that would otherwise get "fixed" back into a bug. Never restate what the code already says.
+- **Keep them concise, ideally one line.** If an explanation needs a paragraph, the code probably needs a clearer name or a smaller function, or the detail belongs in the commit message.
   ```cpp
-  // Persistent descriptor: set once at resource creation, never overwritten.
-  // Lives in the non-shader-visible staging heap; used as CopyDescriptorsSimple source.
+  // Never overwritten after creation, so it is safe as a CopyDescriptorsSimple source.
   DescriptorHeapHandle* GetPersistentDescriptor() const { return m_PersistentDescriptor.get(); }
   ```
-- A short comment introducing a non-trivial loop or branch is welcome ("Fallback: if no nodes reference any mesh…").
-- Trailing field comments are fine to annotate parallel/array data (e.g. G-buffer target formats).
-- No decorative banners, no commented-out dead code left in commits.
+- Use `//` line comments. No decorative banners, no commented-out dead code left in commits.
 
 ---
 

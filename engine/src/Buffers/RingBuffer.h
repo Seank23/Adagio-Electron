@@ -1,5 +1,6 @@
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <vector>
 #include <cstring>
 
@@ -69,21 +70,45 @@ namespace Adagio
 			return toRead;
 		}
 
-		void DropAll()
+		// Writer only. Tag and index share one atomic so a reader can't mix two marks; indices must fit in 32 bits.
+		void MarkWritePosition(uint32_t tag)
 		{
-			m_ReadIndex.store(m_WriteIndex.load(std::memory_order_acquire), std::memory_order_release);
+			const uint64_t index = m_WriteIndex.load(std::memory_order_relaxed);
+			m_Mark.store((static_cast<uint64_t>(tag) << 32) | index, std::memory_order_release);
+		}
+
+		// Reader only.
+		bool DropToMark(uint32_t tag)
+		{
+			const uint64_t mark = m_Mark.load(std::memory_order_acquire);
+			if (static_cast<uint32_t>(mark >> 32) != tag)
+				return false;
+
+			// Never move back: the reader may already have consumed past the mark.
+			const size_t markIndex = static_cast<size_t>(mark & 0xFFFFFFFFu);
+			const size_t readVal = m_ReadIndex.load(std::memory_order_relaxed);
+			const size_t writeVal = m_WriteIndex.load(std::memory_order_acquire);
+			const size_t toMark = (markIndex + m_Capacity - readVal) % m_Capacity;
+			const size_t toWrite = (writeVal + m_Capacity - readVal) % m_Capacity;
+			if (toMark <= toWrite)
+				m_ReadIndex.store(markIndex, std::memory_order_release);
+			return true;
 		}
 
 		void Clear()
 		{
 			m_WriteIndex.store(0, std::memory_order_release);
 			m_ReadIndex.store(0, std::memory_order_release);
+			m_Mark.store(NO_MARK, std::memory_order_release);
 		}
 
 	private:
+		static constexpr uint64_t NO_MARK = UINT64_MAX;
+
 		size_t m_Capacity;
 		std::vector<T> m_Buffer;
 		std::atomic<size_t> m_WriteIndex;
 		std::atomic<size_t> m_ReadIndex;
+		std::atomic<uint64_t> m_Mark{ NO_MARK };
 	};
 }

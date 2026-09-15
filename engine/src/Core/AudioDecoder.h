@@ -35,7 +35,9 @@ namespace Adagio
 		void RequestSeek(uint64_t sample);
 		uint64_t GetSeekTargetSample() const { return m_SeekTargetSample.load(std::memory_order_acquire); }
 		uint32_t GetSeekGeneration() const { return m_SeekGeneration.load(std::memory_order_acquire); }
-		uint32_t GetFeederGeneration() const { return m_FeederGeneration.load(std::memory_order_acquire); }
+
+		// Tells the end of the track apart from a feeder that is merely running late.
+		bool GetIsSourceExhausted(uint32_t generation) const;
 
 		void ResetAudio();
 		void Clear();
@@ -54,6 +56,7 @@ namespace Adagio
 		kfr::univector<float> m_FeederData;
 		std::atomic<FeederState> m_FeederState{ FeederState::Stopped };
 		std::atomic<uint64_t> m_FeederPosition{ 0 };
+		std::atomic<uint64_t> m_TotalSamples{ 0 };
 		std::atomic<double> m_PlaybackTime{ 0.0 };
 		std::atomic<double> m_LastPlaybackFrameTimestamp{ 0.0 };
 

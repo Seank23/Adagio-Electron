@@ -14,6 +14,12 @@ namespace Adagio
 	template<typename T>
 	class RingBuffer;
 
+	struct ProcessAudioResult
+	{
+		size_t FramesConsumed = 0;
+		bool Drained = false;
+	};
+
 	class TimeProcessor
 	{
 	public:
@@ -24,7 +30,7 @@ namespace Adagio
 		void Reset();
 
 		// Audio thread only.
-		size_t ProcessAudio(float* output, size_t samplesRequested);
+		ProcessAudioResult ProcessAudio(float* output, size_t samplesRequested, bool sourceExhausted);
 		void ResetStretcher();
 
 		void SetSpeed(float speed);
@@ -51,6 +57,8 @@ namespace Adagio
 		size_t m_OutputCapacityFrames = 0;
 
 		bool m_InStretchMode = false;
+		// RubberBand refuses input after its final block, so this holds until a reset.
+		bool m_FinalBlockSent = false;
 		int64_t m_LatencyToDiscard = 0;
 	};
 }
