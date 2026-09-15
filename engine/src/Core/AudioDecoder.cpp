@@ -1,7 +1,8 @@
 #include "AudioDecoder.h"
-#include "../IO/AudioData.h"
-#include <iostream>
 #include "MessageQueue.h"
+#include "../IO/AudioData.h"
+
+#include <iostream>
 
 namespace Adagio
 {
@@ -24,7 +25,7 @@ namespace Adagio
 
 		m_SamplesPerChunk = (int)m_FramesPerChunk * audioData->Channels;
 
-		m_FeederState = FeederState::STOPPED;
+		m_FeederState = FeederState::Stopped;
 		m_FeederPosition = 0;
 		LaunchFeeder();
 	}
@@ -35,12 +36,12 @@ namespace Adagio
 		{
 			size_t totalSamples = m_FeederData.size();
 
-			while (m_FeederState.load(std::memory_order_acquire) != FeederState::TERMINATED)
+			while (m_FeederState.load(std::memory_order_acquire) != FeederState::Terminated)
 			{
 				uint64_t pos = m_FeederPosition.load(std::memory_order_acquire);
 				if (pos < totalSamples)
 				{
-					if (m_FeederState.load(std::memory_order_acquire) == FeederState::RUNNING)
+					if (m_FeederState.load(std::memory_order_acquire) == FeederState::Running)
 					{
 						size_t samplesRemaining = totalSamples - pos;
 						size_t toWrite = std::min(samplesRemaining, m_SamplesPerChunk);
@@ -52,7 +53,8 @@ namespace Adagio
 						{
 							size_t written = buffer->Write(chunk, toWrite);
 							minWritten = std::min(minWritten, written);
-							if (written == 0) shouldSleep = true;
+							if (written == 0)
+								shouldSleep = true;
 						}
 						if (shouldSleep)
 							std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -65,10 +67,10 @@ namespace Adagio
 				}
 				else
 				{
-					m_FeederState.store(FeederState::STOPPED);
+					m_FeederState.store(FeederState::Stopped);
 				}
 			}
-		});	
+		});
 	}
 
 	void AudioDecoder::AddBuffer(const std::string& bufferName, float durationSeconds)
@@ -91,7 +93,7 @@ namespace Adagio
 
 	void AudioDecoder::ResetAudio()
 	{
-		m_FeederState = FeederState::STOPPED;
+		m_FeederState = FeederState::Stopped;
 		m_FeederPosition.store(0);
 		SetLastPlaybackFrameTimestamp(0.0);
 	}
@@ -99,7 +101,7 @@ namespace Adagio
 	void AudioDecoder::Clear()
 	{
 		ResetAudio();
-		m_FeederState = FeederState::TERMINATED;
+		m_FeederState = FeederState::Terminated;
 		if (m_FeederThread.joinable())
 			m_FeederThread.join();
 		m_Buffers.clear();

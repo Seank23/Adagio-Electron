@@ -96,7 +96,7 @@ namespace Adagio
 		InstrumentationTimer(const char* name)
 			: m_Name(name), m_Stopped(false)
 		{
-            m_StartTime = std::chrono::high_resolution_clock::now();
+			m_StartTime = std::chrono::high_resolution_clock::now();
 		}
 
 		~InstrumentationTimer()

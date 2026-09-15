@@ -1,6 +1,6 @@
 #pragma once
-#include <queue>
 #include <mutex>
+#include <queue>
 #include <string>
 
 namespace Adagio
@@ -8,10 +8,13 @@ namespace Adagio
 	class MessageQueue
 	{
 	public:
-		static MessageQueue& Instance()
+		MessageQueue(const MessageQueue&) = delete;
+		MessageQueue& operator=(const MessageQueue&) = delete;
+
+		static MessageQueue& GetInstance()
 		{
-			static MessageQueue inst;
-			return inst;
+			static MessageQueue instance;
+			return instance;
 		}
 
 		void Push(const std::string& msg)
@@ -23,7 +26,8 @@ namespace Adagio
 		bool Pop(std::string& outMsg)
 		{
 			std::lock_guard<std::mutex> lock(m_Mutex);
-			if (m_Queue.empty()) return false;
+			if (m_Queue.empty())
+				return false;
 
 			outMsg = m_Queue.front();
 			m_Queue.pop();

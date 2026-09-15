@@ -2,11 +2,11 @@
 
 namespace Adagio
 {
-    enum PlayState
-    {
-        NOT_STARTED,
-        PLAYING,
-        PAUSED,
-        STOPPED
-    };
+	enum class PlayState
+	{
+		NotStarted,
+		Playing,
+		Paused,
+		Stopped
+	};
 }

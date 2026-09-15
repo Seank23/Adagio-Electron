@@ -19,11 +19,11 @@ namespace Adagio
 
 		void OnAudioCallback(float* outBuffer, ma_uint32 framesToRead);
 
-        int Init(std::shared_ptr<AudioDecoder> decoder);
+		int Init(std::shared_ptr<AudioDecoder> decoder);
 		void Reset();
 		void PlayAudio();
-        void PauseAudio();
-        void StopAudio();
+		void PauseAudio();
+		void StopAudio();
 		void SetVolume(float volume);
 		void SeekToSample(uint64_t sample);
 		void SetSpeed(float speed);
@@ -41,4 +41,3 @@ namespace Adagio
 		std::unique_ptr<TimeProcessor> m_TimeProcessor;
 	};
 }
-

@@ -26,7 +26,8 @@ namespace Adagio
 		size_t Write(const T* data, size_t count)
 		{
 			size_t free = GetFreeCapacity();
-			if (free == 0) return 0;
+			if (free == 0)
+				return 0;
 
 			size_t toWrite = (count > free) ? free : count;
 			size_t writeVal = m_WriteIndex.load(std::memory_order_relaxed);
@@ -48,7 +49,8 @@ namespace Adagio
 		size_t Read(T* outData, size_t count, size_t readFrom = -1)
 		{
 			size_t available = GetAvailableCount();
-			if (available == 0) return 0;
+			if (available == 0)
+				return 0;
 
 			size_t toRead = (count > available) ? available : count;
 			size_t readVal = readFrom != -1 ? readFrom : m_ReadIndex.load(std::memory_order_relaxed);

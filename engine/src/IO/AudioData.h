@@ -12,14 +12,14 @@ namespace Adagio
 		{
 		}
 
-        void Clear()
-        {
+		void Clear()
+		{
 			PCMData.clear();
-            SampleRate = 0.0f;
-            Channels = 0;
+			SampleRate = 0.0f;
+			Channels = 0;
 			SamplesPerChannel = 0;
-            Duration = 0.0f;
-        }
+			Duration = 0.0f;
+		}
 
 		kfr::univector2d<float> PCMData;
 

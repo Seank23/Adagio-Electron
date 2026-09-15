@@ -26,11 +26,13 @@ namespace Adagio
 				for (size_t j = 0; j < framesPerPeak; ++j)
 				{
 					size_t frameIndex = i * framesPerPeak + j;
-					if (frameIndex >= totalFrames) break;
+					if (frameIndex >= totalFrames)
+						break;
 					for (int ch = 0; ch < audioData->Channels; ++ch)
 					{
 						float sample = audioData->PCMData[ch][frameIndex];
-						if (sample > maxVal) maxVal = sample;
+						if (sample > maxVal)
+							maxVal = sample;
 					}
 				}
 				peaks.push_back({ maxVal });

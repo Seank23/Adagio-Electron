@@ -1,12 +1,9 @@
 #pragma once
+#include <kfr/base/univector.hpp>
+
+#include <atomic>
 #include <memory>
 #include <thread>
-
-namespace kfr
-{
-	template<typename T>
-	struct univector<T>;
-}
 
 namespace Adagio
 {
@@ -54,4 +51,3 @@ namespace Adagio
 		double m_AnalysisTimestamp = 0.0;
 	};
 }
-

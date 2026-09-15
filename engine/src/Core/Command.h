@@ -2,22 +2,25 @@
 #include <string>
 #include <variant>
 
-enum class CommandType
+namespace Adagio
 {
-	Play,
-	Pause,
-	Stop,
-	Load,
-	Clear,
-	Seek,
-	SetVolume,
-	SetSpeed,
-	AnalyseFrame
-};
+	enum class CommandType
+	{
+		Play,
+		Pause,
+		Stop,
+		Load,
+		Clear,
+		Seek,
+		SetVolume,
+		SetSpeed,
+		AnalyseFrame
+	};
 
-struct Command
-{
-	CommandType Type;
-	float Value = 0.0f;
-	std::string StrValue;
-};
+	struct Command
+	{
+		CommandType Type;
+		float Value = 0.0f;
+		std::string StrValue;
+	};
+}

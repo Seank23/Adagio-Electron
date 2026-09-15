@@ -1,17 +1,21 @@
 #pragma once
 #include "Command.h"
-#include <queue>
+
 #include <mutex>
+#include <queue>
 
 namespace Adagio
 {
 	class CommandQueue
 	{
 	public:
-		static CommandQueue& Instance()
+		CommandQueue(const CommandQueue&) = delete;
+		CommandQueue& operator=(const CommandQueue&) = delete;
+
+		static CommandQueue& GetInstance()
 		{
-			static CommandQueue inst;
-			return inst;
+			static CommandQueue instance;
+			return instance;
 		}
 
 		void Push(const Command& cmd)
@@ -23,7 +27,8 @@ namespace Adagio
 		bool Pop(Command& outCmd)
 		{
 			std::lock_guard<std::mutex> lock(m_Mutex);
-			if (m_Queue.empty()) return false;
+			if (m_Queue.empty())
+				return false;
 
 			outCmd = m_Queue.front();
 			m_Queue.pop();

@@ -51,8 +51,8 @@ namespace Adagio
 	{
 		nlohmann::json notesJson;
 		for (const auto& note : result.Context->Notes)
-			notesJson.push_back({ 
-				{"name", note.Name}, 
+			notesJson.push_back({
+				{"name", note.Name},
 				{"frequency", note.PeakInfo.Frequency},
 				{"magnitude", note.PeakInfo.Magnitude},
 				{"score", note.PeakInfo.Score},

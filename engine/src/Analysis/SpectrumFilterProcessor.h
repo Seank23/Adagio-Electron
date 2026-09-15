@@ -36,7 +36,7 @@ namespace Adagio
 						filtered[i] = 0.0f;
 					else if (freq > highCutC1)
 						filtered[i] = data[i] * (highCutC2 - freq) / (highCutC2 - highCutC1);
-					else 
+					else
 						filtered[i] = data[i];
 				}
 				context->Magnitudes = std::move(filtered);

@@ -4,9 +4,9 @@
 
 namespace Adagio
 {
-    enum PlayState;
+	enum class PlayState;
 	class AudioData;
-    class AudioDecoder;
+	class AudioDecoder;
 	class FileIOService;
 	class PlaybackService;
 	class AnalysisService;
@@ -27,13 +27,13 @@ namespace Adagio
 		void UpdateAudioState(PlayState state);
 
 		std::shared_ptr<AudioDecoder> m_AudioDecoder;
-        std::unique_ptr<FileIOService> m_FileIOService;
+		std::unique_ptr<FileIOService> m_FileIOService;
 		std::unique_ptr<PlaybackService> m_PlaybackService;
 		std::unique_ptr<AnalysisService> m_AnalysisService;
 
-        std::shared_ptr<AudioData> m_AudioData;
-        bool m_AudioLoaded = false;
+		std::shared_ptr<AudioData> m_AudioData;
+		bool m_AudioLoaded = false;
 
-        PlayState m_AudioState;
+		PlayState m_AudioState;
 	};
 }

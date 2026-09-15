@@ -28,7 +28,7 @@ namespace Adagio
 
 			kfr::univector<kfr::complex<float>> fftInput;
 			fftInput.resize(frameLength);
-			
+
 			auto dataPtr = data.begin();
 			for (int i = 0; i < frameLength; i++)
 				fftInput[i] = kfr::complex<float>{ dataPtr[i], 0.0f };

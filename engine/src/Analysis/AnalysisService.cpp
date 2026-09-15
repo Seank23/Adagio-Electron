@@ -1,21 +1,22 @@
-#include "kfr/base.hpp"
 #include "AnalysisService.h"
 #include "AnalysisPipeline.h"
+#include "ChordPredictor.h"
+#include "FFTProcessor.h"
+#include "HPSDownsamplerProcessor.h"
+#include "KeyDetector.h"
+#include "NoteDetector.h"
+#include "PeakExtractor.h"
+#include "SpectrumFilterProcessor.h"
 #include "../Core/AudioDecoder.h"
 #include "../Core/MessageQueue.h"
 #include "../IO/AudioData.h"
-#include "FFTProcessor.h"
-#include "HPSDownsamplerProcessor.h"
-#include "SpectrumFilterProcessor.h"
-#include "PeakExtractor.h"
-#include "NoteDetector.h"
-#include "KeyDetector.h"
-#include "ChordPredictor.h"
 
-#include <nlohmann/json.hpp>
-#include <iostream>
-#include <chrono>
+#include <kfr/base.hpp>
 #include <kfr/dsp.hpp>
+#include <nlohmann/json.hpp>
+
+#include <chrono>
+#include <iostream>
 
 namespace Adagio
 {
@@ -84,7 +85,7 @@ namespace Adagio
 					result->Context->Magnitudes = data;
 				}
 				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
-				MessageQueue::Instance().Push(json.dump());
+				MessageQueue::GetInstance().Push(json.dump());
 				int uSSleepTime = (m_IntervalMs - result->ExecutionTimeMs) * 1000;
 				std::this_thread::sleep_for(std::chrono::microseconds(uSSleepTime));
 			}
@@ -102,7 +103,7 @@ namespace Adagio
 	{
 		std::unique_ptr<AnalysisResult> result = ProcessCurrentFrame();
 		nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
-		MessageQueue::Instance().Push(json.dump());
+		MessageQueue::GetInstance().Push(json.dump());
 	}
 
 	std::unique_ptr<AnalysisResult> AnalysisService::ProcessCurrentFrame()

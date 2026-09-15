@@ -1,4 +1,4 @@
-﻿#include "PlaybackService.h"
+#include "PlaybackService.h"
 #include "../Core/AudioDecoder.h"
 #include "../Core/MessageQueue.h"
 #include "../Core/TimeProcessor.h"
@@ -27,7 +27,7 @@ void DataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint
 namespace Adagio
 {
 	PlaybackService::PlaybackService()
-		: m_CurrentState(PlayState::NOT_STARTED)
+		: m_CurrentState(PlayState::NotStarted)
 	{
 	}
 
@@ -36,9 +36,9 @@ namespace Adagio
 		ma_device_uninit(&m_PlaybackDevice);
 	}
 
-    int PlaybackService::Init(std::shared_ptr<AudioDecoder> decoder)
+	int PlaybackService::Init(std::shared_ptr<AudioDecoder> decoder)
 	{
-		m_CurrentState = PlayState::NOT_STARTED;
+		m_CurrentState = PlayState::NotStarted;
 		m_PlaybackDevice = ma_device();
 		m_Decoder = decoder;
 
@@ -52,7 +52,7 @@ namespace Adagio
 		deviceConfig.playback.channels = m_AudioSource->Channels;
 		deviceConfig.sampleRate = m_AudioSource->SampleRate;
 		deviceConfig.dataCallback = DataCallback;
-        deviceConfig.pUserData = this;
+		deviceConfig.pUserData = this;
 
 		if (ma_device_init(NULL, &deviceConfig, &m_PlaybackDevice) != MA_SUCCESS)
 			return -1;
@@ -61,7 +61,7 @@ namespace Adagio
 
 	void PlaybackService::Reset()
 	{
-		m_CurrentState = PlayState::NOT_STARTED;
+		m_CurrentState = PlayState::NotStarted;
 		m_CurrentPlaybackFrame = 0;
 		ma_device_stop(&m_PlaybackDevice);
 		ma_device_uninit(&m_PlaybackDevice);
@@ -70,21 +70,21 @@ namespace Adagio
 
 	void PlaybackService::PlayAudio()
 	{
-		m_CurrentState = PlayState::PLAYING;
+		m_CurrentState = PlayState::Playing;
 		ma_device_start(&m_PlaybackDevice);
-		m_Decoder->SetFeederState(FeederState::RUNNING);
+		m_Decoder->SetFeederState(FeederState::Running);
 	}
 
-    void PlaybackService::PauseAudio()
-    {
-		m_CurrentState = PlayState::PAUSED;
-        ma_device_stop(&m_PlaybackDevice);
-		m_Decoder->SetFeederState(FeederState::STOPPED);
-    }
+	void PlaybackService::PauseAudio()
+	{
+		m_CurrentState = PlayState::Paused;
+		ma_device_stop(&m_PlaybackDevice);
+		m_Decoder->SetFeederState(FeederState::Stopped);
+	}
 
 	void PlaybackService::StopAudio()
 	{
-		m_CurrentState = PlayState::STOPPED;
+		m_CurrentState = PlayState::Stopped;
 		ma_device_stop(&m_PlaybackDevice);
 		m_CurrentPlaybackFrame = 0;
 		m_Decoder->ResetAudio();
@@ -103,14 +103,14 @@ namespace Adagio
 	void PlaybackService::SeekToSample(uint64_t frame)
 	{
 		ma_device_stop(&m_PlaybackDevice);
-		m_Decoder->SetFeederState(FeederState::STOPPED);
+		m_Decoder->SetFeederState(FeederState::Stopped);
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 		m_Decoder->SeekToSample(frame);
 		m_CurrentPlaybackFrame = frame;
-		if (m_CurrentState == PlayState::PLAYING)
+		if (m_CurrentState == PlayState::Playing)
 		{
 			ma_device_start(&m_PlaybackDevice);
-			m_Decoder->SetFeederState(FeederState::RUNNING);
+			m_Decoder->SetFeederState(FeederState::Running);
 		}
 	}
 
@@ -141,11 +141,11 @@ namespace Adagio
 		{
 			if (playbackFrame >= m_AudioSource->SamplesPerChannel)
 			{
-				MessageQueue::Instance().Push("{\"type\":\"endOfPlay\"}");
+				MessageQueue::GetInstance().Push("{\"type\":\"endOfPlay\"}");
 				return;
 			}
 
-			MessageQueue::Instance().Push(
+			MessageQueue::GetInstance().Push(
 				std::string("{\"type\":\"position\",\"value\":") + std::to_string(seconds) + "}"
 			);
 

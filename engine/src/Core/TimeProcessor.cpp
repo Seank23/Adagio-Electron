@@ -1,6 +1,6 @@
-﻿#include "TimeProcessor.h"
+#include "TimeProcessor.h"
 #include "../Buffers/RingBuffer.h"
-#include "rubberband/RubberBandStretcher.h"	
+#include "rubberband/RubberBandStretcher.h"
 #include <cassert>
 #include <iostream>
 
@@ -70,7 +70,7 @@ namespace Adagio
 				std::memset(output + read, 0, (samplesRequested - read) * sizeof(float));
 			return read / m_Channels;
 		}
-		
+
 		size_t latency = m_FirstStretch ? m_Stretcher->getLatency() : 0;
 		m_FirstStretch = false;
 

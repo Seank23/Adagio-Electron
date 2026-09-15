@@ -11,18 +11,18 @@ namespace Adagio
 
 	struct Peak
 	{
-		float Frequency;
-		float Magnitude;
-		float Score;
+		float Frequency = 0.0f;
+		float Magnitude = 0.0f;
+		float Score = 0.0f;
 	};
 
 	struct Note
 	{
 		std::string Name;
-		int Midi;
+		int Midi = 0;
 		Peak PeakInfo;
-		float ErrorCents;
-		double Timestamp;
+		float ErrorCents = 0.0f;
+		double Timestamp = 0.0;
 	};
 
 	struct Chord
@@ -31,10 +31,10 @@ namespace Adagio
 		std::string Root;
 		std::string Quality;
 		std::vector<Note> Notes;
-		int RootOccurences;
-		int NumExtentions;
-		int FifthOmitted;
-		double Probability;
+		int RootOccurences = 0;
+		int NumExtentions = 0;
+		int FifthOmitted = 0;
+		double Probability = 0.0;
 	};
 
 	struct PersistentData
@@ -46,7 +46,7 @@ namespace Adagio
 	struct AnalysisContext
 	{
 		const AudioFrame& Frame;
-		PersistentData* PersistentData;
+		PersistentData* PersistentData = nullptr;
 
 		kfr::univector<float> Samples;
 		kfr::univector<float> Windowed;
@@ -66,9 +66,9 @@ namespace Adagio
 	struct AnalysisResult
 	{
 		std::unique_ptr<AnalysisContext> Context;
-		float MaxMagnitude;
-		float SampleRate;
-		float ExecutionTimeMs;
+		float MaxMagnitude = 0.0f;
+		float SampleRate = 0.0f;
+		float ExecutionTimeMs = 0.0f;
 	};
 
 	class AnalysisPipeline
@@ -89,4 +89,3 @@ namespace Adagio
 		std::unique_ptr<PersistentData> m_PersistentData;
 	};
 }
-

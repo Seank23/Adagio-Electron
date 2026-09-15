@@ -7,9 +7,6 @@ namespace Adagio
 {
 	class NoteDetector : public AnalysisStage
 	{
-	private:
-		const float C0 = 16.3516f;
-
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
@@ -75,5 +72,8 @@ namespace Adagio
 				}
 			})");
 		}
+
+	private:
+		static constexpr float C0 = 16.3516f;
 	};
 }

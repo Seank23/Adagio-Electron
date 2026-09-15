@@ -17,10 +17,9 @@ namespace Adagio
 	{
 	public:
 		FileIOService();
-        void LoadAudio(std::string filepath, FileFormat format, AudioData& o_Audio) const;
+		void LoadAudio(std::string filepath, FileFormat format, AudioData& o_Audio) const;
 
 	private:
 		std::unique_ptr<AudioFileHandler> m_AudioFileHandler;
 	};
 }
-
