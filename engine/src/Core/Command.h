@@ -1,6 +1,5 @@
 #pragma once
 #include <string>
-#include <variant>
 
 namespace Adagio
 {
@@ -14,12 +13,16 @@ namespace Adagio
 		Seek,
 		SetVolume,
 		SetSpeed,
-		AnalyseFrame
+		AnalyseFrame,
+		Status,
+		Shutdown
 	};
+
+	const char* ToString(CommandType type);
 
 	struct Command
 	{
-		CommandType Type;
+		CommandType Type = CommandType::Status;
 		float Value = 0.0f;
 		std::string StrValue;
 	};

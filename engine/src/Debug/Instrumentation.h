@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <fstream>
 #include <thread>
-#include "WebSocketServer.h"
 
 namespace Adagio
 {
@@ -125,7 +124,11 @@ namespace Adagio
 	};
 }
 
-#define ADAGIO_PROFILE 1
+// Off unless the build asks for it: the profiler writes on every scope from every
+// thread through one unguarded stream. Configure with -DADAGIO_ENABLE_PROFILING=ON.
+#ifndef ADAGIO_PROFILE
+#define ADAGIO_PROFILE 0
+#endif
 #if ADAGIO_PROFILE
 #define ADAGIO_PROFILE_BEGIN_SESSION(name, filepath) ::Adagio::Instrumentor::Get().BeginSession(name, filepath)
 #define ADAGIO_PROFILE_END_SESSION() ::Adagio::Instrumentor::Get().EndSession()

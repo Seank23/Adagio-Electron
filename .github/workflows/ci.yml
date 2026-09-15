@@ -36,6 +36,12 @@ jobs:
       - name: Test
         run: ctest --test-dir engine/build -C Release --output-on-failure
 
+      # Drives a real engine process through the command sequences that used to
+      # crash or hang it. Hosted runners have no audio endpoint, so the playback
+      # cases report themselves as skipped rather than failing.
+      - name: Smoke test
+        run: pwsh engine/tests/smoke.ps1
+
   ui:
     name: UI lint
     runs-on: windows-latest

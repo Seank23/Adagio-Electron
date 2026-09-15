@@ -1,11 +1,13 @@
 #pragma once
 
 #include "../Buffers/RingBuffer.h"
-#include <unordered_map>
+#include <kfr/base/univector.hpp>
+
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
-#include "kfr/base/univector.hpp"
+#include <unordered_map>
 
 namespace Adagio
 {
@@ -29,7 +31,12 @@ namespace Adagio
 		void LaunchFeeder();
 		void SetFeederState(FeederState state) { m_FeederState.store(state, std::memory_order_release); }
 
-		void SeekToSample(uint64_t sample);
+		// Seeking is a message to the feeder thread rather than a call into it
+		void RequestSeek(uint64_t sample);
+		uint64_t GetSeekTargetSample() const { return m_SeekTargetSample.load(std::memory_order_acquire); }
+		uint32_t GetSeekGeneration() const { return m_SeekGeneration.load(std::memory_order_acquire); }
+		uint32_t GetFeederGeneration() const { return m_FeederGeneration.load(std::memory_order_acquire); }
+
 		void ResetAudio();
 		void Clear();
 
@@ -49,6 +56,10 @@ namespace Adagio
 		std::atomic<uint64_t> m_FeederPosition{ 0 };
 		std::atomic<double> m_PlaybackTime{ 0.0 };
 		std::atomic<double> m_LastPlaybackFrameTimestamp{ 0.0 };
+
+		std::atomic<uint64_t> m_SeekTargetSample{ 0 };
+		std::atomic<uint32_t> m_SeekGeneration{ 0 };
+		std::atomic<uint32_t> m_FeederGeneration{ 0 };
 
 		size_t m_FramesPerChunk;
 		size_t m_SamplesPerChunk;

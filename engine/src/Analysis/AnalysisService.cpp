@@ -31,6 +31,7 @@ namespace Adagio
 
 	void AnalysisService::Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params)
 	{
+		StopAnalysis();
 		m_Decoder = decoder;
 		m_Params = params;
 		m_AudioSource = m_Decoder->GetAudioSource();
@@ -57,11 +58,20 @@ namespace Adagio
 		m_Params = AnalysisParams{};
 		m_AudioSource.reset();
 		m_Pipeline.reset();
+		m_AnalysisBuffer.reset();
 	}
 
 	void AnalysisService::StartAnalysis()
 	{
-		m_Running = true;
+		// Prevent a second StartAnalysis from starting a second thread.
+		if (m_Running.exchange(true, std::memory_order_acq_rel))
+			return;
+		if (!m_Pipeline || !m_AnalysisBuffer)
+		{
+			m_Running.store(false, std::memory_order_release);
+			return;
+		}
+
 		m_AnalysisThread = std::thread([this]()
 		{
 			std::unique_ptr<AnalysisResult> result = nullptr;
@@ -94,7 +104,7 @@ namespace Adagio
 
 	void AnalysisService::StopAnalysis()
 	{
-		m_Running = false;
+		m_Running.store(false, std::memory_order_release);
 		if (m_AnalysisThread.joinable())
 			m_AnalysisThread.join();
 	}

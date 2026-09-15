@@ -1,13 +1,26 @@
 #include "Core/Application.h"
 #include "Core/CommandQueue.h"
 #include "Core/WebSocketServer.h"
-#include "API/Utils.h"
 
 #include "httplib.h"
 
 #include <atomic>
 #include <iostream>
+#include <string>
 #include <thread>
+
+namespace
+{
+	void Push(Adagio::CommandType type, float value = 0.0f, std::string text = {})
+	{
+		Adagio::CommandQueue::GetInstance().Push({ type, value, std::move(text) });
+	}
+
+	void Accepted(httplib::Response& res)
+	{
+		res.set_content("{ \"status\": \"accepted\" }", "application/json");
+	}
+}
 
 int main(int argc, char** argv)
 {
@@ -18,80 +31,122 @@ int main(int argc, char** argv)
 
 	svr.Post("/load", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			std::string path = req.body;
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Load, 0.0f, path });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::Load, 0.0f, req.body);
+			Accepted(res);
 		});
 
 	svr.Post("/play", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Play });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::Play);
+			Accepted(res);
 		});
 
 	svr.Post("/pause", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Pause });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::Pause);
+			Accepted(res);
 		});
 
 	svr.Post("/stop", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Stop });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::Stop);
+			Accepted(res);
 		});
 
 	svr.Post("/clear", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Clear });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::Clear);
+			Accepted(res);
 		});
 
 	svr.Post("/volume", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			float volume = std::stof(req.body) / 100.0f;
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::SetVolume, volume });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			try
+			{
+				Push(Adagio::CommandType::SetVolume, std::stof(req.body) / 100.0f);
+				Accepted(res);
+			}
+			catch (const std::exception&)
+			{
+				res.status = 400;
+				res.set_content("{ \"status\": \"error\", \"value\": \"volume must be a number\" }", "application/json");
+			}
 		});
 
 	svr.Post("/seek", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			float seconds = std::stof(req.body);
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::Seek, seconds });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			try
+			{
+				Push(Adagio::CommandType::Seek, std::stof(req.body));
+				Accepted(res);
+			}
+			catch (const std::exception&)
+			{
+				res.status = 400;
+				res.set_content("{ \"status\": \"error\", \"value\": \"seek must be a number\" }", "application/json");
+			}
 		});
 
 	svr.Post("/requestAnalysis", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			float seconds = std::stof(req.body);
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::AnalyseFrame });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			Push(Adagio::CommandType::AnalyseFrame);
+			Accepted(res);
 		});
 
 	svr.Post("/speed", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			float speed = std::stof(req.body) / 100.0f;
-			Adagio::CommandQueue::GetInstance().Push({ Adagio::CommandType::SetSpeed, speed });
-			res.set_content("{ \"status\": \"success\" }", "application/json");
+			try
+			{
+				Push(Adagio::CommandType::SetSpeed, std::stof(req.body) / 100.0f);
+				Accepted(res);
+			}
+			catch (const std::exception&)
+			{
+				res.status = 400;
+				res.set_content("{ \"status\": \"error\", \"value\": \"speed must be a number\" }", "application/json");
+			}
 		});
 
-	std::thread appThread([&]()
+	// The one route that answers rather than queues. It is a read-only snapshot of
+	// atomics, so it doubles as the liveness probe: if this returns, the command
+	// thread survived whatever was sent before it.
+	svr.Get("/status", [&](const httplib::Request& req, httplib::Response& res)
 		{
-			app.Run();
+			res.set_content(app.GetStatusJson(), "application/json");
 		});
 
+	svr.Post("/shutdown", [&](const httplib::Request& req, httplib::Response& res)
+		{
+			Push(Adagio::CommandType::Shutdown);
+			Accepted(res);
+		});
+
+	std::thread wsThread([&]() { wsServer.Start(); });
 	std::thread serverThread([&]()
 		{
 			std::cout << "Starting server on http://127.0.0.1:5000\n";
 			svr.listen("127.0.0.1", 5000);
 		});
 
-	std::thread wsThread([&]()
+	// Electron closes our stdin when it exits, so EOF here means the app is gone and
+	// the engine should not outlive it holding ports 5000 and 9001.
+	std::thread stdinThread([&]()
 		{
-			wsServer.Start();
+			std::string line;
+			while (std::getline(std::cin, line))
+			{
+			}
+			Push(Adagio::CommandType::Shutdown);
 		});
-	wsThread.detach();
 
+	std::cout << "Adagio engine ready\n" << std::flush;
+
+	app.Run();
+
+	svr.stop();
+	wsServer.Stop();
 	serverThread.join();
-	appThread.join();
+	wsThread.join();
+	stdinThread.detach();
+	return 0;
 }

@@ -13,7 +13,7 @@ namespace Adagio
 	{
 		// Required on Windows; safe everywhere.
 		ix::initNetSystem();
-		m_Running = true;
+		m_Running.store(true, std::memory_order_release);
 
 		// Register the connection handler
 		m_Server->setOnConnectionCallback(
@@ -61,21 +61,26 @@ namespace Adagio
 		m_Server->start();
 		std::cout << "WebSocket server running on port " << m_Server->getPort() << "\n";
 
-		std::thread([&]()
+		// Owned rather than detached, so Stop() can wait for it and the process can
+		// actually exit instead of being torn down mid-broadcast.
+		m_QueueThread = std::thread([this]()
 			{
-				while (m_Running)
+				while (m_Running.load(std::memory_order_acquire))
 				{
 					ProcessQueue();
 					std::this_thread::sleep_for(std::chrono::milliseconds(5));
 				}
-			}).detach();
+			});
 	}
 
 	void WSServer::Stop()
 	{
+		if (!m_Running.exchange(false, std::memory_order_acq_rel))
+			return;
+		if (m_QueueThread.joinable())
+			m_QueueThread.join();
 		m_Server->stop();
 		ix::uninitNetSystem();
-		m_Running = false;
 	}
 
 	void WSServer::SendToClient(const std::string& clientId, const std::string& message)

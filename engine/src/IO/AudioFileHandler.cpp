@@ -4,6 +4,9 @@
 #include <kfr/base.hpp>
 #include <kfr/io.hpp>
 
+#include <memory>
+#include <stdexcept>
+
 #if defined(_WIN32)
 #include <windows.h>
 #include <string_view>
@@ -28,51 +31,45 @@ namespace Adagio
 	}
 #endif
 
-	const void AudioFileHandler::ReadWAV(std::string fileName, AudioData& o_Audio) const
+	namespace
 	{
+		template <typename Reader>
+		void ReadInto(const std::string& fileName, AudioData& o_Audio)
+		{
 #if defined(_WIN32)
-		const std::wstring wide = Utf8ToWide(fileName);
-		kfr::audio_reader_wav<float>* reader = new kfr::audio_reader_wav<float>(kfr::open_file_for_reading(wide));
+			auto reader = std::make_unique<Reader>(kfr::open_file_for_reading(Utf8ToWide(fileName)));
 #else
-		kfr::audio_reader_wav<float>* reader = new kfr::audio_reader_wav<float>(kfr::open_file_for_reading(fileName));
+			auto reader = std::make_unique<Reader>(kfr::open_file_for_reading(fileName));
 #endif
-		o_Audio.Channels = reader->format().channels;
-		o_Audio.SampleRate = reader->format().samplerate;
-		o_Audio.PCMData = reader->read_channels();
-		o_Audio.SamplesPerChannel = o_Audio.PCMData[0].size();
-		o_Audio.Duration = o_Audio.PCMData[0].size() / o_Audio.SampleRate;
-		delete reader;
+			const int channels = static_cast<int>(reader->format().channels);
+			const float sampleRate = static_cast<float>(reader->format().samplerate);
+			kfr::univector2d<float> pcm = reader->read_channels();
+
+			if (channels <= 0 || sampleRate <= 0.0f || pcm.empty() || pcm[0].empty())
+				throw std::runtime_error("Decoded no audio from '" + fileName + "'.");
+			if (static_cast<int>(pcm.size()) < channels)
+				throw std::runtime_error("Decoder returned fewer channels than the header declares for '" + fileName + "'.");
+
+			o_Audio.Channels = channels;
+			o_Audio.SampleRate = sampleRate;
+			o_Audio.PCMData = std::move(pcm);
+			o_Audio.SamplesPerChannel = static_cast<int>(o_Audio.PCMData[0].size());
+			o_Audio.Duration = o_Audio.PCMData[0].size() / o_Audio.SampleRate;
+		}
 	}
 
-	const void AudioFileHandler::ReadMP3(std::string fileName, AudioData& o_Audio) const
+	void AudioFileHandler::ReadWAV(const std::string& fileName, AudioData& o_Audio) const
 	{
-#if defined(_WIN32)
-		const std::wstring wide = Utf8ToWide(fileName);
-		kfr::audio_reader_mp3<float>* reader = new kfr::audio_reader_mp3<float>(kfr::open_file_for_reading(wide));
-#else
-		kfr::audio_reader_mp3<float>* reader = new kfr::audio_reader_mp3<float>(kfr::open_file_for_reading(fileName));
-#endif
-		o_Audio.Channels = reader->format().channels;
-		o_Audio.SampleRate = reader->format().samplerate;
-		o_Audio.PCMData = reader->read_channels();
-		o_Audio.SamplesPerChannel = o_Audio.PCMData[0].size();
-		o_Audio.Duration = o_Audio.PCMData[0].size() / o_Audio.SampleRate;
-		delete reader;
+		ReadInto<kfr::audio_reader_wav<float>>(fileName, o_Audio);
 	}
 
-	const void AudioFileHandler::ReadFLAC(std::string fileName, AudioData& o_Audio) const
+	void AudioFileHandler::ReadMP3(const std::string& fileName, AudioData& o_Audio) const
 	{
-#if defined(_WIN32)
-		const std::wstring wide = Utf8ToWide(fileName);
-		kfr::audio_reader_flac<float>* reader = new kfr::audio_reader_flac<float>(kfr::open_file_for_reading(wide));
-#else
-		kfr::audio_reader_flac<float>* reader = new kfr::audio_reader_flac<float>(kfr::open_file_for_reading(fileName));
-#endif
-		o_Audio.Channels = reader->format().channels;
-		o_Audio.SampleRate = reader->format().samplerate;
-		o_Audio.PCMData = reader->read_channels();
-		o_Audio.SamplesPerChannel = o_Audio.PCMData[0].size();
-		o_Audio.Duration = o_Audio.PCMData[0].size() / o_Audio.SampleRate;
-		delete reader;
+		ReadInto<kfr::audio_reader_mp3<float>>(fileName, o_Audio);
+	}
+
+	void AudioFileHandler::ReadFLAC(const std::string& fileName, AudioData& o_Audio) const
+	{
+		ReadInto<kfr::audio_reader_flac<float>>(fileName, o_Audio);
 	}
 }

@@ -45,7 +45,7 @@ React renderer ──window.api (IPC)──> Electron main ──HTTP POST :5000
 
 - **Commands flow one way over HTTP.** `preload.js` exposes `window.api.{load,play,pause,stop,clear,seek,changeVolume,changeSpeed}`; each is an `ipcMain.handle` in `main.js` that POSTs a bare-string body to `http://127.0.0.1:5000/<verb>`. The engine's `main.cpp` turns each route into a `Command` on the global `CommandQueue` singleton and returns immediately — HTTP responses carry no result.
 - **Everything the UI observes flows back over WebSocket.** Engine code anywhere pushes a JSON string onto the `MessageQueue` singleton; `WSServer::ProcessQueue` drains it every 5 ms and broadcasts to all clients.
-- Adding a new engine→UI event means: push JSON with a new `type` in C++, add the string to `EVENT_TYPE` in `app/ui/src/utils/utils.jsx`, and handle it in `app/ui/src/router/EngineEventRouter.jsx`. Adding a new UI→engine command means: `svr.Post` route + `CommandType` enum entry + `Application::ProcessCommands` case, then IPC handler + preload method.
+- Adding a new engine→UI event means: push JSON with a new `type` in C++, add the string to `EVENT_TYPE` in `app/ui/src/utils/utils.jsx`, and handle it in `app/ui/src/router/EngineEventRouter.jsx`. Adding a new UI→engine command means: `svr.Post` route + `CommandType` enum entry + a row in the `TransportState` table (`engine/src/Core/TransportState.cpp`) + `Application::HandleCommand` case, then IPC handler + preload method. Every command is checked against the table first, so a command with no entry is rejected rather than run.
 
 ### Engine threading
 
@@ -56,7 +56,9 @@ React renderer ──window.api (IPC)──> Electron main ──HTTP POST :5000
 - **Analysis thread** (`AnalysisService::StartAnalysis`) runs while playing, sleeping `IntervalMs - executionTime`.
 - **HTTP and WebSocket threads** from `main.cpp`.
 
-`CommandQueue`/`MessageQueue` are mutex-guarded singletons and are the only sanctioned cross-thread channel — prefer pushing a message over reaching across services.
+`CommandQueue`/`MessageQueue` are mutex-guarded singletons and are the only sanctioned cross-thread channel — prefer pushing a message over reaching across services. Seeking follows the same rule: the command thread bumps an atomic generation on `AudioDecoder`, the feeder repositions itself and republishes it, and only then does the audio callback drop what it still holds. Nothing sleeps waiting for another thread.
+
+`Application` owns the only copy of playback state, as a `TransportState` (`Empty → Loading → Ready ⇄ Playing ⇄ Paused`). `GET /status` is the one route that answers rather than queues: it reads atomics, so it is safe to call from the HTTP thread and doubles as a liveness probe. `engine/tests/smoke.ps1` drives a real engine through the sequences that used to crash it.
 
 ### Analysis pipeline
 

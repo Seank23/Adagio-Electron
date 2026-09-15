@@ -69,11 +69,15 @@ namespace Adagio
 			return toRead;
 		}
 
+		void DropAll()
+		{
+			m_ReadIndex.store(m_WriteIndex.load(std::memory_order_acquire), std::memory_order_release);
+		}
+
 		void Clear()
 		{
 			m_WriteIndex.store(0, std::memory_order_release);
 			m_ReadIndex.store(0, std::memory_order_release);
-			m_Buffer.clear();
 		}
 
 	private:

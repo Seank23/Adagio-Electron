@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(ADAGIO_BUILD_TESTS "Build the AdagioTests unit test target" ON)
+option(ADAGIO_ENABLE_PROFILING "Write engine/build/Application_Profile.json at runtime" OFF)
 
 include(FetchContent)
 
@@ -118,6 +119,17 @@ if (MSVC)
     # so the flags never reached the engine (B1). PUBLIC so AdagioEngine and
     # AdagioTests compile with the same floating-point model as AdagioCore.
     target_compile_options(AdagioCore PUBLIC /fp:fast /arch:AVX2 /permissive-)
+
+    # windows.h defines min and max as macros, which turn every kfr::min call
+    # into a syntax error in whichever translation unit happens to reach a
+    # Windows header first. Define it once rather than ordering includes by hand.
+    target_compile_definitions(AdagioCore PUBLIC NOMINMAX)
+endif()
+
+# The profiler writes from every thread through one unguarded stream and never
+# closes its session, so it stays off unless a build explicitly asks for it.
+if (ADAGIO_ENABLE_PROFILING)
+    target_compile_definitions(AdagioCore PUBLIC ADAGIO_PROFILE=1)
 endif()
 
 # ixwebsocket already exports its own include directory, so there is no need to
