@@ -1,4 +1,5 @@
 #pragma once
+#include <deque>
 #include <vector>
 #include <memory>
 #include "AudioFrame.h"
@@ -39,7 +40,7 @@ namespace Adagio
 
 	struct PersistentData
 	{
-		std::vector<Note> RollingNotes;
+		std::deque<Note> RollingNotes;
 		Chord PreviousChord;
 	};
 
@@ -53,6 +54,8 @@ namespace Adagio
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
 		std::vector<Peak> Peaks;
+		float BinHz;
+		int Harmonics = 0;
 
 		std::vector<Note> Notes;
 		std::map<int, float> KeyFrequencyHistogram;
@@ -79,6 +82,8 @@ namespace Adagio
 
 		void AddStage(std::unique_ptr<AnalysisStage> stage);
 		std::unique_ptr<AnalysisResult> ProcessFrame(const AudioFrame& frame);
+
+		void ResetPersistentData();
 
 		static nlohmann::json GetResultJson(const AnalysisResult& result);
 

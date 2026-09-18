@@ -17,10 +17,10 @@ namespace Adagio
 
 		size_t GetCapacity() const { return m_Capacity; }
 		size_t GetFreeCapacity() const { return m_Capacity - GetAvailableCount() - 1; }
-		size_t GetAvailableCount() const
+		size_t GetAvailableCount(size_t readFrom = -1) const
 		{
 			size_t writeVal = m_WriteIndex.load(std::memory_order_acquire);
-			size_t readVal = m_ReadIndex.load(std::memory_order_acquire);
+			size_t readVal = readFrom != -1 ? readFrom : m_ReadIndex.load(std::memory_order_acquire);
 			return (writeVal + m_Capacity - readVal) % m_Capacity;
 		}
 
@@ -49,7 +49,7 @@ namespace Adagio
 
 		size_t Read(T* outData, size_t count, size_t readFrom = -1)
 		{
-			size_t available = GetAvailableCount();
+			size_t available = GetAvailableCount(readFrom);
 			if (available == 0)
 				return 0;
 
@@ -66,7 +66,8 @@ namespace Adagio
 				std::memcpy(outData, m_Buffer.data() + readVal, right * sizeof(T));
 				std::memcpy(outData + right, m_Buffer.data(), (toRead - right) * sizeof(T));
 			}
-			m_ReadIndex.store((readVal + toRead) % m_Capacity, std::memory_order_release);
+			if (readFrom == -1)
+				m_ReadIndex.store((readVal + toRead) % m_Capacity, std::memory_order_release);
 			return toRead;
 		}
 

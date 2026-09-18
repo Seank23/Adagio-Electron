@@ -27,7 +27,7 @@ namespace Adagio
 				kfr::univector<float> filtered(frameLength);
 				for (size_t i = 0; i < frameLength; i++)
 				{
-					float freq = (i * context->Frame.SampleRate) / frameLength;
+					float freq = i * context->BinHz;
 					if (freq < lowCutC1)
 						filtered[i] = 0.0f;
 					else if (freq < lowCutC2)
@@ -62,14 +62,14 @@ namespace Adagio
 					"type": "float",	
 					"min": 0.0,
 					"max": 20000.0,
-					"default": 100.0
+					"default": 55.0
 				},
 				"LOW_CUT_C2": {
 					"name": "Low Cut C2",
 					"type": "float",	
 					"min": 0.0,
 					"max": 20000.0,
-					"default": 200.0
+					"default": 70.0
 				},
 				"HIGH_CUT_C1": {
 					"name": "High Cut C1",

@@ -57,7 +57,7 @@ namespace Adagio
 					val /= sum;
 			}
 
-			std::array<double, 12> similarity;
+			std::array<double, 12> similarity{};
 			FindTotalScaleSimilarity(notesHistogram, similarity);
 
 			double maxSimilarity = 0.0;

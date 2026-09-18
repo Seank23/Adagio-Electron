@@ -10,13 +10,13 @@
 #include "../Core/AudioDecoder.h"
 #include "../Core/MessageQueue.h"
 #include "../IO/AudioData.h"
+#include "../IO/PlaybackService.h"
 
-#include <kfr/base.hpp>
 #include <kfr/dsp.hpp>
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
-#include <iostream>
 
 namespace Adagio
 {
@@ -29,10 +29,11 @@ namespace Adagio
 	{
 	}
 
-	void AnalysisService::Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params)
+	void AnalysisService::Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params, const PlaybackService* playback)
 	{
 		StopAnalysis();
 		m_Decoder = decoder;
+		m_Playback = playback;
 		m_Params = params;
 		m_AudioSource = m_Decoder->GetAudioSource();
 
@@ -55,6 +56,7 @@ namespace Adagio
 	{
 		StopAnalysis();
 		m_Decoder.reset();
+		m_Playback = nullptr;
 		m_Params = AnalysisParams{};
 		m_AudioSource.reset();
 		m_Pipeline.reset();
@@ -78,6 +80,8 @@ namespace Adagio
 			std::vector<kfr::univector<float>> rollingAvg;
 			while (m_Running)
 			{
+				if (SyncSeekGeneration())
+					rollingAvg.clear();
 				result = ProcessCurrentFrame();
 				auto data = result->Context->Magnitudes;
 				if (m_RollingAvgCount > 1)
@@ -111,15 +115,48 @@ namespace Adagio
 
 	void AnalysisService::RequestCurrentFrameAnalysis()
 	{
+		// Ensure that the analysis thread is not running before making an adhoc request
+		if (m_Running.load(std::memory_order_acquire) || !m_Pipeline || !m_AnalysisBuffer)
+			return;
+
+		SyncSeekGeneration();
+		PublishCurrentFrame();
+	}
+
+	void AnalysisService::PublishCurrentFrame()
+	{
 		std::unique_ptr<AnalysisResult> result = ProcessCurrentFrame();
 		nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 		MessageQueue::GetInstance().Push(json.dump());
 	}
 
+	bool AnalysisService::SyncSeekGeneration()
+	{
+		const uint32_t generation = m_Decoder->GetSeekGeneration();
+		if (generation == m_SeekGenerationSeen)
+			return false;
+
+		m_SeekGenerationSeen = generation;
+		m_Pipeline->ResetPersistentData();
+		return true;
+	}
+
+	double AnalysisService::ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing)
+	{
+		if (!playing || lastFrameTimestamp <= 0.0)
+			return playbackTime;
+
+		constexpr double maxExtrapolationSeconds = 0.25;
+		const double wallDelta = std::clamp(now - lastFrameTimestamp, 0.0, maxExtrapolationSeconds);
+		return playbackTime + wallDelta * speed;
+	}
+
 	std::unique_ptr<AnalysisResult> AnalysisService::ProcessCurrentFrame()
 	{
-		double deltaTime = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9 - m_Decoder->GetLastPlaybackFrameTimestamp();
-		m_AnalysisTimestamp = m_Decoder->GetPlaybackTime() + deltaTime;
+		const double now = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9;
+		const double speed = m_Playback ? m_Playback->GetSpeed() : 1.0;
+
+		m_AnalysisTimestamp = ExtrapolatePlayhead(m_Decoder->GetPlaybackTime(), m_Decoder->GetLastPlaybackFrameTimestamp(), now, speed, m_Running.load(std::memory_order_acquire));
 		int currentFrameStart = std::clamp(static_cast<int>(m_AnalysisTimestamp * m_Params.SampleRate - m_Params.FrameLength / static_cast<float>(2)), 0, (int)m_AnalysisBuffer->GetCapacity());
 		kfr::univector<float> samples(m_Params.FrameLength);
 		size_t samplesRead = m_AnalysisBuffer->Read(samples.data(), m_Params.FrameLength, currentFrameStart);

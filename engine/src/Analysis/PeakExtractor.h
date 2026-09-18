@@ -34,9 +34,10 @@ namespace Adagio
 			const float minProminence = GetSetting<float>(settings, "MIN_PROMINENCE");
 			const float minSnr = GetSetting<float>(settings, "MIN_SNR");
 			const float scoreThreshold = GetSetting<float>(settings, "SCORE_THRESHOLD");
+			const std::string useInterpolatedBins = GetSetting<std::string>(settings, "USE_INTERP_BINS");
 
 			const float sampleRate = static_cast<float>(context->Frame.SampleRate);
-			const float binToFreq = sampleRate / static_cast<float>(bins);
+			const float binToFreq = context->BinHz;
 			const float nyquist = sampleRate * 0.5f;
 			const float maxFreq = std::min(maxFreqSetting, nyquist);
 
@@ -111,8 +112,8 @@ namespace Adagio
 				if (prominence < minProminence * localMedian)
 					continue;
 
-				//const float interpolatedBin = ParabolicInterpolation(spectrum, static_cast<int>(i));
-				const float freq = i * binToFreq;
+				float bin = useInterpolatedBins == "Yes" ? ParabolicInterpolation(spectrum, static_cast<int>(i)) : (float)i;
+				const float freq = bin * binToFreq;
 				if (freq < minFreq || freq > maxFreq)
 					continue;
 
@@ -125,37 +126,22 @@ namespace Adagio
 				return;
 			}
 
-			// Compute a composite score that blends local SNR (whitened),
-			// absolute value in the working domain, and prominence.
-			// Each component is normalised to [0,1] within this frame's
-			// candidates so that no single factor dominates, then weighted.
-			float maxWhitened = candidates[0].whitened;
-			float minWhitened = candidates[0].whitened;
-			float maxSpec = candidates[0].specVal;
-			float minSpec = candidates[0].specVal;
-			float maxProm = candidates[0].prominence;
-			float minProm = candidates[0].prominence;
-			for (const auto& c : candidates)
-			{
-				maxWhitened = std::max(maxWhitened, c.whitened);
-				minWhitened = std::min(minWhitened, c.whitened);
-				maxSpec = std::max(maxSpec, c.specVal);
-				minSpec = std::min(minSpec, c.specVal);
-				maxProm = std::max(maxProm, c.prominence);
-				minProm = std::min(minProm, c.prominence);
-			}
-			const float whiteRange = (maxWhitened - minWhitened > 1e-6f) ? (maxWhitened - minWhitened) : 1.0f;
-			const float specRange = (maxSpec - minSpec > 1e-6f) ? (maxSpec - minSpec) : 1.0f;
-			const float promRange = (maxProm - minProm > 1e-6f) ? (maxProm - minProm) : 1.0f;
+			// Score each candidate against references that belong to the frame rather
+			// than to the candidate set. This keeps Score comparable between frames,
+			// which is what the key and chord histograms accumulate.
+			const float noiseFloorDb = ToDb(NoiseFloor(spectrum, startBin, endBin));
+			float maxSpec = spectrum[startBin];
+			for (size_t i = startBin; i <= endBin; ++i)
+				maxSpec = std::max(maxSpec, spectrum[i]);
 
 			constexpr float wSnr = 0.25f;
 			constexpr float wMag = 0.30f;
 			constexpr float wProm = 0.45f;
 			for (auto& c : candidates)
 			{
-				const float normSnr = (c.whitened - minWhitened) / whiteRange;
-				const float normMag = (c.specVal - minSpec) / specRange;
-				const float normProm = (c.prominence - minProm) / promRange;
+				const float normSnr = NormaliseAboveFloor(c.whitened, noiseFloorDb, context->Harmonics);
+				const float normMag = (maxSpec > 0.0f) ? std::min(1.0f, c.specVal / maxSpec) : 0.0f;
+				const float normProm = NormaliseAboveFloor(c.prominence, noiseFloorDb, context->Harmonics);
 				c.score = wSnr * normSnr + wMag * normMag + wProm * normProm;
 			}
 
@@ -229,7 +215,7 @@ namespace Adagio
 					"type": "float",
 					"min": 500.0,
 					"max": 12000.0,
-					"default": 5000.0
+					"default": 4000.0
 				},
 				"MIN_PROMINENCE": {
 					"name": "Min Peak Prominence",
@@ -243,7 +229,7 @@ namespace Adagio
 					"type": "float",
 					"min": 0.001,
 					"max": 30.0,
-					"default": 0.1
+					"default": 0.2
 				},
 				"MIN_SEMITONE_DISTANCE": {
 					"name": "Min Peak Distance (semitones)",
@@ -264,7 +250,13 @@ namespace Adagio
 					"type": "float",
 					"min": 0.0,
 					"max": 1.0,
-					"default": 0.05
+					"default": 0.15
+				},
+				"USE_INTERP_BINS": {
+					"name": "Use Interpolated Bins",
+					"type": "enum",	
+					"options": ["Yes","No"],	
+					"default": "Yes"
 				}
 			})json");
 		}
@@ -274,6 +266,31 @@ namespace Adagio
 		{
 			constexpr float epsilon = 1e-12f;
 			return 20.0f * std::log10(std::max(value, epsilon));
+		}
+
+		// The level the frame sits at where nothing is sounding: the median of the
+		// searched band, which no single peak can move.
+		float NoiseFloor(const std::vector<float>& spectrum, size_t startBin, size_t endBin) const
+		{
+			std::vector<float> band(spectrum.begin() + startBin, spectrum.begin() + endBin + 1);
+			const size_t mid = band.size() / 2;
+			std::nth_element(band.begin(), band.begin() + mid, band.end());
+			float median = band[mid];
+			if ((band.size() & 1) == 0)
+			{
+				const float lower = *std::max_element(band.begin(), band.begin() + mid);
+				median = (lower + median) * 0.5f;
+			}
+			return median;
+		}
+
+		// How far a value stands above the frame's noise floor, in dB, mapped onto
+		// [0,1]. Both ends of that measure are properties of the frame, so a lone
+		// peak still scores what its level earns.
+		float NormaliseAboveFloor(float value, float floorDb, int harmonics) const
+		{
+			float rangeDb = 60.0f * (harmonics + 1);
+			return std::clamp((ToDb(value) - floorDb) / rangeDb, 0.0f, 1.0f);
 		}
 
 		float ParabolicInterpolation(const std::vector<float>& data, int k) const

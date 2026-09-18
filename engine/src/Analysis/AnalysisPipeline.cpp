@@ -1,10 +1,8 @@
 #include "AnalysisPipeline.h"
 #include "AnalysisStage.h"
-#include "AnalysisUtils.h"
 
 #include <chrono>
 #include <algorithm>
-#include <iostream>
 
 namespace Adagio
 {
@@ -47,6 +45,12 @@ namespace Adagio
 		return std::move(result);
 	}
 
+	void AnalysisPipeline::ResetPersistentData()
+	{
+		m_PersistentData->RollingNotes.clear();
+		m_PersistentData->PreviousChord = Chord();
+	}
+
 	nlohmann::json AnalysisPipeline::GetResultJson(const AnalysisResult& result)
 	{
 		nlohmann::json notesJson;
@@ -75,6 +79,7 @@ namespace Adagio
 			{"value", {
 					{"executionTimeMs", result.ExecutionTimeMs},
 					{"sampleRate", result.SampleRate},
+					{"binHz", result.Context->BinHz},
 					{"magnitudes", result.Context->Magnitudes},
 					{"maxMagnitude", result.MaxMagnitude},
 					{"notes", notesJson},

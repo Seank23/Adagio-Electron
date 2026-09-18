@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCanvasWidth } from '../store/appSlice';
@@ -15,9 +15,12 @@ const SpectrumCanvas = () => {
     const canvasWidth = useSelector(state => state.app.canvasWidth);
     const spectrumData = useSelector(state => state.analysis.spectrumData);
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
+    const binHz = useSelector(state => state.analysis.binHz);
     const isFileOpen = useSelector(state => state.app.isFileOpen);
     const maxSpectrumValue = useSelector(state => state.analysis.maxSpectrumValue);
     const showLogScale = useSelector(state => state.settings.showLogScale);
+
+    const maxSpectrumHz = useMemo(() => binHz * spectrumData.length, [binHz, spectrumData.length]);
 
     const notes = useSelector(state => state.analysis.notes);
 
@@ -50,7 +53,7 @@ const SpectrumCanvas = () => {
 
         const freqToXLog = (freq, width) => {
             const minLog = Math.log10(MIN_FREQ);
-            const maxLog = Math.log10(spectrumSR / 2);
+            const maxLog = Math.log10(maxSpectrumHz);
             const logFreq = Math.log10(freq);
 
             return (
@@ -60,11 +63,11 @@ const SpectrumCanvas = () => {
         };
 
         const freqToX = (freq, width) => {
-            return (freq / (spectrumSR / 2)) * width;
+            return (freq / maxSpectrumHz) * width;
         };
 
-        const binToFreq = (binIndex, dataLength = spectrumData.length) => {
-            return binIndex * (spectrumSR / dataLength);
+        const binToFreq = (binIndex) => {
+            return binIndex * binHz;
         };
 
         const magToY = (mag, height) => {
@@ -89,7 +92,7 @@ const SpectrumCanvas = () => {
 
                 for (let i = 0; i < spectrumData.length; i++) {
                     const freq = binToFreq(i);
-                    if (freq < MIN_FREQ || freq > spectrumSR / 2) {
+                    if (freq < MIN_FREQ || freq > maxSpectrumHz) {
                         continue; // Skip frequencies outside the range
                     }
                     const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
@@ -140,12 +143,12 @@ const SpectrumCanvas = () => {
                     return;
                 }
 
-                if (freq < MIN_FREQ || freq > spectrumSR / 2) {
+                if (freq < MIN_FREQ || freq > maxSpectrumHz) {
                     return;
                 }
 
                 const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
-                const y = magToY(mag, canvas.height);
+                const y = magToY(mag, canvas.height - 50);
 
                 context.beginPath();
                 context.arc(x, y, 3, 0, Math.PI * 2);

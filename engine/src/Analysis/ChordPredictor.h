@@ -24,9 +24,9 @@ namespace Adagio
 				return;
 
 			std::vector<Note> rollingNotes;
-			for (size_t i = context->PersistentData->RollingNotes.size() - 1; i > 0; i--)
+			for (size_t i = context->PersistentData->RollingNotes.size(); i-- > 0;)
 			{
-				if (timestamp - context->PersistentData->RollingNotes[i].Timestamp <= rollingWindowTime)
+				if (std::abs(timestamp - context->PersistentData->RollingNotes[i].Timestamp) <= rollingWindowTime)
 					rollingNotes.push_back(context->PersistentData->RollingNotes[i]);
 				else
 					break;
@@ -94,7 +94,7 @@ namespace Adagio
 					chord.Name = chord.Root + chord.Quality;
 					chord.Notes = prominentNotes;
 					chord.RootOccurences = noteClasses[chordNotes[0].first].size();
-					chord.NumExtentions = fifthOmitted == 1 ? intervals.size() - 2 : intervals.size() - 3;
+					chord.NumExtentions = fifthOmitted == 1 ? intervals.size() - 2 : std::max((int)intervals.size() - 3, 0);
 					chord.FifthOmitted = fifthOmitted;
 					possibleChords.push_back(chord);
 				}
@@ -237,46 +237,36 @@ namespace Adagio
 					return "m" + AddRemainingNotes(intervals);
 				}
 
-				if (Contains(intervals, 2) && Contains(intervals, 7)) // Suspended 2 chords
+				if (Contains(intervals, 2) && Contains(intervals, 7) && !(Contains(intervals, 5) && Contains(intervals, 10))) // Suspended 2 chords
 				{
+					const bool hasSeventh = Contains(intervals, 10);
 					Remove(intervals, 2);
 					Remove(intervals, 7);
 
-					if (Contains(intervals, 10)) // Contains m7
+					if (hasSeventh) // Contains m7
 					{
 						Remove(intervals, 10);
-						if (Contains(intervals, 2)) // Contains 2/9
-						{
-							Remove(intervals, 2);
-							if (Contains(intervals, 5))
-							{
-								Remove(intervals, 5);
-								return "9sus2" + AddRemainingNotes(intervals);
-							}
-							return "7sus2" + AddRemainingNotes(intervals);
-						}
+						return "7sus2" + AddRemainingNotes(intervals);
 					}
 					return "sus2" + AddRemainingNotes(intervals);
 				}
 
 				if (Contains(intervals, 5) && Contains(intervals, 7)) // Suspended 4 chords
 				{
+					const bool hasSeventh = Contains(intervals, 10);
+					const bool hasNinth = Contains(intervals, 2);
 					Remove(intervals, 5);
 					Remove(intervals, 7);
 
-					if (Contains(intervals, 10)) // Contains m7
+					if (hasSeventh) // Contains m7
 					{
 						Remove(intervals, 10);
-						if (Contains(intervals, 2)) // Contains 2/9
+						if (hasNinth) // Contains 2/9
 						{
 							Remove(intervals, 2);
-							if (Contains(intervals, 5))
-							{
-								Remove(intervals, 5);
-								return "9sus4" + AddRemainingNotes(intervals);
-							}
-							return "7sus4" + AddRemainingNotes(intervals);
+							return "9sus4" + AddRemainingNotes(intervals);
 						}
+						return "7sus4" + AddRemainingNotes(intervals);
 					}
 					return "sus4" + AddRemainingNotes(intervals);
 				}
@@ -401,7 +391,7 @@ namespace Adagio
 			}
 			avgOccurences /= rootOccurences.size();
 			for (int i = 0; i < rootOccurences.size(); i++)
-				rootOccurences[i] -= avgMagnitude;
+				rootOccurences[i] -= avgOccurences;
 			Normalise(rootOccurences);
 
 			std::vector<float> rootFreq(chords.size());
@@ -434,7 +424,7 @@ namespace Adagio
 
 			std::vector<float> fifthOmitted(chords.size());
 			for (int i = 0; i < chords.size(); i++)
-				fifthOmitted[i] = chords[i].FifthOmitted;
+				fifthOmitted[i] = -chords[i].FifthOmitted;
 			Normalise(fifthOmitted);
 
 			std::vector<float> chordPredictedBefore(chords.size());
@@ -443,7 +433,7 @@ namespace Adagio
 
 			std::vector<float> overallProb(chords.size());
 			for (int i = 0; i < chords.size(); i++)
-				overallProb[i] = 1.1f * rootMagnitudes[i] + 1.0f * rootOccurences[i] + 2.3f * chordExtensions[i] + 1.8f * rootFreq[i] + 2.5f * notSuspended[i] + 1.0f * fifthOmitted[i] + 0.7f * chordPredictedBefore[i];
+				overallProb[i] = 1.1f * rootMagnitudes[i] + 1.0f * rootOccurences[i] + 2.3f * chordExtensions[i] + 1.8f * rootFreq[i] + 1.0f * notSuspended[i] + 1.0f * fifthOmitted[i] + 0.7f * chordPredictedBefore[i];
 			Normalise(overallProb);
 			float probSum = overallProb[0] + 1;
 			for (int i = 1; i < chords.size(); i++)

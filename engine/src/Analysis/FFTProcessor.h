@@ -39,6 +39,7 @@ namespace Adagio
 			for (int i = 0; i < fftOutputComplex.size(); i++)
 				fftOutputMagnitude.push_back(std::abs(fftOutputComplex[i]));
 
+			context->BinHz = context->Frame.SampleRate / (float)fftOutputMagnitude.size();
 			fftOutputMagnitude = fftOutputMagnitude.truncate(fftOutputMagnitude.size() / 2);
 			context->Spectrum = std::move(fftOutputComplex);
 			context->Magnitudes = std::move(fftOutputMagnitude);

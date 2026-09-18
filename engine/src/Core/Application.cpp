@@ -247,7 +247,7 @@ namespace Adagio
 			outError = "Could not open an audio output device.";
 			return false;
 		}
-		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 });
+		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 }, m_PlaybackService.get());
 
 		PushEvent({ {"type", "fileLoaded"}, {"value", { {"duration", m_AudioData->Duration} }} });
 		waveformThread.join();

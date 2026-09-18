@@ -16,11 +16,12 @@ namespace Adagio
 			const size_t frameLength = data.size();
 			nlohmann::json settings = context->Settings;
 
-			const int floor = GetSetting<float>(settings, "FLOOR");
-			int harmonics = GetSetting<int>(settings, "HARMONICS");
-			float magScale = GetSetting<float>(settings, "MAG_SCALE");
-			std::string shouldSquare = GetSetting<std::string>(settings, "SQUARE");
-			int interpolationFactor = GetSetting<int>(settings, "INTERP_FACTOR");
+			const float floor = GetSetting<float>(settings, "FLOOR");
+			const int harmonics = GetSetting<int>(settings, "HARMONICS");
+			const float magScale = GetSetting<float>(settings, "MAG_SCALE");
+			const std::string shouldSquare = GetSetting<std::string>(settings, "SQUARE");
+			const std::string normalizeOutput = GetSetting<std::string>(settings, "NORMALIZE");
+			const int interpolationFactor = GetSetting<int>(settings, "INTERP_FACTOR");
 
 			if (floor > 0.0f)
 			{
@@ -37,7 +38,10 @@ namespace Adagio
 				Downsample(downsampled, data, i + 2);
 				spectrums.push_back(std::move(downsampled));
 			}
-			float maxVal = *std::max_element(data.begin(), data.end());
+
+			float maxVal = 1.0f;
+			if (normalizeOutput == "Before Downsampling")
+				maxVal = *std::max_element(data.begin(), data.end());
 
 			kfr::univector<float> productSpectrum(frameLength);
 			for (int i = 0; i < frameLength; i++)
@@ -51,13 +55,23 @@ namespace Adagio
 					productSpectrum[i] *= productSpectrum[i];
 				if (std::isnan(productSpectrum[i]))
 					productSpectrum[i] = 0.0f;
-				productSpectrum[i] /= maxVal > 0.0f ? maxVal : 1.0f;
+				if (normalizeOutput == "Before Downsampling")
+					productSpectrum[i] /= maxVal > 0.0f ? maxVal : 1.0f;
 			}
+			if (normalizeOutput == "After Downsampling")
+			{
+				float maxProductVal = *std::max_element(productSpectrum.begin(), productSpectrum.end());
+				for (int i = 0; i < productSpectrum.size(); i++)
+					productSpectrum[i] /= maxProductVal > 0.0f ? maxProductVal : 1.0f;
+			}
+
+			context->Harmonics = harmonics;
 
 			if (interpolationFactor > 1)
 			{
 				kfr::univector<float> interpolated(productSpectrum.size() * interpolationFactor);
 				Interpolate(interpolated, productSpectrum, interpolationFactor);
+				context->BinHz /= (float)interpolationFactor;
 				context->Magnitudes.resize(interpolated.size());
 				context->Magnitudes = std::move(interpolated);
 			}
@@ -81,7 +95,7 @@ namespace Adagio
 					"type": "int",	
 					"min": 0,
 					"max": 5,	
-					"default": 3
+					"default": 2
 				},
 				"INTERP_FACTOR": {
 					"name": "Interpolation Factor",
@@ -109,6 +123,12 @@ namespace Adagio
 					"min": 0.0,
 					"max": 10.0,	
 					"default": 1.0
+				},
+				"NORMALIZE": {
+					"name": "Normalize Output",
+					"type": "enum",	
+					"options": ["Before Downsampling", "After Downsampling", "No"],	
+					"default": "No"
 				}
 			})");
 		}
@@ -137,8 +157,9 @@ namespace Adagio
 			if (interpolationFactor > 0)
 			{
 				int outIndex = 0;
-				for (int i = 0; i < srcData.size() / interpolationFactor; i++)
+				for (int i = 0; i < srcData.size() - 1; i++)
 				{
+
 					outData[outIndex++] = srcData[i];
 					float delta = srcData[i + 1] - srcData[i];
 					for (int j = 1; j < interpolationFactor; j++)
