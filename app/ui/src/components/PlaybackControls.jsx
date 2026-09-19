@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faVolumeHigh, faClockRotateLeft } from '@fortawesome/free-solid-svg-icons'
 import Styled from '@emotion/styled';
 import { setIsPlaying, setIsStarted } from '../store/playbackSlice';
+import { setStatusMessage } from '../store/appSlice';
 import { useSelector, useDispatch } from 'react-redux';
 
 export const PlaybackControls = () => {
@@ -30,15 +31,21 @@ export const PlaybackControls = () => {
 
   const handlePlay = async () => {
     if (!audioPlaying) {
-      await window.api.play();
-      dispatch(setIsPlaying(true));
+      const result = await window.api.play();
+      if (result?.ok === false)
+        dispatch(setStatusMessage({ type: 'error', message: result.error }));
+      else
+        dispatch(setIsPlaying(true));
     }
   };
 
   const handlePause = async () => {
     if (audioPlaying) {
-      await window.api.pause();
-      dispatch(setIsPlaying(false));
+      const result = await window.api.pause();
+      if (result?.ok === false)
+        dispatch(setStatusMessage({ type: 'error', message: result.error }));
+      else
+        dispatch(setIsPlaying(false));
     }
   };
 

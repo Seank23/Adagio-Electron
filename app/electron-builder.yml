@@ -1,9 +1,15 @@
 appId: com.example.adagio
 productName: Adagio
 directories:
-  output: dist
+  # Not "dist": electron-builder excludes its own output directory from the packaged
+  # files, and Vite builds the UI into dist/ui.
+  output: release
+files:
+  - package.json
+  - electron/**/*
+  - dist/ui/**/*
 extraResources:
-  - from: engine/
+  - from: engine-bin/
     to: engine/
     filter:
       - "**/*"

@@ -1,12 +1,24 @@
+import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { useEngineEvents } from '../hooks/useEngineEvents';
+import { useEngineEvents, useEngineConnection } from '../hooks/useEngineEvents';
 import { setDuration, setCurrentTime, setWaveformData, resetPlayback } from '../store/playbackSlice';
-import { setStatusMessage, setIsFileOpen } from '../store/appSlice'; 
+import { setStatusMessage, setIsFileOpen, setConnectionState, setEngineStatus } from '../store/appSlice';
 import { EVENT_TYPE } from '../utils/utils';
 import { setAnalysisData } from '../store/analysisSlice';
 
 export default function EngineEventRouter() {
     const dispatch = useDispatch();
+    const connectionState = useEngineConnection();
+
+    useEffect(() => {
+        dispatch(setConnectionState(connectionState));
+    }, [connectionState, dispatch]);
+
+    // The other half of the engine's health: whether main could start the process at
+    // all. The socket only says whether it is reachable now.
+    useEffect(() => {
+        return window.api.onEngineStatus(status => dispatch(setEngineStatus(status)));
+    }, [dispatch]);
 
     useEngineEvents(async msg => {
         switch (msg.type) {
@@ -37,7 +49,6 @@ export default function EngineEventRouter() {
             dispatch(setStatusMessage({ type: 'info', message: msg?.value }));
             break;
         case EVENT_TYPE.WAVEFORM_DATA:
-            console.log(msg?.value);
             dispatch(setWaveformData(msg?.value));
             break;
         case EVENT_TYPE.ANALYSIS:

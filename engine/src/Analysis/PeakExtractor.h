@@ -250,7 +250,7 @@ namespace Adagio
 					"type": "float",
 					"min": 0.0,
 					"max": 1.0,
-					"default": 0.15
+					"default": 0.25
 				},
 				"USE_INTERP_BINS": {
 					"name": "Use Interpolated Bins",

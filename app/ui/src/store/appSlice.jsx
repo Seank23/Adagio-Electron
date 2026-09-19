@@ -6,6 +6,8 @@ const appSlice = createSlice({
         statusMessage: {type: '', message: ''},
         isFileOpen: false,
         canvasWidth: 1000,
+        connectionState: 'connecting',
+        engineStatus: {state: 'starting', error: ''},
     },
     reducers: {
         setStatusMessage: (state, action) => {
@@ -20,8 +22,21 @@ const appSlice = createSlice({
         setCanvasWidth: (state, action) => {
             state.canvasWidth = action.payload;
         },
+        setConnectionState: (state, action) => {
+            state.connectionState = action.payload;
+        },
+        setEngineStatus: (state, action) => {
+            state.engineStatus = action.payload;
+        },
     },
 });
 
-export const { setStatusMessage, resetStatus, setIsFileOpen, setCanvasWidth } = appSlice.actions;
+export const {
+    setStatusMessage,
+    resetStatus,
+    setIsFileOpen,
+    setCanvasWidth,
+    setConnectionState,
+    setEngineStatus,
+} = appSlice.actions;
 export default appSlice.reducer;

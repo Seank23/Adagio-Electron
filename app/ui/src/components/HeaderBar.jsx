@@ -8,14 +8,23 @@ const HeaderBar = () => {
   const fileOpen = useSelector(state => state.app.isFileOpen);
   const audioPlaying = useSelector(state => state.playback.isPlaying);
 
-    const handleOpenCloseFile = async () => {
+  const reportIfFailed = result => {
+    if (result?.ok === false)
+      dispatch(setStatusMessage({ type: 'error', message: result.error }));
+  };
+
+  const handleOpenCloseFile = async () => {
     if (fileOpen) {
-      await window.api.clear();
-    } else {
-      const file = await window.api.selectAudioFile();
-      dispatch(setStatusMessage({ type: 'loading', message: 'Loading audio...' }));
-      await window.api.load(file);
+      reportIfFailed(await window.api.clear());
+      return;
     }
+
+    const file = await window.api.selectAudioFile();
+    if (!file)
+      return;
+
+    dispatch(setStatusMessage({ type: 'loading', message: 'Loading audio...' }));
+    reportIfFailed(await window.api.load(file));
   };
 
   return (

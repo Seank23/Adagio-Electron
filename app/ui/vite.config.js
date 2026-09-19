@@ -10,7 +10,10 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   build: {
-    outDir: path.resolve(dirname, '../dist/ui')
+    outDir: path.resolve(dirname, '../dist/ui'),
+    // The outDir sits outside the project root, so Vite leaves it alone unless told
+    // otherwise, and electron-builder would then package every stale bundle in it.
+    emptyOutDir: true
   },
   server: {
     port: 5173,
