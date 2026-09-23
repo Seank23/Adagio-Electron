@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
+import { selectIsFileOpen } from '../store/playbackSlice';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCanvasWidth } from '../store/appSlice';
@@ -16,7 +17,7 @@ const SpectrumCanvas = () => {
     const spectrumData = useSelector(state => state.analysis.spectrumData);
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
     const binHz = useSelector(state => state.analysis.binHz);
-    const isFileOpen = useSelector(state => state.app.isFileOpen);
+    const isFileOpen = useSelector(selectIsFileOpen);
     const maxSpectrumValue = useSelector(state => state.analysis.maxSpectrumValue);
     const showLogScale = useSelector(state => state.settings.showLogScale);
 

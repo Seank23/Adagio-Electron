@@ -7,11 +7,9 @@ namespace Adagio
 	// decode; Ready is loaded but not started; Playing and Paused swap freely.
 	enum class TransportState
 	{
-		Empty,
-		Loading,
-		Ready,
-		Playing,
-		Paused
+#define ADAGIO_STATE_ENUM(cppName, wireName) cppName,
+		ADAGIO_PROTOCOL_STATES(ADAGIO_STATE_ENUM)
+#undef ADAGIO_STATE_ENUM
 	};
 
 	const char* ToString(TransportState state);

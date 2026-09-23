@@ -1,7 +1,9 @@
 #include "Application.h"
 #include "AudioDecoder.h"
+#include "CommandParser.h"
 #include "CommandQueue.h"
 #include "MessageQueue.h"
+#include "Trace.h"
 #include "../Analysis/AnalysisService.h"
 #include "../Debug/Instrumentation.h"
 #include "../IO/AudioData.h"
@@ -25,12 +27,38 @@ namespace Adagio
 
 		void PushError(const std::string& message)
 		{
-			PushEvent({ {"type", "error"}, {"value", message} });
+			PushEvent({ {"type", Protocol::Event::Error}, {"value", message} });
 		}
 
 		void PushInfo(const std::string& message)
 		{
-			PushEvent({ {"type", "info"}, {"value", message} });
+			PushEvent({ {"type", Protocol::Event::Info}, {"value", message} });
+		}
+
+		CommandOutcome Failed(const std::string& error)
+		{
+			CommandOutcome outcome;
+			outcome.Ok = false;
+			outcome.Error = error;
+			return outcome;
+		}
+
+		bool ChangesTransport(CommandType type)
+		{
+			switch (type)
+			{
+			case CommandType::Load:
+			case CommandType::Play:
+			case CommandType::Pause:
+			case CommandType::Stop:
+			case CommandType::Clear:
+			case CommandType::Seek:
+			case CommandType::SetVolume:
+			case CommandType::SetSpeed:
+				return true;
+			default:
+				return false;
+			}
 		}
 	}
 
@@ -73,33 +101,39 @@ namespace Adagio
 	{
 		Command cmd;
 		while (CommandQueue::GetInstance().Pop(cmd))
-			HandleCommand(cmd);
+		{
+			Trace("[run] handling ", ToString(cmd.Type), " id=", cmd.RequestId);
+			const CommandOutcome outcome = HandleCommand(cmd);
+			Trace("[run] handled ", ToString(cmd.Type), " ok=", outcome.Ok);
+			m_CommandsHandled.fetch_add(1, std::memory_order_acq_rel);
+
+			if (!cmd.RequestId.empty())
+				MessageQueue::GetInstance().PushTo(cmd.ClientId, ReplyJson(cmd.RequestId, outcome.Ok, outcome.Value, outcome.Error));
+		}
 	}
 
-	void Application::HandleCommand(const Command& cmd)
+	CommandOutcome Application::HandleCommand(const Command& cmd)
 	{
-		// Bumped on the way out, refusals included, so /status can be polled for
-		// "this command has been dealt with".
-		struct Counted
-		{
-			std::atomic<uint64_t>& Counter;
-			~Counted() { Counter.fetch_add(1, std::memory_order_acq_rel); }
-		} counted{ m_CommandsHandled };
-
 		const TransportState state = m_State.load(std::memory_order_acquire);
 
-		// One gate for every command. Anything the current state cannot serve is
-		// answered with an error rather than run against half-built services.
 		if (!IsCommandLegal(state, cmd.Type))
 		{
-			PushEvent({
-				{"type", "error"},
-				{"value", RejectionReason(state, cmd.Type)},
-				{"command", ToString(cmd.Type)},
-				{"state", ToString(state)}
-			});
-			return;
+			const std::string reason = RejectionReason(state, cmd.Type);
+			// A command with no id came from inside the engine or from a client that
+			// wanted no acknowledgement, so the refusal has to travel as an event.
+			if (cmd.RequestId.empty())
+			{
+				PushEvent({
+					{"type", Protocol::Event::Error},
+					{"value", reason},
+					{"command", ToString(cmd.Type)},
+					{"state", ToString(state)}
+				});
+			}
+			return Failed(reason);
 		}
+
+		CommandOutcome outcome;
 
 		switch (cmd.Type)
 		{
@@ -119,8 +153,11 @@ namespace Adagio
 			{
 				ClearAudio();
 				m_State.store(TransportState::Empty, std::memory_order_release);
-				PushError(error);
-				PushEvent({ {"type", "fileClosed"} });
+				if (cmd.RequestId.empty())
+					PushError(error);
+				// Everyone needs this one: it is what clears the loading message.
+				PushEvent({ {"type", Protocol::Event::FileClosed} });
+				outcome = Failed(error);
 			}
 			break;
 		}
@@ -145,7 +182,7 @@ namespace Adagio
 		case CommandType::Clear:
 			ClearAudio();
 			m_State.store(TransportState::Empty, std::memory_order_release);
-			PushEvent({ {"type", "fileClosed"} });
+			PushEvent({ {"type", Protocol::Event::FileClosed} });
 			break;
 		case CommandType::Seek:
 		{
@@ -156,22 +193,50 @@ namespace Adagio
 			break;
 		}
 		case CommandType::SetVolume:
-			m_PlaybackService->SetVolume(cmd.Value);
+			m_PlaybackService->SetVolume(std::clamp(cmd.Value, Protocol::VolumeMin, Protocol::VolumeMax));
 			break;
 		case CommandType::SetSpeed:
-			m_PlaybackService->SetSpeed(cmd.Value);
+			m_PlaybackService->SetSpeed(std::clamp(cmd.Value, Protocol::SpeedMin, Protocol::SpeedMax));
 			break;
 		case CommandType::AnalyseFrame:
 			m_AnalysisService->RequestCurrentFrameAnalysis();
 			break;
+		case CommandType::GetAnalysisSchema:
+			outcome.Value = m_AnalysisService->GetSchemaJson();
+			break;
+		case CommandType::SetAnalysisSetting:
+		{
+			if (!cmd.Args.contains("stage") || !cmd.Args.at("stage").is_string()
+				|| !cmd.Args.contains("key") || !cmd.Args.at("key").is_string()
+				|| !cmd.Args.contains("value"))
+			{
+				outcome = Failed("setAnalysisSetting needs a stage, a key and a value.");
+				break;
+			}
+
+			std::string error;
+			if (!m_AnalysisService->SetSetting(cmd.Args.at("stage").get<std::string>(), cmd.Args.at("key").get<std::string>(), cmd.Args.at("value"), error))
+				outcome = Failed(error);
+			break;
+		}
 		case CommandType::Status:
-			MessageQueue::GetInstance().Push(GetStatusJson());
+			outcome.Value = GetStatusJson();
 			break;
 		case CommandType::Shutdown:
 			PushInfo("Engine shutting down.");
 			m_Running.store(false, std::memory_order_release);
 			break;
 		}
+
+		if (ChangesTransport(cmd.Type))
+			PushTransport();
+
+		return outcome;
+	}
+
+	void Application::PushTransport()
+	{
+		PushEvent({ {"type", Protocol::Event::Transport}, {"value", GetStatusJson()} });
 	}
 
 	bool Application::LoadAudio(const std::string& filePath, std::string& outError)
@@ -218,24 +283,17 @@ namespace Adagio
 		std::thread waveformThread([&]()
 		{
 			waveformBuilder.BuildWaveform(m_AudioData);
-			std::string json = "{\"type\":\"waveformData\",\"value\":[";
-			auto& resolutions = waveformBuilder.GetAvailableResolutions();
-			for (size_t i = 0; i < resolutions.size(); i++)
+			nlohmann::json resolutions = nlohmann::json::array();
+			for (int resolution : waveformBuilder.GetAvailableResolutions())
 			{
-				const auto& data = waveformBuilder.GetWaveformData(resolutions[i]);
-				json += "{\"resolution\":" + std::to_string(resolutions[i]) + ",\"peaks\":[";
-				for (size_t j = 0; j < data.size(); ++j)
-				{
-					json += std::to_string(data[j].Max);
-					if (j < data.size() - 1)
-						json += ",";
-				}
-				json += "]}";
-				if (i < resolutions.size() - 1)
-					json += ",";
+				const auto& data = waveformBuilder.GetWaveformData(resolution);
+				std::vector<float> peaks;
+				peaks.reserve(data.size());
+				for (const auto& peak : data)
+					peaks.push_back(peak.Max);
+				resolutions.push_back({ {"resolution", resolution}, {"peaks", std::move(peaks)} });
 			}
-			json += "]}";
-			MessageQueue::GetInstance().Push(json);
+			PushEvent({ {"type", Protocol::Event::WaveformData}, {"value", resolutions} });
 		});
 
 		m_AudioDecoder->Init(m_AudioData);
@@ -249,7 +307,7 @@ namespace Adagio
 		}
 		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 }, m_PlaybackService.get());
 
-		PushEvent({ {"type", "fileLoaded"}, {"value", { {"duration", m_AudioData->Duration} }} });
+		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		waveformThread.join();
 		return true;
 	}
@@ -270,20 +328,16 @@ namespace Adagio
 		}
 	}
 
-	std::string Application::GetStatusJson() const
+	nlohmann::json Application::GetStatusJson() const
 	{
 		const TransportState state = m_State.load(std::memory_order_acquire);
-		const nlohmann::json status = {
-			{"type", "status"},
-			{"value", {
-				{"state", ToString(state)},
-				{"duration", m_Duration.load(std::memory_order_acquire)},
-				{"position", m_PlaybackService->GetPositionSeconds()},
-				{"speed", m_PlaybackService->GetSpeed()},
-				{"volume", m_PlaybackService->GetVolume()},
-				{"commandsHandled", m_CommandsHandled.load(std::memory_order_acquire)}
-			}}
+		return {
+			{"state", ToString(state)},
+			{"duration", m_Duration.load(std::memory_order_acquire)},
+			{"position", m_PlaybackService->GetPositionSeconds()},
+			{"speed", m_PlaybackService->GetSpeed()},
+			{"volume", m_PlaybackService->GetVolume()},
+			{"commandsHandled", m_CommandsHandled.load(std::memory_order_acquire)}
 		};
-		return status.dump();
 	}
 }

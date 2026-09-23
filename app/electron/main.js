@@ -1,8 +1,8 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
+const { randomBytes } = require('crypto');
 const path = require('path');
 
-const ENGINE_HOST = 'http://127.0.0.1:5000';
 const ENGINE_READY_LINE = 'Adagio engine ready';
 const ENGINE_READY_TIMEOUT_MS = 10000;
 const ENGINE_SHUTDOWN_TIMEOUT_MS = 3000;
@@ -13,6 +13,10 @@ let mainWindow = null;
 let engineProcess = null;
 let engineStatus = { state: 'starting', error: '' };
 let quitting = false;
+
+// One secret per launch, handed to the engine on its command line and to the renderer through preload.
+const engineToken = randomBytes(32).toString('hex');
+let engineTokenInUse = null;
 
 const setEngineStatus = status => {
     engineStatus = { error: '', ...status };
@@ -48,7 +52,7 @@ const spawnEngine = enginePath => new Promise(resolve => {
 
     let child = null;
     try {
-        child = spawn(enginePath, [], {
+        child = spawn(enginePath, [`--token=${engineToken}`], {
             cwd: path.dirname(enginePath),
             detached: false,
             // stdin is a pipe on purpose: the engine shuts down when it reads EOF,
@@ -61,6 +65,7 @@ const spawnEngine = enginePath => new Promise(resolve => {
     }
 
     engineProcess = child;
+    engineTokenInUse = engineToken;
 
     // stdin is only ever closed, never written to, but a stream error must not become
     // an unhandled 'error' event during quit.
@@ -102,8 +107,8 @@ const spawnEngine = enginePath => new Promise(resolve => {
     );
 });
 
-// An engine left running holds ports 5000 and 9001, and the next launch then fails to
-// bind. Ask it to leave first, and kill it if it doesn't.
+// An engine left running holds port 9001, and the next launch then fails to bind.
+// Ask it to leave first, and kill it if it doesn't.
 const stopEngine = () => new Promise(resolve => {
     const child = engineProcess;
     if (!child) {
@@ -180,22 +185,6 @@ app.on('will-quit', event => {
     stopEngine().then(() => app.quit());
 });
 
-// Every relay answers { ok, value } or { ok, error }. A rejected fetch here would
-// otherwise surface in the renderer as an unhandled rejection with no message.
-const postToEngine = async (route, body) => {
-    try {
-        const res = await fetch(`${ENGINE_HOST}${route}`, body === undefined
-            ? { method: 'POST' }
-            : { method: 'POST', body: String(body) });
-        const value = await res.json().catch(() => null);
-        if (!res.ok)
-            return { ok: false, error: value?.value ?? `Engine returned ${res.status}.` };
-        return { ok: true, value };
-    } catch (error) {
-        return { ok: false, error: `Engine is not responding: ${error.message}` };
-    }
-};
-
 ipcMain.handle('select-audio-file', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
         properties: ['openFile'],
@@ -206,11 +195,5 @@ ipcMain.handle('select-audio-file', async () => {
     return filePaths[0];
 });
 
-ipcMain.handle('load-audio', (_, filePath) => postToEngine('/load', filePath));
-ipcMain.handle('play-audio', () => postToEngine('/play'));
-ipcMain.handle('pause-audio', () => postToEngine('/pause'));
-ipcMain.handle('stop-audio', () => postToEngine('/stop'));
-ipcMain.handle('clear-audio', () => postToEngine('/clear'));
-ipcMain.handle('change-volume', (_, volume) => postToEngine('/volume', volume));
-ipcMain.handle('change-speed', (_, speed) => postToEngine('/speed', speed));
-ipcMain.handle('seek-audio', (_, seconds) => postToEngine('/seek', seconds));
+// Null when main did not start the engine: a hand-started engine in dev has no token.
+ipcMain.handle('engine-token', () => engineTokenInUse);

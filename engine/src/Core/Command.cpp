@@ -6,18 +6,29 @@ namespace Adagio
 	{
 		switch (type)
 		{
-		case CommandType::Play:         return "play";
-		case CommandType::Pause:        return "pause";
-		case CommandType::Stop:         return "stop";
-		case CommandType::Load:         return "load";
-		case CommandType::Clear:        return "clear";
-		case CommandType::Seek:         return "seek";
-		case CommandType::SetVolume:    return "setVolume";
-		case CommandType::SetSpeed:     return "setSpeed";
-		case CommandType::AnalyseFrame: return "analyseFrame";
-		case CommandType::Status:       return "status";
-		case CommandType::Shutdown:     return "shutdown";
+#define ADAGIO_COMMAND_NAME(cppName, wireName, argKind) case CommandType::cppName: return wireName;
+			ADAGIO_PROTOCOL_COMMANDS(ADAGIO_COMMAND_NAME)
+#undef ADAGIO_COMMAND_NAME
 		}
 		return "unknown";
+	}
+
+	CommandArg ArgumentKind(CommandType type)
+	{
+		switch (type)
+		{
+#define ADAGIO_COMMAND_ARG(cppName, wireName, argKind) case CommandType::cppName: return CommandArg::argKind;
+			ADAGIO_PROTOCOL_COMMANDS(ADAGIO_COMMAND_ARG)
+#undef ADAGIO_COMMAND_ARG
+		}
+		return CommandArg::None;
+	}
+
+	bool CommandFromString(const std::string& name, CommandType& outType)
+	{
+#define ADAGIO_COMMAND_LOOKUP(cppName, wireName, argKind) if (name == wireName) { outType = CommandType::cppName; return true; }
+		ADAGIO_PROTOCOL_COMMANDS(ADAGIO_COMMAND_LOOKUP)
+#undef ADAGIO_COMMAND_LOOKUP
+		return false;
 	}
 }

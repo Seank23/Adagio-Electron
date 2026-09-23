@@ -2,12 +2,14 @@ import { useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCurrentTime } from '../store/playbackSlice';
+import { useEngineCommands } from '../hooks/useEngineCommands';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 
 const AudioTimeline = () => {
     const { token } = theme.useToken();
     const dispatch = useDispatch();
+    const commands = useEngineCommands();
     const waveformData = useSelector(state => state.playback.waveformData);
     const duration = useSelector(state => state.playback.duration);
     const currentTime = useSelector(state => state.playback.currentTime);
@@ -22,7 +24,7 @@ const AudioTimeline = () => {
 
     const handleSeek = time => {
         dispatch(setCurrentTime(time));
-        window.api.seek(time);
+        commands.seek(time);
     }
 
     const getWaveformResolution = minPxPerSec => {

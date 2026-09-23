@@ -32,24 +32,29 @@ namespace
 		CommandType::SetVolume,
 		CommandType::SetSpeed,
 		CommandType::AnalyseFrame,
+		CommandType::GetAnalysisSchema,
+		CommandType::SetAnalysisSetting,
 		CommandType::Status,
 		CommandType::Shutdown
 	};
 
 	// Rows are commands in AllCommands order, columns are states in AllStates order:
-	//                     Empty  Loading  Ready  Playing  Paused
-	const bool Legal[11][5] = {
-		/* Play         */ { false, false,  true,  true,    true  },
-		/* Pause        */ { false, false,  false, true,    true  },
-		/* Stop         */ { false, false,  true,  true,    true  },
-		/* Load         */ { true,  false,  true,  true,    true  },
-		/* Clear        */ { false, false,  true,  true,    true  },
-		/* Seek         */ { false, false,  true,  true,    true  },
-		/* SetVolume    */ { true,  true,   true,  true,    true  },
-		/* SetSpeed     */ { false, false,  true,  true,    true  },
-		/* AnalyseFrame */ { false, false,  true,  true,    true  },
-		/* Status       */ { true,  true,   true,  true,    true  },
-		/* Shutdown     */ { true,  true,   true,  true,    true  }
+	//                          Empty  Loading  Ready  Playing  Paused
+	const bool Legal[13][5] = {
+		/* Play              */ { false, false,  true,  true,    true  },
+		/* Pause             */ { false, false,  false, true,    true  },
+		/* Stop              */ { false, false,  true,  true,    true  },
+		/* Load              */ { true,  false,  true,  true,    true  },
+		/* Clear             */ { false, false,  true,  true,    true  },
+		/* Seek              */ { false, false,  true,  true,    true  },
+		/* SetVolume         */ { true,  true,   true,  true,    true  },
+		/* SetSpeed          */ { false, false,  true,  true,    true  },
+		/* AnalyseFrame      */ { false, false,  true,  true,    true  },
+		// The analysis settings belong to the pipeline, which outlives the file.
+		/* GetAnalysisSchema */ { true,  true,   true,  true,    true  },
+		/* SetAnalysisSetting*/ { true,  true,   true,  true,    true  },
+		/* Status            */ { true,  true,   true,  true,    true  },
+		/* Shutdown          */ { true,  true,   true,  true,    true  }
 	};
 }
 
@@ -111,7 +116,8 @@ TEST_CASE("Only the transport commands move the transport")
 	for (TransportState state : AllStates)
 	{
 		for (CommandType command : { CommandType::Seek, CommandType::SetVolume, CommandType::SetSpeed,
-									 CommandType::AnalyseFrame, CommandType::Status, CommandType::Shutdown })
+									 CommandType::AnalyseFrame, CommandType::GetAnalysisSchema,
+									 CommandType::SetAnalysisSetting, CommandType::Status, CommandType::Shutdown })
 		{
 			CAPTURE(Adagio::ToString(state));
 			CAPTURE(Adagio::ToString(command));

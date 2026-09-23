@@ -4,6 +4,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
+// The wire protocol is described once, at the repo root, and read by both sides: the
+// engine generates a header from it, the UI imports it through this alias.
+const protocolDir = path.resolve(dirname, '../../protocol');
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -18,6 +21,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // protocol/ sits outside the Vite root, so the dev server has to be told it may
+    // serve it. The production build inlines the JSON and needs no equivalent.
+    fs: { allow: [dirname, protocolDir] },
   },
-  resolve: { dedupe: ['react', 'react-dom'] },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+    alias: { '@protocol': protocolDir },
+  },
 });

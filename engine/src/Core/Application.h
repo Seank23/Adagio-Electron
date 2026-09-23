@@ -1,6 +1,8 @@
 #pragma once
 #include "TransportState.h"
 
+#include <nlohmann/json.hpp>
+
 #include <atomic>
 #include <memory>
 #include <string>
@@ -13,6 +15,13 @@ namespace Adagio
 	class PlaybackService;
 	class AnalysisService;
 
+	struct CommandOutcome
+	{
+		bool Ok = true;
+		std::string Error;
+		nlohmann::json Value;
+	};
+
 	class Application
 	{
 	public:
@@ -21,14 +30,13 @@ namespace Adagio
 
 		void Run();
 
-		// Read-only snapshot, safe to call from the HTTP thread while Run() is
-		// draining commands. Everything it touches is an atomic.
-		std::string GetStatusJson() const;
+		nlohmann::json GetStatusJson() const;
 		TransportState GetTransportState() const { return m_State.load(std::memory_order_acquire); }
 
 	private:
 		void ProcessCommands();
-		void HandleCommand(const Command& cmd);
+		CommandOutcome HandleCommand(const Command& cmd);
+		void PushTransport();
 		void Shutdown();
 
 		bool LoadAudio(const std::string& filePath, std::string& outError);
@@ -44,8 +52,7 @@ namespace Adagio
 		std::atomic<TransportState> m_State{ TransportState::Empty };
 		std::atomic<bool> m_Running{ false };
 		std::atomic<double> m_Duration{ 0.0 };
-		// Published so a caller can tell "the command ran and was refused" from
-		// "the command has not been dequeued yet" without guessing at timings.
+
 		std::atomic<uint64_t> m_CommandsHandled{ 0 };
 	};
 }

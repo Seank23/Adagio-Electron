@@ -1,6 +1,8 @@
 #pragma once
 #include <kfr/base/univector.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <atomic>
 #include <memory>
 #include <thread>
@@ -36,10 +38,14 @@ namespace Adagio
 
 		void SetIntervalMs(int intervalMs) { m_IntervalMs = intervalMs; }
 
+		nlohmann::json GetSchemaJson() const;
+		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
+
 		// Where the playhead is now, in source seconds: the position the audio callback last published
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
 
 	private:
+		void BuildPipeline();
 		std::unique_ptr<AnalysisResult> ProcessCurrentFrame();
 		void PublishCurrentFrame();
 		bool SyncSeekGeneration();

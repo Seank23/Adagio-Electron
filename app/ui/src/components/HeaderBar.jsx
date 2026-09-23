@@ -2,11 +2,14 @@ import { PlaybackControls } from './PlaybackControls';
 import { Button, Row, Col } from 'antd';
 import { useSelector, useDispatch } from 'react-redux';
 import { setStatusMessage } from '../store/appSlice';
+import { selectIsFileOpen, selectIsPlaying } from '../store/playbackSlice';
+import { useEngineCommands } from '../hooks/useEngineCommands';
 
 const HeaderBar = () => {
   const dispatch = useDispatch();
-  const fileOpen = useSelector(state => state.app.isFileOpen);
-  const audioPlaying = useSelector(state => state.playback.isPlaying);
+  const commands = useEngineCommands();
+  const fileOpen = useSelector(selectIsFileOpen);
+  const audioPlaying = useSelector(selectIsPlaying);
 
   const reportIfFailed = result => {
     if (result?.ok === false)
@@ -15,7 +18,7 @@ const HeaderBar = () => {
 
   const handleOpenCloseFile = async () => {
     if (fileOpen) {
-      reportIfFailed(await window.api.clear());
+      reportIfFailed(await commands.clear());
       return;
     }
 
@@ -24,7 +27,7 @@ const HeaderBar = () => {
       return;
 
     dispatch(setStatusMessage({ type: 'loading', message: 'Loading audio...' }));
-    reportIfFailed(await window.api.load(file));
+    reportIfFailed(await commands.load(file));
   };
 
   return (

@@ -3,10 +3,11 @@ import AudioTimeline from "./AudioTimeline";
 import SpectrumCanvas from './SpectrumCanvas';
 import AnalysisSection from './AnalysisSection';
 import Styled from '@emotion/styled';
+import { selectIsFileOpen } from '../store/playbackSlice';
 import { useSelector } from 'react-redux';
 
 const MainContent = () => {
-    const isFileOpen = useSelector(state => state.app.isFileOpen);
+    const isFileOpen = useSelector(selectIsFileOpen);
 
     const DividerBar = Styled('div')`
         height: 50px;

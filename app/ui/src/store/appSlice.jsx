@@ -4,7 +4,6 @@ const appSlice = createSlice({
     name: 'app',
     initialState: {
         statusMessage: {type: '', message: ''},
-        isFileOpen: false,
         canvasWidth: 1000,
         connectionState: 'connecting',
         engineStatus: {state: 'starting', error: ''},
@@ -15,9 +14,6 @@ const appSlice = createSlice({
         },
         resetStatus: (state) => {
             state.statusMessage = {type: '', message: ''};
-        },
-        setIsFileOpen: (state, action) => {
-            state.isFileOpen = action.payload;
         },
         setCanvasWidth: (state, action) => {
             state.canvasWidth = action.payload;
@@ -34,7 +30,6 @@ const appSlice = createSlice({
 export const {
     setStatusMessage,
     resetStatus,
-    setIsFileOpen,
     setCanvasWidth,
     setConnectionState,
     setEngineStatus,

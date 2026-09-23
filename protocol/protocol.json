@@ -1,0 +1,54 @@
+{
+    "version": 1,
+    "transport": {
+        "host": "127.0.0.1",
+        "port": 9001,
+        "tokenParam": "token",
+        "allowedOrigins": ["file://", "http://localhost:5173", "http://127.0.0.1:5173"]
+    },
+    "envelope": {
+        "comment": "Renderer -> engine: {id, cmd, args}. Engine -> renderer: {type: 'reply', id, ok, value, error} for a command, {type, value} for an event.",
+        "replyType": "reply"
+    },
+    "commands": [
+        { "name": "load", "cpp": "Load", "js": "LOAD", "arg": "string" },
+        { "name": "play", "cpp": "Play", "js": "PLAY", "arg": "none" },
+        { "name": "pause", "cpp": "Pause", "js": "PAUSE", "arg": "none" },
+        { "name": "stop", "cpp": "Stop", "js": "STOP", "arg": "none" },
+        { "name": "clear", "cpp": "Clear", "js": "CLEAR", "arg": "none" },
+        { "name": "seek", "cpp": "Seek", "js": "SEEK", "arg": "number" },
+        { "name": "setVolume", "cpp": "SetVolume", "js": "SET_VOLUME", "arg": "number" },
+        { "name": "setSpeed", "cpp": "SetSpeed", "js": "SET_SPEED", "arg": "number" },
+        { "name": "analyseFrame", "cpp": "AnalyseFrame", "js": "ANALYSE_FRAME", "arg": "none" },
+        { "name": "getAnalysisSchema", "cpp": "GetAnalysisSchema", "js": "GET_ANALYSIS_SCHEMA", "arg": "none" },
+        { "name": "setAnalysisSetting", "cpp": "SetAnalysisSetting", "js": "SET_ANALYSIS_SETTING", "arg": "object" },
+        { "name": "status", "cpp": "Status", "js": "STATUS", "arg": "none" },
+        { "name": "shutdown", "cpp": "Shutdown", "js": "SHUTDOWN", "arg": "none" }
+    ],
+    "events": [
+        { "name": "transport", "cpp": "Transport", "js": "TRANSPORT" },
+        { "name": "position", "cpp": "Position", "js": "POSITION" },
+        { "name": "fileLoaded", "cpp": "FileLoaded", "js": "FILE_LOADED" },
+        { "name": "fileClosed", "cpp": "FileClosed", "js": "FILE_CLOSED" },
+        { "name": "endOfPlay", "cpp": "EndOfPlay", "js": "END_OF_PLAY" },
+        { "name": "waveformData", "cpp": "WaveformData", "js": "WAVEFORM_DATA" },
+        { "name": "analysis", "cpp": "Analysis", "js": "ANALYSIS" },
+        { "name": "info", "cpp": "Info", "js": "INFO" },
+        { "name": "error", "cpp": "Error", "js": "ERROR" },
+        { "name": "reply", "cpp": "Reply", "js": "REPLY" }
+    ],
+    "states": [
+        { "name": "empty", "cpp": "Empty", "js": "EMPTY" },
+        { "name": "loading", "cpp": "Loading", "js": "LOADING" },
+        { "name": "ready", "cpp": "Ready", "js": "READY" },
+        { "name": "playing", "cpp": "Playing", "js": "PLAYING" },
+        { "name": "paused", "cpp": "Paused", "js": "PAUSED" }
+    ],
+    "limits": {
+        "comment": "Volume and speed travel as normalised floats, not percentages. The sliders are the only place percentages exist.",
+        "volumeMin": 0.0,
+        "volumeMax": 1.0,
+        "speedMin": 0.2,
+        "speedMax": 1.0
+    }
+}

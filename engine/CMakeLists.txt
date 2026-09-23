@@ -11,6 +11,14 @@ option(ADAGIO_ENABLE_PROFILING "Write engine/build/Application_Profile.json at r
 
 include(FetchContent)
 
+# The wire protocol is described once, in protocol/protocol.json, and read by both
+# sides: this generates the C++ half of it, and app/ui imports the same file.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/GenerateProtocol.cmake)
+set(ADAGIO_PROTOCOL_JSON ${CMAKE_CURRENT_SOURCE_DIR}/../protocol/protocol.json)
+set(ADAGIO_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+file(MAKE_DIRECTORY ${ADAGIO_GENERATED_DIR})
+adagio_generate_protocol_header(${ADAGIO_PROTOCOL_JSON} ${ADAGIO_GENERATED_DIR}/Protocol.generated.h)
+
 # Everything except main.cpp goes into AdagioCore so the test target can link the
 # engine without pulling in a second main(). AdagioEngine is the thin executable.
 file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS
@@ -134,7 +142,7 @@ endif()
 
 # ixwebsocket already exports its own include directory, so there is no need to
 # hardcode a path under build/_deps (which only existed for one build tree).
-target_include_directories(AdagioCore PUBLIC include ${kfr_INCLUDE_DIRS})
+target_include_directories(AdagioCore PUBLIC include ${ADAGIO_GENERATED_DIR} ${kfr_INCLUDE_DIRS})
 target_link_libraries(AdagioCore PUBLIC kfr_dft kfr_dsp kfr_io ixwebsocket nlohmann_json::nlohmann_json rubberband)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR}/src PREFIX "Source Files" FILES ${ENGINE_SOURCES})

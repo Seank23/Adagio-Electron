@@ -1,14 +1,6 @@
-export const EVENT_TYPE = {
-    END_OF_PLAY: 'endOfPlay',
-    POSITION: 'position',
-    FILE_LOADED: 'fileLoaded',
-    FILE_CLOSED: 'fileClosed',
-    SUCCESS: 'success',
-    ERROR: 'error',
-    INFO: 'info',
-    WAVEFORM_DATA: 'waveformData',
-    ANALYSIS: 'analysis',
-};
+// The engine's vocabulary lives in protocol/protocol.json, which the engine builds
+// its own constants from. Re-exported here so callers keep one import for it.
+export { EVENT_TYPE, COMMAND, TRANSPORT_STATE, LIMITS } from './protocol';
 
 export const clamp01 = value => Math.max(0, Math.min(1, value));
 

@@ -1,4 +1,4 @@
-export const ENGINE_WS_URL = 'ws://127.0.0.1:9001';
+import { ENGINE_WS_URL, EVENT_TYPE, TOKEN_PARAM } from '../utils/protocol';
 
 export const CONNECTION_STATE = {
     CONNECTING: 'connecting',
@@ -9,6 +9,7 @@ export const CONNECTION_STATE = {
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 10000;
 const RECONNECT_JITTER_MS = 250;
+const REQUEST_TIMEOUT_MS = 30000;
 
 export class WebSocketEngine {
     // Constructed idle so that a caller can subscribe before the first connection
@@ -22,11 +23,16 @@ export class WebSocketEngine {
         this.attempt = 0;
         this.reconnectTimer = null;
         this.closed = true;
+        this.token = null;
+        // Commands waiting for a reply, keyed by the id they were sent with.
+        this.pending = new Map();
+        this.nextId = 1;
     }
 
-    open() {
+    open(token = null) {
         if (!this.closed) return;
         this.closed = false;
+        this.token = token;
         this.attempt = 0;
         this.connect();
     }
@@ -35,7 +41,12 @@ export class WebSocketEngine {
         if (this.closed) return;
 
         this.setState(CONNECTION_STATE.CONNECTING);
-        const ws = new WebSocket(this.url);
+        // The token goes in the handshake rather than a first message, so an
+        // unauthorised socket is refused before it can send anything.
+        const url = this.token
+            ? `${this.url}/?${TOKEN_PARAM}=${encodeURIComponent(this.token)}`
+            : this.url;
+        const ws = new WebSocket(url);
         this.ws = ws;
 
         ws.onopen = () => {
@@ -51,6 +62,12 @@ export class WebSocketEngine {
                 console.error('Invalid message from backend:', event.data);
                 return;
             }
+
+            // A reply belongs to one caller; everything else is an event for everyone.
+            if (msg?.type === EVENT_TYPE.REPLY) {
+                this.settle(msg);
+                return;
+            }
             this.listeners.forEach(callback => callback(msg));
         };
 
@@ -59,9 +76,46 @@ export class WebSocketEngine {
         ws.onclose = () => {
             if (this.ws !== ws) return;
             this.ws = null;
+            this.failPending('The engine connection was lost.');
             this.setState(CONNECTION_STATE.DISCONNECTED);
             this.scheduleReconnect();
         };
+    }
+
+    // Sends a command and resolves with { ok, value, error } once the engine answers.
+    request(cmd, args) {
+        if (this.ws?.readyState !== WebSocket.OPEN)
+            return Promise.resolve({ ok: false, error: 'The engine is not connected.' });
+
+        const id = String(this.nextId++);
+        return new Promise(resolve => {
+            const timer = setTimeout(() => {
+                this.pending.delete(id);
+                resolve({ ok: false, error: `The engine did not answer ${cmd}.` });
+            }, REQUEST_TIMEOUT_MS);
+
+            this.pending.set(id, { resolve, timer });
+            this.ws.send(JSON.stringify(args === undefined ? { id, cmd } : { id, cmd, args }));
+        });
+    }
+
+    settle(reply) {
+        const entry = this.pending.get(reply.id);
+        if (!entry) return;
+
+        this.pending.delete(reply.id);
+        clearTimeout(entry.timer);
+        entry.resolve({ ok: reply.ok === true, value: reply.value, error: reply.error });
+    }
+
+    // A dropped socket answers every outstanding command rather than leaving the
+    // caller's await hanging until its timeout.
+    failPending(error) {
+        this.pending.forEach(entry => {
+            clearTimeout(entry.timer);
+            entry.resolve({ ok: false, error });
+        });
+        this.pending.clear();
     }
 
     scheduleReconnect() {
@@ -97,11 +151,6 @@ export class WebSocketEngine {
         this.stateListeners = this.stateListeners.filter(cb => cb !== callback);
     }
 
-    send(data) {
-        if (this.ws?.readyState === WebSocket.OPEN)
-            this.ws.send(JSON.stringify(data));
-    }
-
     // Leaves the listeners in place: the same engine can be reopened, and the
     // subscribers outlive a StrictMode remount.
     close() {
@@ -112,6 +161,7 @@ export class WebSocketEngine {
         const ws = this.ws;
         this.ws = null;
         ws?.close();
+        this.failPending('The engine connection was closed.');
         this.setState(CONNECTION_STATE.DISCONNECTED);
     }
 }

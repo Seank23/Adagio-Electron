@@ -2,6 +2,7 @@
 #include "../Buffers/RingBuffer.h"
 #include "../Core/AudioDecoder.h"
 #include "../Core/MessageQueue.h"
+#include "Protocol.generated.h"
 #include "../Core/TimeProcessor.h"
 
 #include <algorithm>
@@ -204,7 +205,7 @@ namespace Adagio
 		if (reachedEnd)
 		{
 			if (!m_EndReported.exchange(true, std::memory_order_acq_rel))
-				MessageQueue::GetInstance().Push("{\"type\":\"endOfPlay\"}");
+				MessageQueue::GetInstance().Push(std::string("{\"type\":\"") + Protocol::Event::EndOfPlay + "\"}");
 			return;
 		}
 
@@ -212,7 +213,7 @@ namespace Adagio
 		if (updateCounter >= 4)
 		{
 			MessageQueue::GetInstance().Push(
-				std::string("{\"type\":\"position\",\"value\":") + std::to_string(seconds) + "}"
+				std::string("{\"type\":\"") + Protocol::Event::Position + "\",\"value\":" + std::to_string(seconds) + "}"
 			);
 			m_PlaybackUpdateCounter.store(0, std::memory_order_relaxed);
 		}

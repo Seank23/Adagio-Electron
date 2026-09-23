@@ -6,11 +6,9 @@ namespace Adagio
 	{
 		switch (state)
 		{
-		case TransportState::Empty:   return "empty";
-		case TransportState::Loading: return "loading";
-		case TransportState::Ready:   return "ready";
-		case TransportState::Playing: return "playing";
-		case TransportState::Paused:  return "paused";
+#define ADAGIO_STATE_NAME(cppName, wireName) case TransportState::cppName: return wireName;
+			ADAGIO_PROTOCOL_STATES(ADAGIO_STATE_NAME)
+#undef ADAGIO_STATE_NAME
 		}
 		return "unknown";
 	}
@@ -33,6 +31,8 @@ namespace Adagio
 		case CommandType::SetVolume:
 		case CommandType::Shutdown:
 		case CommandType::Status:
+		case CommandType::GetAnalysisSchema:
+		case CommandType::SetAnalysisSetting:
 			return true;
 
 		case CommandType::Load:

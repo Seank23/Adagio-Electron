@@ -1,12 +1,15 @@
 <#
 .SYNOPSIS
-    Sends the Phase 1 command sequences to a running engine and checks it survives.
+    Drives a running engine over its WebSocket and checks it survives.
 
 .DESCRIPTION
-    Every case here is one of the crashes or hangs the architecture review found.
-    The check after each is the same: GET /status still answers. That route only
-    reads atomics, so a reply proves the command thread is alive and the state
-    machine is still coherent.
+    Every case here is one of the crashes or hangs the architecture review found,
+    plus the protocol and authentication rules Phase 4 added.
+
+    Commands and events share one socket now, so a command is checked by its reply
+    rather than by polling: {id, cmd, args} goes out, {type:"reply", id, ok} comes
+    back once the command thread has actually run it. The status command still
+    answers from atomics, so it doubles as the liveness probe.
 
     440 Hz stereo tones are generated as fixtures, so the script needs no audio
     file of its own. The 2-second one is written with an upper-case .WAV extension
@@ -20,13 +23,137 @@
 [CmdletBinding()]
 param(
     [string]$EnginePath = (Join-Path $PSScriptRoot '../build/Release/AdagioEngine.exe'),
-    [int]$Port = 5000
+    [int]$Port = 9001
 )
 
 $ErrorActionPreference = 'Stop'
-$script:Base = "http://127.0.0.1:$Port"
 $script:Failures = @()
 $script:Skipped = @()
+$script:NextId = 0
+$script:Socket = $null
+# Non-reply frames seen while waiting for a reply, so a case can assert on the
+# events a command produced as well as on its answer.
+$script:Events = @()
+
+# The engine is started with a token, so the script also proves that a client
+# without it is refused.
+$script:Token = [guid]::NewGuid().ToString('N')
+
+# A .NET reader thread rather than a PowerShell loop: during playback the engine
+# broadcasts a ~25 KB analysis frame every 5 ms, and those are dropped here instead
+# of being handed to PowerShell to parse.
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Text;
+using System.Threading;
+
+public class AdagioSocket
+{
+    private ClientWebSocket _socket;
+    private CancellationTokenSource _cancel;
+    private ConcurrentQueue<string> _messages = new ConcurrentQueue<string>();
+    private Thread _reader;
+    private string _closeReason;
+
+    public string CloseReason { get { return _closeReason; } }
+    public bool IsOpen { get { return _socket != null && _socket.State == WebSocketState.Open; } }
+
+    public bool Connect(string url, string origin, int timeoutMs)
+    {
+        _socket = new ClientWebSocket();
+        if (!string.IsNullOrEmpty(origin))
+            _socket.Options.SetRequestHeader("Origin", origin);
+        _cancel = new CancellationTokenSource();
+        try
+        {
+            if (!_socket.ConnectAsync(new Uri(url), _cancel.Token).Wait(timeoutMs))
+                return false;
+        }
+        catch (Exception e)
+        {
+            _closeReason = e.GetBaseException().Message;
+            return false;
+        }
+
+        _reader = new Thread(ReadLoop);
+        _reader.IsBackground = true;
+        _reader.Start();
+        return true;
+    }
+
+    private void ReadLoop()
+    {
+        byte[] buffer = new byte[65536];
+        StringBuilder text = new StringBuilder();
+        try
+        {
+            while (_socket.State == WebSocketState.Open)
+            {
+                text.Length = 0;
+                WebSocketReceiveResult result;
+                do
+                {
+                    var task = _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancel.Token);
+                    task.Wait();
+                    result = task.Result;
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        _closeReason = result.CloseStatusDescription;
+                        return;
+                    }
+                    text.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                }
+                while (!result.EndOfMessage);
+
+                string message = text.ToString();
+                if (message.StartsWith("{\"type\":\"analysis\"") || message.StartsWith("{\"type\":\"position\""))
+                    continue;
+                _messages.Enqueue(message);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_closeReason == null)
+                _closeReason = e.GetBaseException().Message;
+        }
+    }
+
+    public void Send(string text)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(text);
+        _socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, _cancel.Token).Wait(5000);
+    }
+
+    public string Take()
+    {
+        string message;
+        if (_messages.TryDequeue(out message))
+            return message;
+        return null;
+    }
+
+    // Returns the reason the server gave for closing, or null while it stays open.
+    public string WaitClosed(int timeoutMs)
+    {
+        DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_socket.State != WebSocketState.Open)
+                return _closeReason != null ? _closeReason : _socket.State.ToString();
+            Thread.Sleep(25);
+        }
+        return null;
+    }
+
+    public void Close()
+    {
+        try { if (_cancel != null) _cancel.Cancel(); } catch { }
+        try { if (_socket != null) _socket.Abort(); } catch { }
+    }
+}
+'@
 
 function New-ToneWav {
     param([string]$Path, [int]$Seconds = 2, [int]$SampleRate = 44100, [int]$Frequency = 440)
@@ -70,37 +197,57 @@ function New-ToneWav {
     $stream.Close()
 }
 
-function Send-Command {
-    param([string]$Route, [string]$Body = '')
-    try {
-        Invoke-WebRequest -Uri "$script:Base/$Route" -Method Post -Body $Body -ContentType 'text/plain' -TimeoutSec 10 | Out-Null
-        return $true
-    } catch {
-        return $false
+function Connect-Engine {
+    param([string]$Token = $script:Token, [string]$Origin = '', [int]$TimeoutMs = 5000)
+
+    $url = "ws://127.0.0.1:$Port/"
+    if ($Token) { $url += "?token=$Token" }
+
+    $socket = New-Object AdagioSocket
+    if (-not $socket.Connect($url, $Origin, $TimeoutMs)) { return $null }
+    return $socket
+}
+
+# Sends one command and waits for the reply that carries its id. Anything else that
+# arrives meanwhile is kept for the assertions rather than thrown away.
+function Invoke-EngineCommand {
+    param([string]$Cmd, $Arguments = $null, [int]$TimeoutMs = 30000)
+
+    $script:NextId++
+    $id = [string]$script:NextId
+    $payload = [ordered]@{ id = $id; cmd = $Cmd }
+    if ($null -ne $Arguments) { $payload['args'] = $Arguments }
+    $script:Socket.Send(($payload | ConvertTo-Json -Compress))
+
+    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+    while ((Get-Date) -lt $deadline) {
+        $raw = $script:Socket.Take()
+        if ($null -eq $raw) {
+            if (-not $script:Socket.IsOpen) { throw "the engine closed the connection ($($script:Socket.CloseReason))" }
+            Start-Sleep -Milliseconds 5
+            continue
+        }
+        $msg = $raw | ConvertFrom-Json
+        if ($msg.type -eq 'reply' -and $msg.id -eq $id) { return $msg }
+        $script:Events += $msg
+        if ($script:Events.Count -gt 200) { $script:Events = $script:Events[-100..-1] }
     }
+    throw "no reply to '$Cmd' within $TimeoutMs ms"
+}
+
+# Fire and forget, for the one command that cannot answer: by the time the reply
+# would be broadcast the engine is already tearing the socket down.
+function Send-EngineCommand {
+    param([string]$Cmd)
+    $script:Socket.Send((@{ cmd = $Cmd } | ConvertTo-Json -Compress))
 }
 
 function Get-Status {
     try {
-        $response = Invoke-WebRequest -Uri "$script:Base/status" -Method Get -TimeoutSec 10
-        return ($response.Content | ConvertFrom-Json).value
+        return (Invoke-EngineCommand -Cmd 'status' -TimeoutMs 10000).value
     } catch {
         return $null
     }
-}
-
-# Polling on state alone races the command queue: right after a POST the engine is
-# still in its old state because the command has not been dequeued yet. Waiting on
-# the handled-command counter instead makes every step deterministic.
-function Wait-Handled {
-    param([long]$Baseline, [int]$Count = 1, [int]$TimeoutMs = 30000)
-    $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
-    while ((Get-Date) -lt $deadline) {
-        $status = Get-Status
-        if ($null -ne $status -and $status.commandsHandled -ge ($Baseline + $Count)) { return $status }
-        Start-Sleep -Milliseconds 25
-    }
-    return $null
 }
 
 # One sample can't tell a stalled playhead from a slow machine, so wait for a position instead.
@@ -115,23 +262,15 @@ function Wait-Status {
     return $null
 }
 
-function Get-Handled {
-    $status = Get-Status
-    if ($null -eq $status) { return -1 }
-    return [long]$status.commandsHandled
-}
-
+# Every command is acknowledged, so a sequence is simply awaited: when the last reply
+# is in, every one of them has been through the command thread.
 function Invoke-Commands {
     param([object[]]$Commands, [int]$TimeoutMs = 30000)
-    $baseline = Get-Handled
-    if ($baseline -lt 0) { throw 'engine is not answering' }
     foreach ($command in $Commands) {
-        if ($command -is [string]) { Send-Command $command | Out-Null }
-        else { Send-Command $command[0] $command[1] | Out-Null }
+        if ($command -is [string]) { Invoke-EngineCommand -Cmd $command -TimeoutMs $TimeoutMs | Out-Null }
+        else { Invoke-EngineCommand -Cmd $command[0] -Arguments $command[1] -TimeoutMs $TimeoutMs | Out-Null }
     }
-    $status = Wait-Handled -Baseline $baseline -Count $Commands.Count -TimeoutMs $TimeoutMs
-    if ($null -eq $status) { throw "engine did not finish $($Commands.Count) command(s) in $TimeoutMs ms" }
-    return $status
+    return Get-Status
 }
 
 function Test-Case {
@@ -170,19 +309,104 @@ if (-not (Test-Path $EnginePath)) {
 }
 
 Write-Host "Starting $EnginePath"
-$engine = Start-Process -FilePath $EnginePath -PassThru -WindowStyle Hidden
+$engine = Start-Process -FilePath $EnginePath -ArgumentList "--token=$script:Token" -PassThru -WindowStyle Hidden
 try {
     $deadline = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadline -and $null -eq (Get-Status)) { Start-Sleep -Milliseconds 100 }
-    if ($null -eq (Get-Status)) {
-        Write-Error 'Engine never answered /status.'
+    while ((Get-Date) -lt $deadline -and $null -eq $script:Socket) {
+        $script:Socket = Connect-Engine
+        if ($null -eq $script:Socket) { Start-Sleep -Milliseconds 200 }
+    }
+    if ($null -eq $script:Socket) {
+        Write-Error 'Engine never accepted a WebSocket connection.'
         exit 2
+    }
+    if ($null -eq (Get-Status)) {
+        Write-Error 'Engine never answered the status command.'
+        exit 2
+    }
+
+    Write-Host "`nAuthentication (S1)"
+    Test-Case 'a client with no token is refused' {
+        $probe = Connect-Engine -Token ''
+        if ($null -eq $probe) { throw 'could not reach the engine at all' }
+        try {
+            $reason = $probe.WaitClosed(3000)
+            if ($null -eq $reason) { throw 'the engine kept an unauthenticated client' }
+        } finally { $probe.Close() }
+    }
+
+    Test-Case 'a client with the wrong token is refused' {
+        $probe = Connect-Engine -Token 'not-the-token'
+        if ($null -eq $probe) { throw 'could not reach the engine at all' }
+        try {
+            $reason = $probe.WaitClosed(3000)
+            if ($null -eq $reason) { throw 'the engine kept a client with a bad token' }
+        } finally { $probe.Close() }
+    }
+
+    Test-Case 'a page in a browser is refused even with the token' {
+        # A browser sets Origin on the handshake and cannot suppress it, so this is
+        # exactly what new WebSocket('ws://127.0.0.1:9001') from a website looks like.
+        $probe = Connect-Engine -Origin 'https://example.com'
+        if ($null -eq $probe) { throw 'could not reach the engine at all' }
+        try {
+            $reason = $probe.WaitClosed(3000)
+            if ($null -eq $reason) { throw 'the engine kept a client from a foreign origin' }
+        } finally { $probe.Close() }
+    }
+
+    Test-Case "the app's own origin is accepted" {
+        $probe = Connect-Engine -Origin 'file://'
+        if ($null -eq $probe) { throw 'could not reach the engine at all' }
+        try {
+            $reason = $probe.WaitClosed(1000)
+            if ($null -ne $reason) { throw "the engine refused its own renderer: $reason" }
+        } finally { $probe.Close() }
+    }
+
+    Write-Host "`nProtocol (S2, S4)"
+    Test-Case 'an unknown command is refused by name' {
+        $reply = Invoke-EngineCommand -Cmd 'selfDestruct'
+        if ($reply.ok) { throw 'the engine accepted a command it does not have' }
+        if ($reply.error -notlike '*selfDestruct*') { throw "unhelpful error: $($reply.error)" }
+    }
+
+    Test-Case 'a command with the wrong argument type is refused' {
+        $reply = Invoke-EngineCommand -Cmd 'seek' -Arguments 'halfway'
+        if ($reply.ok) { throw 'the engine accepted a seek to a string' }
+    }
+
+    Test-Case 'a state change is broadcast as a transport event' {
+        $script:Events = @()
+        Invoke-Commands @(, @('setVolume', 0.0)) | Out-Null
+        if (-not ($script:Events | Where-Object { $_.type -eq 'transport' })) {
+            throw 'no transport event followed a command that changed state'
+        }
+    }
+
+    Write-Host "`nAnalysis settings"
+    Test-Case 'the schema answers before a file is loaded' {
+        $reply = Invoke-EngineCommand -Cmd 'getAnalysisSchema'
+        if (-not $reply.ok) { throw "schema refused: $($reply.error)" }
+        if ($reply.value.stages.Count -lt 7) { throw "expected the whole pipeline, got $($reply.value.stages.Count) stages" }
+    }
+
+    Test-Case 'a setting is validated against its own schema' {
+        $bad = Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'FFTProcessor'; key = 'WINDOW'; value = 'Gaussian' }
+        if ($bad.ok) { throw 'the engine accepted a window function it does not have' }
+
+        $good = Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'FFTProcessor'; key = 'WINDOW'; value = 'Hann' }
+        if (-not $good.ok) { throw "a valid setting was refused: $($good.error)" }
+
+        $schema = (Invoke-EngineCommand -Cmd 'getAnalysisSchema').value
+        $window = $schema.stages | Where-Object { $_.name -eq 'FFTProcessor' } | ForEach-Object { $_.settings } | Where-Object { $_.key -eq 'WINDOW' }
+        if ($window.value -ne 'Hann') { throw "the schema still reports $($window.value)" }
     }
 
     Write-Host "`nCommands with no file loaded (X5)"
     Test-Case 'play, pause, stop, clear, seek, speed, analysis on an empty engine' {
-        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'requestAnalysis',
-            @('seek', '1.5'), @('speed', '50'), @('volume', '80'))
+        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame',
+            @('seek', 1.5), @('setSpeed', 0.5), @('setVolume', 0.8))
         if ($status.state -ne 'empty') { throw "expected state empty, got $($status.state)" }
     }
 
@@ -211,6 +435,9 @@ try {
     if (-not $deviceAvailable) {
         Write-Host "`nNo output device: skipping the playback cases." -ForegroundColor Yellow
     } else {
+        # Nothing here needs to be heard, and a bench running the suite should not have to listen to it.
+        Invoke-Commands @(, @('setVolume', 0.0)) | Out-Null
+
         Write-Host "`nRe-entrancy (X2, X3)"
         Test-Case 'two Play commands back to back' {
             $status = Invoke-Commands @('play', 'play')
@@ -224,7 +451,7 @@ try {
 
         Write-Host "`nPlayback (X4, T1, T7, T11)"
         Test-Case 'play to the end at 50% speed' {
-            Invoke-Commands @(@('speed', '50'), 'play') | Out-Null
+            Invoke-Commands @(@('setSpeed', 0.5), 'play') | Out-Null
             # The playhead reaches the duration only once the stretcher's tail has been flushed.
             $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 10000
             if ($null -eq $status) { throw "never reached the end: position stopped at $((Get-Status).position)" }
@@ -233,14 +460,14 @@ try {
 
         # The feeder has written the whole 2 s track by now, so these seeks start from end of file (T10).
         Test-Case 'seek to 0.2 s before the end' {
-            $status = Invoke-Commands @(@('speed', '100'), @('seek', '1.8'))
+            $status = Invoke-Commands @(@('setSpeed', 1.0), @('seek', 1.8))
             if ($status.position -gt 1.95) { throw "seek did not take: position $($status.position)" }
             $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 3000
             if ($null -eq $status) { throw "stalled after the seek: position $((Get-Status).position)" }
         }
 
         Test-Case 'seek backwards while playing' {
-            $status = Invoke-Commands @(, @('seek', '0.2'))
+            $status = Invoke-Commands @(, @('seek', 0.2))
             if ($status.position -gt 0.5) { throw "seek did not take: position $($status.position)" }
             $status = Wait-Status { param($s) $s.position -ge 0.7 } 3000
             if ($null -eq $status) { throw "stalled after the seek: position $((Get-Status).position)" }
@@ -249,11 +476,11 @@ try {
         Write-Host "`nSeeking once the feeder has written the whole track (T10)"
         Test-Case 'seek back from the last 5 s of an 8 s track' {
             # From 6.5 s the feeder reaches end of file at once, leaving most of the buffer free.
-            Invoke-Commands @(@('load', $longTonePath), 'play', @('seek', '6.5')) | Out-Null
+            Invoke-Commands @(@('load', $longTonePath), 'play', @('seek', 6.5)) | Out-Null
             if ($null -eq (Wait-Status { param($s) $s.position -ge 6.7 } 3000)) { throw 'playback did not start after seeking to 6.5 s' }
 
             # Dropping the refilled post-seek audio would run the track out early and jump the playhead to 8 s.
-            $status = Invoke-Commands @(, @('seek', '1.0'))
+            $status = Invoke-Commands @(, @('seek', 1.0))
             if ($status.position -gt 1.3) { throw "seek did not take: position $($status.position)" }
             $status = Wait-Status { param($s) $s.position -ge 6.5 } 8000
             if ($null -eq $status) { throw "stalled after seeking back: position $((Get-Status).position)" }
@@ -277,7 +504,7 @@ try {
     }
 
     Write-Host "`nShutdown (T9)"
-    Send-Command 'shutdown' | Out-Null
+    Send-EngineCommand 'shutdown'
     if ($engine.WaitForExit(10000)) {
         Write-Host '  engine exited on request ... ok' -ForegroundColor Green
     } else {
@@ -285,6 +512,7 @@ try {
         Write-Host '  engine did not exit ... FAILED' -ForegroundColor Red
     }
 } finally {
+    if ($null -ne $script:Socket) { $script:Socket.Close() }
     if (-not $engine.HasExited) { Stop-Process -Id $engine.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item -Recurse -Force $fixtureDir -ErrorAction SilentlyContinue
 }

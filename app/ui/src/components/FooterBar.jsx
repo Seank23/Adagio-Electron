@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { resetStatus } from '../store/appSlice';
+import { selectIsPlaying } from '../store/playbackSlice';
 import Styled from '@emotion/styled';
 import { theme, Tooltip } from 'antd';
 import { ExclamationCircleOutlined, CheckCircleOutlined, LoadingOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -12,7 +13,7 @@ const FooterBar = () => {
     const connectionState = useSelector(state => state.app.connectionState);
     const engineStatus = useSelector(state => state.app.engineStatus);
     const excutionTime = useSelector(state => state.analysis.executionTime);
-    const isPlaying = useSelector(state => state.playback.isPlaying);
+    const isPlaying = useSelector(selectIsPlaying);
     const statusTimeout = useRef(null);
 
     useEffect(() => {

@@ -23,6 +23,7 @@ namespace Adagio
 	AnalysisService::AnalysisService()
 		: m_Running(false), m_IntervalMs(5), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
 	{
+		BuildPipeline();
 	}
 
 	AnalysisService::~AnalysisService()
@@ -32,6 +33,8 @@ namespace Adagio
 	void AnalysisService::Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params, const PlaybackService* playback)
 	{
 		StopAnalysis();
+		m_Pipeline->ResetPersistentData();
+
 		m_Decoder = decoder;
 		m_Playback = playback;
 		m_Params = params;
@@ -41,7 +44,10 @@ namespace Adagio
 		PreprocessStream(preprocessed);
 		m_AnalysisBuffer = std::make_unique<RingBuffer<float>>(preprocessed.size());
 		m_AnalysisBuffer->Write(preprocessed.data(), preprocessed.size());
+	}
 
+	void AnalysisService::BuildPipeline()
+	{
 		m_Pipeline = std::make_unique<AnalysisPipeline>();
 		m_Pipeline->AddStage(std::make_unique<FFTProcessor>());
 		m_Pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
@@ -52,6 +58,16 @@ namespace Adagio
 		m_Pipeline->AddStage(std::make_unique<ChordPredictor>());
 	}
 
+	nlohmann::json AnalysisService::GetSchemaJson() const
+	{
+		return m_Pipeline->GetSchemaJson();
+	}
+
+	bool AnalysisService::SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
+	{
+		return m_Pipeline->SetSetting(stage, key, value, outError);
+	}
+
 	void AnalysisService::Reset()
 	{
 		StopAnalysis();
@@ -59,7 +75,7 @@ namespace Adagio
 		m_Playback = nullptr;
 		m_Params = AnalysisParams{};
 		m_AudioSource.reset();
-		m_Pipeline.reset();
+		m_Pipeline->ResetPersistentData();
 		m_AnalysisBuffer.reset();
 	}
 

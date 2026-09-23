@@ -1,5 +1,6 @@
 #include "AnalysisPipeline.h"
 #include "AnalysisStage.h"
+#include "Protocol.generated.h"
 
 #include <chrono>
 #include <algorithm>
@@ -18,10 +19,13 @@ namespace Adagio
 	void AnalysisPipeline::AddStage(std::unique_ptr<AnalysisStage> stage)
 	{
 		std::string name = stage->GetName();
-		m_Settings[name] = {};
-		auto settings = stage->GetSettings();
-		for (auto& it : settings.items())
-			m_Settings[name][it.key()] = it.value()["default"];
+		{
+			std::lock_guard<std::mutex> lock(m_SettingsMutex);
+			m_Settings[name] = {};
+			auto settings = stage->GetSettings();
+			for (auto& it : settings.items())
+				m_Settings[name][it.key()] = it.value()["default"];
+		}
 		m_Stages.push_back(std::move(stage));
 	}
 
@@ -31,9 +35,16 @@ namespace Adagio
 		std::unique_ptr<AnalysisContext> context = std::make_unique<AnalysisContext>(frame);
 		context->PersistentData = m_PersistentData.get();
 		context->Samples = frame.Samples;
+
+		nlohmann::json settings;
+		{
+			std::lock_guard<std::mutex> lock(m_SettingsMutex);
+			settings = m_Settings;
+		}
+
 		for (const auto& stage : m_Stages)
 		{
-			context->Settings = m_Settings[stage->GetName()];
+			context->Settings = settings[stage->GetName()];
 			stage->Execute(context.get());
 		}
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
@@ -49,6 +60,92 @@ namespace Adagio
 	{
 		m_PersistentData->RollingNotes.clear();
 		m_PersistentData->PreviousChord = Chord();
+	}
+
+	const AnalysisStage* AnalysisPipeline::FindStage(const std::string& name) const
+	{
+		for (const auto& stage : m_Stages)
+		{
+			if (stage->GetName() == name)
+				return stage.get();
+		}
+		return nullptr;
+	}
+
+	nlohmann::json AnalysisPipeline::GetSchemaJson() const
+	{
+		nlohmann::json stages = nlohmann::json::array();
+
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		for (const auto& stage : m_Stages)
+		{
+			const std::string name = stage->GetName();
+			const nlohmann::json& values = m_Settings.at(name);
+
+			// GetSettings() returns by value, and items() only borrows: iterating it
+			// straight out of the call reads an object that has already been destroyed.
+			const nlohmann::json definitions = stage->GetSettings();
+
+			nlohmann::json settings = nlohmann::json::array();
+			for (const auto& definition : definitions.items())
+			{
+				nlohmann::json entry = definition.value();
+				entry["key"] = definition.key();
+				entry["value"] = values.value(definition.key(), entry.value("default", nlohmann::json()));
+				settings.push_back(std::move(entry));
+			}
+
+			stages.push_back({
+				{"name", name},
+				{"type", stage->GetType() == AnalysisStageType::Processor ? "processor" : "featureExtractor"},
+				{"settings", std::move(settings)}
+			});
+		}
+
+		return { {"version", Protocol::Version}, {"stages", std::move(stages)} };
+	}
+
+	bool AnalysisPipeline::SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
+	{
+		const AnalysisStage* target = FindStage(stage);
+		if (!target)
+		{
+			outError = "Unknown analysis stage '" + stage + "'.";
+			return false;
+		}
+
+		const nlohmann::json definitions = target->GetSettings();
+		if (!definitions.contains(key))
+		{
+			outError = "Stage '" + stage + "' has no setting '" + key + "'.";
+			return false;
+		}
+
+		const nlohmann::json& definition = definitions.at(key);
+		const std::string type = definition.value("type", std::string());
+		if (type == "int" && !value.is_number_integer())
+		{
+			outError = "Setting '" + key + "' is an integer.";
+			return false;
+		}
+		if (type == "float" && !value.is_number())
+		{
+			outError = "Setting '" + key + "' is a number.";
+			return false;
+		}
+		if (type == "enum")
+		{
+			const nlohmann::json options = definition.value("options", nlohmann::json::array());
+			if (!value.is_string() || std::find(options.begin(), options.end(), value) == options.end())
+			{
+				outError = "Setting '" + key + "' must be one of " + options.dump() + ".";
+				return false;
+			}
+		}
+
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		m_Settings[stage][key] = value;
+		return true;
 	}
 
 	nlohmann::json AnalysisPipeline::GetResultJson(const AnalysisResult& result)

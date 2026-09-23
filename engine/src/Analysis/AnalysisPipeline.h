@@ -1,5 +1,6 @@
 #pragma once
 #include <deque>
+#include <mutex>
 #include <vector>
 #include <memory>
 #include "AudioFrame.h"
@@ -85,10 +86,17 @@ namespace Adagio
 
 		void ResetPersistentData();
 
+		nlohmann::json GetSchemaJson() const;
+		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
+
 		static nlohmann::json GetResultJson(const AnalysisResult& result);
 
 	private:
+		const AnalysisStage* FindStage(const std::string& name) const;
+
 		std::vector<std::unique_ptr<AnalysisStage>> m_Stages;
+		// Written by the command thread, read by the analysis thread once per frame.
+		mutable std::mutex m_SettingsMutex;
 		nlohmann::json m_Settings;
 
 		std::unique_ptr<PersistentData> m_PersistentData;

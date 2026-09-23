@@ -1,12 +1,14 @@
 import { createSlice } from '@reduxjs/toolkit';
+import { TRANSPORT_STATE } from '../utils/protocol';
 
 const playbackSlice = createSlice({
     name: 'playback',
     initialState: {
         currentTime: 0.0,
         duration: 0.0,
-        isStarted: false,
-        isPlaying: false,
+        state: TRANSPORT_STATE.EMPTY,
+        speed: 1.0,
+        volume: 1.0,
         waveformData: null,
     },
     reducers: {
@@ -16,22 +18,29 @@ const playbackSlice = createSlice({
         setDuration(state, action) {
             state.duration = action.payload;
         },
-        setIsStarted(state, action) {
-            state.isStarted = action.payload;
-        },
-        setIsPlaying(state, action) {
-            state.isPlaying = action.payload;
+        setTransport(state, action) {
+            const transport = action.payload ?? {};
+            state.state = transport.state ?? state.state;
+            state.speed = transport.speed ?? state.speed;
+            state.volume = transport.volume ?? state.volume;
+            state.duration = transport.duration ?? state.duration;
         },
         setWaveformData(state, action) {
             state.waveformData = action.payload;
         },
         resetPlayback(state) {
             state.currentTime = 0.0;
-            state.isStarted = false;
-            state.isPlaying = false;
         },
     },
 });
 
-export const { setCurrentTime, setDuration, setIsPlaying, setIsStarted, setWaveformData, resetPlayback } = playbackSlice.actions;
+export const { setCurrentTime, setDuration, setTransport, setWaveformData, resetPlayback } = playbackSlice.actions;
+
+// Derived from the one transport state rather than stored alongside it, so they
+// cannot drift apart from it.
+export const selectIsPlaying = state => state.playback.state === TRANSPORT_STATE.PLAYING;
+export const selectIsPaused = state => state.playback.state === TRANSPORT_STATE.PAUSED;
+export const selectIsFileOpen = state =>
+    state.playback.state !== TRANSPORT_STATE.EMPTY && state.playback.state !== TRANSPORT_STATE.LOADING;
+
 export default playbackSlice.reducer;

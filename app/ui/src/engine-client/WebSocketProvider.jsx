@@ -8,10 +8,29 @@ export const WebSocketProvider = ({ children }) => {
     const [engine] = useState(() => new WebSocketEngine());
 
     useEffect(() => {
-        engine.open();
+        let cancelled = false;
+
+        // Main holds the per-launch token and hands it over here. An engine started by
+        // hand in dev has none, and one is not required: the token is asked for either
+        // way, and an engine without one ignores it.
+        const start = async () => {
+            let token = null;
+            try {
+                token = (await window.api?.getEngineToken?.()) ?? null;
+            } catch {
+                token = null;
+            }
+            if (!cancelled)
+                engine.open(token);
+        };
+        start();
+
         // Closing on unmount matters under StrictMode, which mounts twice: without it
         // the first socket stays open and the engine keeps broadcasting to it.
-        return () => engine.close();
+        return () => {
+            cancelled = true;
+            engine.close();
+        };
     }, [engine]);
 
     return (
