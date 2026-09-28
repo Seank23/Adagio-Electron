@@ -10,9 +10,7 @@ export const WebSocketProvider = ({ children }) => {
     useEffect(() => {
         let cancelled = false;
 
-        // Main holds the per-launch token and hands it over here. An engine started by
-        // hand in dev has none, and one is not required: the token is asked for either
-        // way, and an engine without one ignores it.
+        // Main holds the per-launch token and hands it over here.
         const start = async () => {
             let token = null;
             try {

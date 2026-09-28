@@ -9,6 +9,7 @@ namespace Adagio
 		uint32_t SampleRate = 0;
 		uint32_t FrameLength = 0;
 		double Timestamp = 0.0;
+		double DeltaTime = 0.0;
 		kfr::univector<float> Samples;
 	};
 }

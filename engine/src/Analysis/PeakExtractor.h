@@ -11,12 +11,25 @@
 
 namespace Adagio
 {
-	class PeakExtractor : public AnalysisStage
+	struct PeakExtractorSettings
+	{
+		float MIN_FREQ = 50.0f;
+		float MAX_FREQ = 4000.0f;
+		float MIN_PROMINENCE = 1.5f;
+		float MIN_SNR = 0.2f;
+		float MIN_SEMITONE_DISTANCE = 0.5f;
+		int MAX_PEAKS = 16;
+		float SCORE_THRESHOLD = 0.25f;
+		std::string USE_INTERP_BINS = "Yes";
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PeakExtractorSettings, MIN_FREQ, MAX_FREQ, MIN_PROMINENCE, MIN_SNR, MIN_SEMITONE_DISTANCE, MAX_PEAKS, SCORE_THRESHOLD, USE_INTERP_BINS)
+	};
+
+	class PeakExtractor : public ConfigurableStage<PeakExtractorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t bins = data.size();
 			if (bins < 3)
@@ -25,16 +38,14 @@ namespace Adagio
 				return;
 			}
 
-			nlohmann::json settings = context->Settings;
-
-			const float minFreq = GetSetting<float>(settings, "MIN_FREQ");
-			const float maxFreqSetting = GetSetting<float>(settings, "MAX_FREQ");
-			const float minSemitoneDistance = GetSetting<float>(settings, "MIN_SEMITONE_DISTANCE");
-			const int maxPeaks = GetSetting<int>(settings, "MAX_PEAKS");
-			const float minProminence = GetSetting<float>(settings, "MIN_PROMINENCE");
-			const float minSnr = GetSetting<float>(settings, "MIN_SNR");
-			const float scoreThreshold = GetSetting<float>(settings, "SCORE_THRESHOLD");
-			const std::string useInterpolatedBins = GetSetting<std::string>(settings, "USE_INTERP_BINS");
+			const float minFreq = m_Settings.MIN_FREQ;
+			const float maxFreqSetting = m_Settings.MAX_FREQ;
+			const float minSemitoneDistance = m_Settings.MIN_SEMITONE_DISTANCE;
+			const int maxPeaks = m_Settings.MAX_PEAKS;
+			const float minProminence = m_Settings.MIN_PROMINENCE;
+			const float minSnr = m_Settings.MIN_SNR;
+			const float scoreThreshold = m_Settings.SCORE_THRESHOLD;
+			const std::string useInterpolatedBins = m_Settings.USE_INTERP_BINS;
 
 			const float sampleRate = static_cast<float>(context->Frame.SampleRate);
 			const float binToFreq = context->BinHz;
@@ -200,63 +211,56 @@ namespace Adagio
 			return AnalysisStageType::FeatureExtractor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
 			return nlohmann::json::parse(R"json({
 				"MIN_FREQ": {
 					"name": "Minimum Frequency (Hz)",
 					"type": "float",
 					"min": 20.0,
-					"max": 500.0,
-					"default": 50.0
+					"max": 500.0
 				},
 				"MAX_FREQ": {
 					"name": "Maximum Frequency (Hz)",
 					"type": "float",
 					"min": 500.0,
-					"max": 12000.0,
-					"default": 4000.0
+					"max": 12000.0
 				},
 				"MIN_PROMINENCE": {
 					"name": "Min Peak Prominence",
 					"type": "float",
 					"min": 0.001,
-					"max": 20.0,
-					"default": 1.5
+					"max": 20.0
 				},
 				"MIN_SNR": {
 					"name": "Min SNR Above Local Floor",
 					"type": "float",
 					"min": 0.001,
-					"max": 30.0,
-					"default": 0.2
+					"max": 30.0
 				},
 				"MIN_SEMITONE_DISTANCE": {
 					"name": "Min Peak Distance (semitones)",
 					"type": "float",
 					"min": 0.25,
-					"max": 3.0,
-					"default": 0.5
+					"max": 3.0
 				},
 				"MAX_PEAKS": {
 					"name": "Max Peaks",
 					"type": "int",
 					"min": 1,
-					"max": 64,
-					"default": 16
+					"max": 64
 				},
 				"SCORE_THRESHOLD": {
 					"name": "Score Threshold",
 					"type": "float",
 					"min": 0.0,
-					"max": 1.0,
-					"default": 0.25
+					"max": 1.0
 				},
 				"USE_INTERP_BINS": {
 					"name": "Use Interpolated Bins",
 					"type": "enum",	
-					"options": ["Yes","No"],	
-					"default": "Yes"
+					"options": ["Yes","No"]
 				}
 			})json");
 		}

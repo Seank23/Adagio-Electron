@@ -7,17 +7,21 @@
 
 namespace Adagio
 {
-	class NoteDetector : public AnalysisStage
+	struct NoteDetectorSettings
+	{
+		float ERROR_THRESHOLD = 25.0f;
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteDetectorSettings, ERROR_THRESHOLD)
+	};
+
+	class NoteDetector : public ConfigurableStage<NoteDetectorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
 			auto& data = context->Peaks;
-			nlohmann::json settings = context->Settings;
 
-			const float errorThreshold = GetSetting<float>(settings, "ERROR_THRESHOLD");
-			const float rollingWindowTime = GetSetting<float>(settings, "ROLLING_WINDOW");
+			const float errorThreshold = m_Settings.ERROR_THRESHOLD;
 			const double timestamp = context->Frame.Timestamp;
 
 			std::vector<Note> notes;
@@ -38,12 +42,6 @@ namespace Adagio
 				notes.push_back({ noteName, midi, data[i], cents, timestamp });
 			}
 
-			auto& rollingNotes = context->PersistentData->RollingNotes;
-			rollingNotes.insert(rollingNotes.end(), notes.begin(), notes.end());
-
-			while (!rollingNotes.empty() && std::abs(timestamp - rollingNotes.front().Timestamp) > rollingWindowTime)
-				rollingNotes.pop_front();
-
 			context->Notes = std::move(notes);
 		}
 
@@ -52,22 +50,15 @@ namespace Adagio
 			return AnalysisStageType::FeatureExtractor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
 			return nlohmann::json::parse(R"({
 				"ERROR_THRESHOLD": {
 					"name": "Error Threshold",
 					"type": "float",	
 					"min": 0.0,
-					"max": 50.0,	
-					"default": 25.0
-				},
-				"ROLLING_WINDOW": {
-					"name": "Rolling Window",
-					"type": "float",	
-					"min": 5.0,
-					"max": 50.0,	
-					"default": 20.0
+					"max": 50.0
 				}
 			})");
 		}

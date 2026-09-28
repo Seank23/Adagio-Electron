@@ -71,7 +71,7 @@ React renderer ═══ WebSocket :9001 (authenticated) ═══> C++ engine
 
 - **Feeder thread** (`AudioDecoder::LaunchFeeder`) reads interleaved PCM into every registered `RingBuffer` by name. `Application::LoadAudio` registers `"Playback"` (5 s).
 - **Audio callback thread** (miniaudio → `PlaybackService::OnAudioCallback`) pulls through `TimeProcessor` (RubberBand), applies volume, and emits a `position` event every 4th callback.
-- **Analysis thread** (`AnalysisService::StartAnalysis`) runs while playing, sleeping `IntervalMs - executionTime`.
+- **Analysis thread** (`AnalysisService::StartAnalysis`) runs while playing and analyses a frame each time the playhead has moved `HopSize × speed` analysis-stream samples, so frames arrive at a fixed rate in wall time (31.25 Hz) and slower playback samples the source more finely.
 - **WebSocket threads**: one per connection (where inbound frames are parsed) plus the queue thread that drains `MessageQueue`. A stdin thread queues `Shutdown` on EOF.
 
 `CommandQueue`/`MessageQueue` are mutex-guarded singletons and are the only sanctioned cross-thread channel — prefer pushing a message over reaching across services. Seeking follows the same rule: the command thread bumps an atomic generation on `AudioDecoder`, the feeder marks each `RingBuffer` with that generation, repositions itself and republishes it, and the audio callback then drops only what was written before the mark. Nothing sleeps waiting for another thread. `FeederState` belongs to the transport: the feeder never changes it itself, not even at end of file. A track ends when `TimeProcessor` reports it has drained, meaning the source is exhausted and RubberBand has been flushed with a final block, not when a frame counter reaches the file length.
@@ -80,7 +80,7 @@ React renderer ═══ WebSocket :9001 (authenticated) ═══> C++ engine
 
 ### Analysis pipeline
 
-`AnalysisService` keeps its **own** preprocessed stream, independent of playback: `PreprocessStream` mixes to mono, Butterworth-lowpasses, and resamples to `AnalysisParams.SampleRate` (currently `{8000 Hz, 4096}`, set in `Application::LoadAudio`), then loads it whole into a `RingBuffer`. Each tick, `ProcessCurrentFrame` estimates the current playhead as `decoder.GetPlaybackTime() + (now - lastPlaybackFrameTimestamp)` and reads a frame centred on it — so analysis is positioned by timestamp, not by consuming a stream.
+`AnalysisService` keeps its **own** preprocessed stream, independent of playback: `PreprocessStream` mixes to mono, Butterworth-lowpasses, and resamples to `AnalysisParams.SampleRate` (currently `{8000 Hz, 4096}`, set in `Application::LoadAudio`), then loads it whole into a `RingBuffer`. `EstimatePlayhead` extrapolates the current playhead as `decoder.GetPlaybackTime() + (now - lastPlaybackFrameTimestamp) × speed`, and `ProcessFrameAt` reads a frame centred on it — so analysis is positioned by timestamp, not by consuming a stream. Each frame carries `DeltaTime`, the source seconds it covers (one hop's worth for an on-demand frame while paused).
 
 Stages run in order in `AnalysisPipeline`, each mutating a shared `AnalysisContext`:
 
@@ -89,7 +89,8 @@ Stages run in order in `AnalysisPipeline`, each mutating a shared `AnalysisConte
 - A stage is a header-only subclass of `AnalysisStage` in `engine/src/Analysis/`, overriding `Execute`, `GetType`, and `GetSettings`. Register it with `m_Pipeline->AddStage(...)` in `AnalysisService::BuildPipeline`, which runs once in the service's constructor: the pipeline and its settings outlive the loaded file, so `getAnalysisSchema` answers with nothing open.
 - `GetSettings()` returns a JSON *schema* (`name`/`type`/`default`, plus `options` or `min`/`max`). `AddStage` harvests the defaults into the pipeline's settings map, keyed by `GetName()` — which is derived from `typeid(*this).name()`, so **the class name is the settings key**. Read values inside `Execute` via `GetSetting<T>(settings, "KEY")`; never read `context->Settings` directly.
 - Call `AnalysisStage::Execute(context)` first in any override — it primes the settings definition that `GetSetting` depends on.
-- `AnalysisContext::PersistentData` (rolling notes, previous chord) survives across frames; everything else is per-frame.
+- `AnalysisContext::PersistentData` (the key's decayed accumulators, the chord window's frames, previous chord) survives across frames and is cleared on seek; everything else is per-frame.
+- Anything accumulated across frames is weighted by `Frame.DeltaTime`, never counted per frame, so it doesn't change with the hop or the playback speed. The key decays as `H ← H·e^(−dt/τ) + score·dt` with `τ = ROLLING_WINDOW / 3`; the chord window is a hard `ROLLING_WINDOW` of source time, and a root's presence is in seconds.
 - Results are serialised by `AnalysisPipeline::GetResultJson` into one `analysis` event. Adding a field there means adding it to `analysisSlice.jsx` too.
 - `getAnalysisSchema` returns every stage's schema in pipeline order with the value in force; `setAnalysisSetting` checks a value against that same schema and applies it between frames. `ProcessFrame` takes one snapshot of the settings per frame, so a change never lands mid-frame. Note `GetSettings()` returns by value: bind it to a named local before iterating `.items()`, or the object is destroyed before the loop runs.
 

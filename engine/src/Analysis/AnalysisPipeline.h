@@ -33,15 +33,24 @@ namespace Adagio
 		std::string Root;
 		std::string Quality;
 		std::vector<Note> Notes;
-		int RootOccurences = 0;
+		double RootPresenceSeconds = 0.0;
 		int NumExtentions = 0;
 		int FifthOmitted = 0;
 		double Probability = 0.0;
 	};
 
+	struct NoteFrame
+	{
+		double Timestamp = 0.0;
+		double DeltaTime = 0.0;
+		std::vector<Note> Notes;
+	};
+
 	struct PersistentData
 	{
-		std::deque<Note> RollingNotes;
+		std::deque<NoteFrame> ChordFrames;
+		std::array<double, 12> NoteClassAccumulator = { 0.0 };
+		std::map<int, float> FreqAccumulator;
 		Chord PreviousChord;
 	};
 
@@ -55,7 +64,7 @@ namespace Adagio
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
 		std::vector<Peak> Peaks;
-		float BinHz;
+		float BinHz = 0.0f;
 		int Harmonics = 0;
 
 		std::vector<Note> Notes;
@@ -63,8 +72,6 @@ namespace Adagio
 		std::map<int, float> ChordFrequencyHistogram;
 		std::vector<Chord> PredictedChords;
 		std::string DetectedKey;
-
-		nlohmann::json Settings;
 	};
 
 	struct AnalysisResult
@@ -98,6 +105,8 @@ namespace Adagio
 		// Written by the command thread, read by the analysis thread once per frame.
 		mutable std::mutex m_SettingsMutex;
 		nlohmann::json m_Settings;
+		std::atomic<int> m_SettingsVersion{ 0 };
+		int m_CurrentSettingsVersion = 0;
 
 		std::unique_ptr<PersistentData> m_PersistentData;
 	};

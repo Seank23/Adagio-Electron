@@ -16,7 +16,9 @@
 
 #include <doctest/doctest.h>
 
+#include <array>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +26,8 @@
 namespace
 {
 	constexpr float Pi = 3.14159265358979323846f;
+	// One production hop at 1x: 256 samples of the 8 kHz analysis stream.
+	constexpr double HopSeconds = 256.0 / 8000.0;
 
 	// A fundamental plus three harmonics at 1/k amplitude, i.e. a plucked-string
 	// shape rather than a bare sine.
@@ -33,6 +37,7 @@ namespace
 		frame.SampleRate = sampleRate;
 		frame.FrameLength = frameLength;
 		frame.Timestamp = 1.0;
+		frame.DeltaTime = HopSeconds;
 		frame.Samples.resize(frameLength);
 		for (uint32_t i = 0; i < frameLength; ++i)
 		{
@@ -62,6 +67,7 @@ namespace
 		frame.SampleRate = sampleRate;
 		frame.FrameLength = frameLength;
 		frame.Timestamp = 1.0;
+		frame.DeltaTime = HopSeconds;
 		frame.Samples.resize(frameLength);
 		for (uint32_t i = 0; i < frameLength; ++i)
 		{
@@ -181,7 +187,6 @@ TEST_CASE("A2: a C4 that is 20 cents flat is still a C4")
 
 	Adagio::PersistentData persistent;
 	Adagio::AnalysisContext context{ frame, &persistent };
-	context.Settings = nlohmann::json::object();
 	context.Peaks.push_back({ PitchHz(60, -20.0f), 1.0f, 1.0f });
 
 	Adagio::NoteDetector detector;
@@ -203,7 +208,6 @@ TEST_CASE("A2: a G4 that is 20 cents flat is a G4")
 
 	Adagio::PersistentData persistent;
 	Adagio::AnalysisContext context{ frame, &persistent };
-	context.Settings = nlohmann::json::object();
 	context.Peaks.push_back({ PitchHz(67, -20.0f), 1.0f, 1.0f });
 
 	Adagio::NoteDetector detector;
@@ -225,15 +229,14 @@ TEST_CASE("A3: a fixed C major histogram detects C Major")
 	frame.SampleRate = 8000;
 	frame.FrameLength = 4096;
 	frame.Timestamp = 1.0;
+	frame.DeltaTime = HopSeconds;
 
 	Adagio::PersistentData persistent;
+	Adagio::AnalysisContext context{ frame, &persistent };
 	const int scale[] = { 0, 2, 4, 5, 7, 9, 11 };
 	const float weights[] = { 10.0f, 2.0f, 6.0f, 3.0f, 8.0f, 4.0f, 2.0f };
 	for (int i = 0; i < 7; ++i)
-		persistent.RollingNotes.push_back(MakeNote(48 + scale[i], PitchHz(60 + scale[i]), weights[i], 0.5));
-
-	Adagio::AnalysisContext context{ frame, &persistent };
-	context.Settings = nlohmann::json::object();
+		context.Notes.push_back(MakeNote(48 + scale[i], PitchHz(60 + scale[i]), weights[i], 1.0));
 
 	Adagio::KeyDetector detector;
 	DirtyStack();
@@ -248,18 +251,18 @@ TEST_CASE("A3: key detection is deterministic for identical input")
 	frame.SampleRate = 8000;
 	frame.FrameLength = 4096;
 	frame.Timestamp = 1.0;
+	frame.DeltaTime = HopSeconds;
 
-	Adagio::PersistentData persistent;
 	const int scale[] = { 0, 2, 4, 5, 7, 9, 11 };
 	const float weights[] = { 10.0f, 2.0f, 6.0f, 3.0f, 8.0f, 4.0f, 2.0f };
-	for (int i = 0; i < 7; ++i)
-		persistent.RollingNotes.push_back(MakeNote(48 + scale[i], PitchHz(60 + scale[i]), weights[i], 0.5));
 
 	std::string first;
 	for (int run = 0; run < 8; ++run)
 	{
+		Adagio::PersistentData persistent;
 		Adagio::AnalysisContext context{ frame, &persistent };
-		context.Settings = nlohmann::json::object();
+		for (int i = 0; i < 7; ++i)
+			context.Notes.push_back(MakeNote(48 + scale[i], PitchHz(60 + scale[i]), weights[i], 1.0));
 
 		Adagio::KeyDetector detector;
 		DirtyStack();
@@ -335,38 +338,38 @@ TEST_CASE("A5: chord qualities that the interval table gets right today")
 	CHECK(predictor.GetChordQuality({ 2, 7 }, fifthOmitted) == "sus2");
 }
 
-TEST_CASE("A6: rolling notes expire on absolute distance from the frame")
+TEST_CASE("A6: chord frames expire on absolute distance from the frame")
 {
-	// After a backwards seek the stored notes sit in the future, where the old
-	// signed compare (timestamp - note.Timestamp > window) is negative, so they
-	// never expired and kept steering the key until playback caught up.
+	// After a backwards seek the stored frames sit in the future, where a signed
+	// compare (timestamp - frame.Timestamp > window) is negative, so they would
+	// never expire and would keep steering the chord until playback caught up.
 	auto expire = [](Adagio::PersistentData& persistent, double frameTimestamp)
 	{
 		Adagio::AudioFrame frame;
 		frame.SampleRate = 8000;
 		frame.FrameLength = 4096;
 		frame.Timestamp = frameTimestamp;
+		frame.DeltaTime = HopSeconds;
 
 		Adagio::AnalysisContext context{ frame, &persistent };
-		context.Settings = nlohmann::json::object();
 
-		Adagio::NoteDetector detector;
-		detector.Execute(&context);
+		Adagio::ChordPredictor predictor;
+		predictor.Execute(&context);
 	};
 
-	// NoteDetector's ROLLING_WINDOW defaults to 20 s.
+	// ChordPredictor's ROLLING_WINDOW defaults to 0.5 s. The frame being analysed is
+	// always kept, so a window emptied of everything else still holds one.
 	Adagio::PersistentData afterSeek;
-	afterSeek.RollingNotes.push_back(MakeNote(60, PitchHz(60), 1.0f, 40.0));
-	afterSeek.RollingNotes.push_back(MakeNote(64, PitchHz(64), 1.0f, 41.0));
+	afterSeek.ChordFrames.push_back({ 40.0, HopSeconds, { MakeNote(60, PitchHz(60), 1.0f, 40.0) } });
+	afterSeek.ChordFrames.push_back({ 41.0, HopSeconds, { MakeNote(64, PitchHz(64), 1.0f, 41.0) } });
 	expire(afterSeek, 1.0);
-	CHECK(afterSeek.RollingNotes.empty());
+	CHECK(afterSeek.ChordFrames.size() == 1);
 
-	// A seek shorter than the window leaves the notes it lands among alone.
 	Adagio::PersistentData withinWindow;
-	withinWindow.RollingNotes.push_back(MakeNote(60, PitchHz(60), 1.0f, 0.5));
-	withinWindow.RollingNotes.push_back(MakeNote(64, PitchHz(64), 1.0f, 15.0));
+	withinWindow.ChordFrames.push_back({ 0.6, HopSeconds, { MakeNote(60, PitchHz(60), 1.0f, 0.6) } });
+	withinWindow.ChordFrames.push_back({ 0.9, HopSeconds, { MakeNote(64, PitchHz(64), 1.0f, 0.9) } });
 	expire(withinWindow, 1.0);
-	CHECK(withinWindow.RollingNotes.size() == 2);
+	CHECK(withinWindow.ChordFrames.size() == 3);
 }
 
 TEST_CASE("A6: the chord window reaches the oldest note in range")
@@ -377,15 +380,15 @@ TEST_CASE("A6: the chord window reaches the oldest note in range")
 	frame.SampleRate = 8000;
 	frame.FrameLength = 4096;
 	frame.Timestamp = 1.0;
+	frame.DeltaTime = HopSeconds;
 
 	// ChordPredictor's ROLLING_WINDOW defaults to 0.5 s, so all three are in range.
 	Adagio::PersistentData persistent;
-	persistent.RollingNotes.push_back(MakeNote(60, PitchHz(60), 3.0f, 0.9));
-	persistent.RollingNotes.push_back(MakeNote(64, PitchHz(64), 2.0f, 0.95));
-	persistent.RollingNotes.push_back(MakeNote(67, PitchHz(67), 1.0f, 1.0));
+	persistent.ChordFrames.push_back({ 0.9, HopSeconds, { MakeNote(60, PitchHz(60), 3.0f, 0.9) } });
+	persistent.ChordFrames.push_back({ 0.95, HopSeconds, { MakeNote(64, PitchHz(64), 2.0f, 0.95) } });
 
 	Adagio::AnalysisContext context{ frame, &persistent };
-	context.Settings = nlohmann::json::object();
+	context.Notes.push_back(MakeNote(67, PitchHz(67), 1.0f, 1.0));
 
 	Adagio::ChordPredictor predictor;
 	predictor.Execute(&context);
@@ -497,4 +500,169 @@ TEST_CASE("A5: a plain major triad is the chord it ranks first")
 	REQUIRE_FALSE(result->Context->PredictedChords.empty());
 	CHECK(result->Context->PredictedChords[0].Name == "C");
 	CHECK(result->Context->PredictedChords[0].Root == "C");
+}
+
+namespace
+{
+	// C major for the first second, then the same scale with F# for F, and returns
+	// the raw pitch-class accumulator after two seconds at the given hop.
+	std::array<double, 12> AccumulateKey(double hopSeconds)
+	{
+		const int firstScale[] = { 0, 2, 4, 5, 7, 9, 11 };
+		const int secondScale[] = { 0, 2, 4, 6, 7, 9, 11 };
+		const float weights[] = { 10.0f, 2.0f, 6.0f, 3.0f, 8.0f, 4.0f, 2.0f };
+
+		Adagio::PersistentData persistent;
+		Adagio::KeyDetector detector;
+		const int frames = static_cast<int>(std::lround(2.0 / hopSeconds));
+		for (int k = 1; k <= frames; ++k)
+		{
+			Adagio::AudioFrame frame;
+			frame.Timestamp = k * hopSeconds;
+			frame.DeltaTime = hopSeconds;
+
+			Adagio::AnalysisContext context{ frame, &persistent };
+			const int* scale = frame.Timestamp <= 1.0 ? firstScale : secondScale;
+			for (int i = 0; i < 7; ++i)
+				context.Notes.push_back(MakeNote(60 + scale[i], PitchHz(60 + scale[i]), weights[i] / 10.0f, frame.Timestamp));
+			detector.Execute(&context);
+		}
+		return persistent.PitchClassAccumulator;
+	}
+
+	// The root presence of the top-ranked chord after holding C E G for a second.
+	double HoldTriad(double hopSeconds)
+	{
+		Adagio::PersistentData persistent;
+		Adagio::ChordPredictor predictor;
+		double presence = 0.0;
+		const int frames = static_cast<int>(std::lround(1.0 / hopSeconds));
+		for (int k = 1; k <= frames; ++k)
+		{
+			Adagio::AudioFrame frame;
+			frame.Timestamp = k * hopSeconds;
+			frame.DeltaTime = hopSeconds;
+
+			Adagio::AnalysisContext context{ frame, &persistent };
+			for (int midi : { 60, 64, 67 })
+				context.Notes.push_back(MakeNote(midi, PitchHz(midi), 1.0f, frame.Timestamp));
+			predictor.Execute(&context);
+			presence = context.PredictedChords.empty() ? 0.0 : context.PredictedChords[0].RootPresenceSeconds;
+		}
+		return presence;
+	}
+
+	struct FrameReading
+	{
+		std::string Key;
+		std::string TopChord;
+	};
+
+	// Drives the production pipeline over a signal at a fixed hop, centring each frame
+	// on the playhead as AnalysisService does, and records what it reads at each position.
+	std::map<int64_t, FrameReading> RunProgression(const std::vector<float>& signal, int hopSamples)
+	{
+		constexpr uint32_t sampleRate = 8000;
+		constexpr uint32_t frameLength = 4096;
+
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+		std::map<int64_t, FrameReading> readings;
+		for (int64_t position = hopSamples; position < static_cast<int64_t>(signal.size()); position += hopSamples)
+		{
+			Adagio::AudioFrame frame;
+			frame.SampleRate = sampleRate;
+			frame.FrameLength = frameLength;
+			frame.Timestamp = position / static_cast<double>(sampleRate);
+			frame.DeltaTime = hopSamples / static_cast<double>(sampleRate);
+			frame.Samples.resize(frameLength);
+
+			const int64_t start = position - frameLength / 2;
+			for (uint32_t i = 0; i < frameLength; ++i)
+			{
+				const int64_t sample = start + i;
+				frame.Samples[i] = sample >= 0 && sample < static_cast<int64_t>(signal.size()) ? signal[sample] : 0.0f;
+			}
+
+			const std::unique_ptr<Adagio::AnalysisResult> result = pipeline->ProcessFrame(frame);
+			const auto& chords = result->Context->PredictedChords;
+			// Added notes are left out: they come from classes at SCORE_THRESHOLD, where a
+			// finer hop averages over a different set of beat phases and can tip either way.
+			readings[position] = { result->Context->DetectedKey, chords.empty() ? std::string() : chords[0].Name.substr(0, chords[0].Name.find(" (")) };
+		}
+		return readings;
+	}
+}
+
+TEST_CASE("F1: the key accumulator weighs source time, not frames")
+{
+	// Counting notes per frame doubled every total when the hop halved. Weighted by
+	// the frame's source seconds, hops of 16, 32 and 64 ms hold the same evidence.
+	const std::array<double, 12> fine = AccumulateKey(0.016);
+	const std::array<double, 12> production = AccumulateKey(HopSeconds);
+	const std::array<double, 12> coarse = AccumulateKey(0.064);
+
+	for (int pc = 0; pc < 12; ++pc)
+	{
+		CAPTURE(pc);
+		CHECK(fine[pc] == doctest::Approx(production[pc]).epsilon(0.03));
+		CHECK(coarse[pc] == doctest::Approx(production[pc]).epsilon(0.03));
+	}
+	// Both seconds held F and F# equally, so the more recent F# outweighs the decayed F.
+	CHECK(production[5] > 0.0);
+	CHECK(production[6] > production[5]);
+}
+
+TEST_CASE("F1: a chord root's presence is measured in seconds")
+{
+	// As a count it grew with the frame rate; as seconds it is the window, whatever the hop.
+	const double production = HoldTriad(HopSeconds);
+	CHECK(production == doctest::Approx(0.5).epsilon(0.1));
+	CHECK(HoldTriad(0.016) == doctest::Approx(production).epsilon(0.05));
+	CHECK(HoldTriad(0.064) == doctest::Approx(production).epsilon(0.1));
+}
+
+TEST_CASE("F1: the production pipeline reads the same key and chords at every speed")
+{
+	// The hop is fixed in wall time, so 0.5x, 1x and 2x analyse the source every 128,
+	// 256 and 512 samples. The first test to run HPS: it goes through CreatePipeline.
+	constexpr uint32_t sampleRate = 8000;
+	const std::vector<std::vector<int>> progression = {
+		{ 60, 64, 67 },   // C
+		{ 65, 69, 72 },   // F
+		{ 67, 71, 74 },   // G
+		{ 60, 64, 67 },   // C
+	};
+	const size_t segmentSamples = sampleRate * 5 / 2;
+
+	std::vector<float> signal(segmentSamples * progression.size());
+	for (size_t i = 0; i < signal.size(); ++i)
+	{
+		const float t = static_cast<float>(i) / static_cast<float>(sampleRate);
+		float sample = 0.0f;
+		for (int midi : progression[i / segmentSamples])
+		{
+			for (int harmonic = 1; harmonic <= 4; ++harmonic)
+				sample += std::sin(2.0f * Pi * PitchHz(midi) * harmonic * t) / static_cast<float>(harmonic);
+		}
+		signal[i] = sample;
+	}
+
+	const std::map<int64_t, FrameReading> halfSpeed = RunProgression(signal, 128);
+	const std::map<int64_t, FrameReading> fullSpeed = RunProgression(signal, 256);
+	const std::map<int64_t, FrameReading> doubleSpeed = RunProgression(signal, 512);
+
+	// Positions common to all three hops, each at least half a second from a chord change.
+	for (int64_t position : { 15360, 35840, 51200, 71680, 79872 })
+	{
+		CAPTURE(position);
+		REQUIRE(fullSpeed.count(position) == 1);
+		const FrameReading& expected = fullSpeed.at(position);
+		CAPTURE(expected.Key);
+		CAPTURE(expected.TopChord);
+		CHECK_FALSE(expected.TopChord.empty());
+		CHECK(halfSpeed.at(position).Key == expected.Key);
+		CHECK(halfSpeed.at(position).TopChord == expected.TopChord);
+		CHECK(doubleSpeed.at(position).Key == expected.Key);
+		CHECK(doubleSpeed.at(position).TopChord == expected.TopChord);
+	}
 }

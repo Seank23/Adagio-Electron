@@ -33,6 +33,11 @@ namespace Adagio
 		float GetVolume() const { return m_Volume.load(std::memory_order_acquire); }
 		float GetSpeed() const;
 		double GetPositionSeconds() const;
+		uint64_t GetPositionSamples() const;
+		int GetUnderrunCount() const { return m_UnderrunCount.load(std::memory_order_acquire); }
+		float GetMaxCallbackUs() const { return m_MaxCallbackUs.load(std::memory_order_acquire); }
+
+		bool ConsumeEndOfPlay() { return m_EndReported.exchange(false, std::memory_order_acq_rel); }
 
 	private:
 		void UninitDevice();
@@ -52,5 +57,8 @@ namespace Adagio
 		// Audio thread only: the seek generation this callback has already acted on.
 		uint32_t m_SeekGenerationSeen = 0;
 		std::unique_ptr<TimeProcessor> m_TimeProcessor;
+
+		std::atomic<int> m_UnderrunCount{ 0 };
+		std::atomic<float> m_MaxCallbackUs{ 0.0f };
 	};
 }

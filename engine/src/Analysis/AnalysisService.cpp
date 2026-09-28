@@ -21,7 +21,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_IntervalMs(5), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
 	{
 		BuildPipeline();
 	}
@@ -48,14 +48,20 @@ namespace Adagio
 
 	void AnalysisService::BuildPipeline()
 	{
-		m_Pipeline = std::make_unique<AnalysisPipeline>();
-		m_Pipeline->AddStage(std::make_unique<FFTProcessor>());
-		m_Pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
-		m_Pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
-		m_Pipeline->AddStage(std::make_unique<PeakExtractor>());
-		m_Pipeline->AddStage(std::make_unique<NoteDetector>());
-		m_Pipeline->AddStage(std::make_unique<KeyDetector>());
-		m_Pipeline->AddStage(std::make_unique<ChordPredictor>());
+		m_Pipeline = CreatePipeline();
+	}
+
+	std::unique_ptr<AnalysisPipeline> AnalysisService::CreatePipeline()
+	{
+		std::unique_ptr<AnalysisPipeline> pipeline = std::make_unique<AnalysisPipeline>();
+		pipeline->AddStage(std::make_unique<FFTProcessor>());
+		pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
+		pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
+		pipeline->AddStage(std::make_unique<PeakExtractor>());
+		pipeline->AddStage(std::make_unique<NoteDetector>());
+		pipeline->AddStage(std::make_unique<KeyDetector>());
+		pipeline->AddStage(std::make_unique<ChordPredictor>());
+		return pipeline;
 	}
 
 	nlohmann::json AnalysisService::GetSchemaJson() const
@@ -92,32 +98,51 @@ namespace Adagio
 
 		m_AnalysisThread = std::thread([this]()
 		{
-			std::unique_ptr<AnalysisResult> result = nullptr;
 			std::vector<kfr::univector<float>> rollingAvg;
+			bool anchored = false;
 			while (m_Running)
 			{
-				if (SyncSeekGeneration())
-					rollingAvg.clear();
-				result = ProcessCurrentFrame();
-				auto data = result->Context->Magnitudes;
-				if (m_RollingAvgCount > 1)
+				const double playhead = EstimatePlayhead();
+				const int64_t analysisStreamPos = std::llround(playhead * m_Params.SampleRate);
+
+				const bool seeked = SyncSeekGeneration();
+				if (seeked || !anchored || analysisStreamPos < m_LastAnalysisStreamPos)
 				{
-					rollingAvg.push_back(data);
-					if (rollingAvg.size() > m_RollingAvgCount)
-						rollingAvg.erase(rollingAvg.begin());
-					for (size_t i = 0; i < data.size(); i++)
-					{
-						float sum = 0.0f;
-						for (const auto& vec : rollingAvg)
-							sum += vec[i];
-						data[i] = sum / static_cast<float>(rollingAvg.size());
-					}
-					result->Context->Magnitudes = data;
+					if (seeked)
+						rollingAvg.clear();
+					m_LastAnalysisStreamPos = analysisStreamPos;
+					anchored = true;
+					continue;
 				}
-				nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
-				MessageQueue::GetInstance().Push(json.dump());
-				int uSSleepTime = (m_IntervalMs - result->ExecutionTimeMs) * 1000;
-				std::this_thread::sleep_for(std::chrono::microseconds(uSSleepTime));
+
+				const int64_t deltaSamples = analysisStreamPos - m_LastAnalysisStreamPos;
+				if (deltaSamples >= m_Params.HopSize * m_Playback->GetSpeed())
+				{
+					const double deltaTime = std::min(deltaSamples / (double)m_Params.SampleRate, MaxDeltaSeconds);
+					std::unique_ptr<AnalysisResult> result = ProcessFrameAt(playhead, deltaTime);
+					auto data = result->Context->Magnitudes;
+					if (m_RollingAvgCount > 1)
+					{
+						rollingAvg.push_back(data);
+						if (rollingAvg.size() > m_RollingAvgCount)
+							rollingAvg.erase(rollingAvg.begin());
+						for (size_t i = 0; i < data.size(); i++)
+						{
+							float sum = 0.0f;
+							for (const auto& vec : rollingAvg)
+								sum += vec[i];
+							data[i] = sum / static_cast<float>(rollingAvg.size());
+						}
+						result->Context->Magnitudes = data;
+					}
+					nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
+					MessageQueue::GetInstance().Push(json.dump());
+					m_LastAnalysisStreamPos = analysisStreamPos;
+				}
+				else
+				{
+					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				}
 			}
 		});
 	}
@@ -141,7 +166,8 @@ namespace Adagio
 
 	void AnalysisService::PublishCurrentFrame()
 	{
-		std::unique_ptr<AnalysisResult> result = ProcessCurrentFrame();
+		// An on-demand frame covers no playback, but weighting it by zero would leave the key blank after a paused seek.
+		std::unique_ptr<AnalysisResult> result = ProcessFrameAt(EstimatePlayhead(), m_Params.HopSize / (double)m_Params.SampleRate);
 		nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
 		MessageQueue::GetInstance().Push(json.dump());
 	}
@@ -162,25 +188,28 @@ namespace Adagio
 		if (!playing || lastFrameTimestamp <= 0.0)
 			return playbackTime;
 
-		constexpr double maxExtrapolationSeconds = 0.25;
-		const double wallDelta = std::clamp(now - lastFrameTimestamp, 0.0, maxExtrapolationSeconds);
+		const double wallDelta = std::clamp(now - lastFrameTimestamp, 0.0, MaxDeltaSeconds);
 		return playbackTime + wallDelta * speed;
 	}
 
-	std::unique_ptr<AnalysisResult> AnalysisService::ProcessCurrentFrame()
+	double AnalysisService::EstimatePlayhead() const
 	{
 		const double now = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9;
 		const double speed = m_Playback ? m_Playback->GetSpeed() : 1.0;
+		return ExtrapolatePlayhead(m_Decoder->GetPlaybackTime(), m_Decoder->GetLastPlaybackFrameTimestamp(), now, speed, m_Running.load(std::memory_order_acquire));
+	}
 
-		m_AnalysisTimestamp = ExtrapolatePlayhead(m_Decoder->GetPlaybackTime(), m_Decoder->GetLastPlaybackFrameTimestamp(), now, speed, m_Running.load(std::memory_order_acquire));
-		int currentFrameStart = std::clamp(static_cast<int>(m_AnalysisTimestamp * m_Params.SampleRate - m_Params.FrameLength / static_cast<float>(2)), 0, (int)m_AnalysisBuffer->GetCapacity());
+	std::unique_ptr<AnalysisResult> AnalysisService::ProcessFrameAt(double sourceSeconds, double deltaTime)
+	{
+		int currentFrameStart = std::clamp(static_cast<int>(sourceSeconds * m_Params.SampleRate - m_Params.FrameLength / (float)2), 0, (int)m_AnalysisBuffer->GetCapacity());
 		kfr::univector<float> samples(m_Params.FrameLength);
 		size_t samplesRead = m_AnalysisBuffer->Read(samples.data(), m_Params.FrameLength, currentFrameStart);
 
 		AudioFrame frame;
 		frame.SampleRate = static_cast<uint32_t>(m_Params.SampleRate);
 		frame.FrameLength = static_cast<uint32_t>(m_Params.FrameLength);
-		frame.Timestamp = m_AnalysisTimestamp;
+		frame.Timestamp = sourceSeconds;
+		frame.DeltaTime = deltaTime;
 		frame.Samples = samples;
 		return m_Pipeline->ProcessFrame(frame);
 	}

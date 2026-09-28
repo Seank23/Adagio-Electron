@@ -6,24 +6,31 @@
 
 namespace Adagio
 {
-	class SpectrumFilterProcessor : public AnalysisStage
+	struct SpectrumFilterProcessorSettings
+	{
+		std::string ENABLED = "Yes";
+		float LOW_CUT_C1 = 55.0f;
+		float LOW_CUT_C2 = 70.0f;
+		float HIGH_CUT_C1 = 10000.0f;
+		float HIGH_CUT_C2 = 20000.0f;
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(SpectrumFilterProcessorSettings, ENABLED, LOW_CUT_C1, LOW_CUT_C2, HIGH_CUT_C1, HIGH_CUT_C2)
+	};
+
+	class SpectrumFilterProcessor : public ConfigurableStage<SpectrumFilterProcessorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t frameLength = data.size();
-			nlohmann::json settings = context->Settings;
 
-			const std::string enabled = GetSetting<std::string>(settings, "ENABLED");
-
-			if (enabled == "Yes")
+			if (m_Settings.ENABLED == "Yes")
 			{
-				float lowCutC1 = GetSetting<float>(settings, "LOW_CUT_C1");
-				float lowCutC2 = GetSetting<float>(settings, "LOW_CUT_C2");
-				float highCutC1 = GetSetting<float>(settings, "HIGH_CUT_C1");
-				float highCutC2 = GetSetting<float>(settings, "HIGH_CUT_C2");
+				float lowCutC1 = m_Settings.LOW_CUT_C1;
+				float lowCutC2 = m_Settings.LOW_CUT_C2;
+				float highCutC1 = m_Settings.HIGH_CUT_C1;
+				float highCutC2 = m_Settings.HIGH_CUT_C2;
 				kfr::univector<float> filtered(frameLength);
 				for (size_t i = 0; i < frameLength; i++)
 				{
@@ -48,42 +55,38 @@ namespace Adagio
 			return AnalysisStageType::Processor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
 			return nlohmann::json::parse(R"({
 				"ENABLED": {
 					"name": "Enabled",
 					"type": "enum",	
-					"options": ["Yes","No"],
-					"default": "Yes"
+					"options": ["Yes","No"]
 				},
 				"LOW_CUT_C1": {
 					"name": "Low Cut C1",
 					"type": "float",	
 					"min": 0.0,
-					"max": 20000.0,
-					"default": 55.0
+					"max": 20000.0
 				},
 				"LOW_CUT_C2": {
 					"name": "Low Cut C2",
 					"type": "float",	
 					"min": 0.0,
-					"max": 20000.0,
-					"default": 70.0
+					"max": 20000.0
 				},
 				"HIGH_CUT_C1": {
 					"name": "High Cut C1",
 					"type": "float",	
 					"min": 0.0,
-					"max": 20000.0,
-					"default": 10000.0
+					"max": 20000.0
 				},
 				"HIGH_CUT_C2": {
 					"name": "High Cut C2",
 					"type": "float",	
 					"min": 0.0,
-					"max": 20000.0,
-					"default": 20000.0
+					"max": 20000.0
 				}	
 			})");
 		}

@@ -53,7 +53,6 @@ namespace Adagio
 		std::thread m_FeederThread;
 		std::shared_ptr<AudioData> m_AudioSource;
 		std::unordered_map<std::string, std::unique_ptr<RingBuffer<float>>> m_Buffers;
-		kfr::univector<float> m_FeederData;
 		std::atomic<FeederState> m_FeederState{ FeederState::Stopped };
 		std::atomic<uint64_t> m_FeederPosition{ 0 };
 		std::atomic<uint64_t> m_TotalSamples{ 0 };

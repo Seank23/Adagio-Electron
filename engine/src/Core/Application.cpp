@@ -81,10 +81,24 @@ namespace Adagio
 	void Application::Run()
 	{
 		m_Running.store(true, std::memory_order_release);
+		int timer = 0;
+		const int sleepMs = 2;
 		while (m_Running.load(std::memory_order_acquire))
 		{
 			ProcessCommands();
-			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+			if (timer > 32)
+			{
+				PushEvent({ {"type", Protocol::Event::Position}, {"value", m_PlaybackService->GetPositionSeconds()} });
+				timer = 0;
+			}
+			if (m_PlaybackService->ConsumeEndOfPlay())
+			{
+				PushEvent({ {"type", Protocol::Event::EndOfPlay} });
+				HandleCommand({ CommandType::Stop });
+			}
+
+			timer += sleepMs;
+			std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
 		}
 		Shutdown();
 	}
@@ -305,7 +319,7 @@ namespace Adagio
 			outError = "Could not open an audio output device.";
 			return false;
 		}
-		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096 }, m_PlaybackService.get());
+		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
 
 		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		waveformThread.join();
@@ -337,7 +351,9 @@ namespace Adagio
 			{"position", m_PlaybackService->GetPositionSeconds()},
 			{"speed", m_PlaybackService->GetSpeed()},
 			{"volume", m_PlaybackService->GetVolume()},
-			{"commandsHandled", m_CommandsHandled.load(std::memory_order_acquire)}
+			{"commandsHandled", m_CommandsHandled.load(std::memory_order_acquire)},
+			{"underrunCount", m_PlaybackService->GetUnderrunCount()},
+			{"maxCallbackUs", m_PlaybackService->GetMaxCallbackUs()}
 		};
 	}
 }

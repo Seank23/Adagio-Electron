@@ -18,13 +18,11 @@ namespace Adagio
 
 	void AnalysisPipeline::AddStage(std::unique_ptr<AnalysisStage> stage)
 	{
-		std::string name = stage->GetName();
+		stage->Initialise();
 		{
+			// Holds only what SetSetting has changed; ApplySettings keeps the stage's own default for the rest.
 			std::lock_guard<std::mutex> lock(m_SettingsMutex);
-			m_Settings[name] = {};
-			auto settings = stage->GetSettings();
-			for (auto& it : settings.items())
-				m_Settings[name][it.key()] = it.value()["default"];
+			m_Settings[stage->GetName()] = nlohmann::json::object();
 		}
 		m_Stages.push_back(std::move(stage));
 	}
@@ -36,15 +34,21 @@ namespace Adagio
 		context->PersistentData = m_PersistentData.get();
 		context->Samples = frame.Samples;
 
-		nlohmann::json settings;
+		bool settingsUpdated = false;
+		if (m_CurrentSettingsVersion != m_SettingsVersion.load(std::memory_order_acquire))
 		{
-			std::lock_guard<std::mutex> lock(m_SettingsMutex);
-			settings = m_Settings;
+			settingsUpdated = true;
+			m_CurrentSettingsVersion = m_SettingsVersion.load(std::memory_order_acquire);
 		}
 
 		for (const auto& stage : m_Stages)
 		{
-			context->Settings = settings[stage->GetName()];
+			if (settingsUpdated)
+			{
+				std::lock_guard<std::mutex> lock(m_SettingsMutex);
+				const nlohmann::json& stageSettings = m_Settings.at(stage->GetName());
+				stage->ApplySettings(stageSettings);
+			}
 			stage->Execute(context.get());
 		}
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
@@ -58,8 +62,7 @@ namespace Adagio
 
 	void AnalysisPipeline::ResetPersistentData()
 	{
-		m_PersistentData->RollingNotes.clear();
-		m_PersistentData->PreviousChord = Chord();
+		*m_PersistentData = PersistentData();
 	}
 
 	const AnalysisStage* AnalysisPipeline::FindStage(const std::string& name) const
@@ -82,9 +85,7 @@ namespace Adagio
 			const std::string name = stage->GetName();
 			const nlohmann::json& values = m_Settings.at(name);
 
-			// GetSettings() returns by value, and items() only borrows: iterating it
-			// straight out of the call reads an object that has already been destroyed.
-			const nlohmann::json definitions = stage->GetSettings();
+			const nlohmann::json definitions = stage->GetSettingsSchema();
 
 			nlohmann::json settings = nlohmann::json::array();
 			for (const auto& definition : definitions.items())
@@ -114,7 +115,7 @@ namespace Adagio
 			return false;
 		}
 
-		const nlohmann::json definitions = target->GetSettings();
+		const nlohmann::json definitions = target->GetSettingsSchema();
 		if (!definitions.contains(key))
 		{
 			outError = "Stage '" + stage + "' has no setting '" + key + "'.";
@@ -145,6 +146,7 @@ namespace Adagio
 
 		std::lock_guard<std::mutex> lock(m_SettingsMutex);
 		m_Settings[stage][key] = value;
+		m_SettingsVersion++;
 		return true;
 	}
 

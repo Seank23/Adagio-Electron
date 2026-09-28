@@ -57,7 +57,6 @@ export default function EngineEventRouter() {
             dispatch(setCurrentTime(msg?.value));
             break;
         case EVENT_TYPE.END_OF_PLAY:
-            await commands.stop();
             dispatch(resetPlayback());
             break;
         case EVENT_TYPE.ERROR:

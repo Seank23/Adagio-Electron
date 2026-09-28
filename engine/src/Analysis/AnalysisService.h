@@ -11,8 +11,9 @@ namespace Adagio
 {
 	struct AnalysisParams
 	{
-		float SampleRate = 44100.0f;
+		float SampleRate = 8000.0f;
 		int FrameLength = 8192;
+		int HopSize = 256;
 	};
 	struct AnalysisResult;
 
@@ -36,17 +37,19 @@ namespace Adagio
 		void StopAnalysis();
 		void RequestCurrentFrameAnalysis();
 
-		void SetIntervalMs(int intervalMs) { m_IntervalMs = intervalMs; }
-
 		nlohmann::json GetSchemaJson() const;
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
 
-		// Where the playhead is now, in source seconds: the position the audio callback last published
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
+		static std::unique_ptr<AnalysisPipeline> CreatePipeline();
 
 	private:
+		// A stall longer than this is a hiccup, not audio heard; it shouldn't outweigh the history.
+		static constexpr double MaxDeltaSeconds = 0.25;
+
 		void BuildPipeline();
-		std::unique_ptr<AnalysisResult> ProcessCurrentFrame();
+		double EstimatePlayhead() const;
+		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);
 		void PublishCurrentFrame();
 		bool SyncSeekGeneration();
 		void PreprocessStream(kfr::univector<float>& outStream);
@@ -58,11 +61,10 @@ namespace Adagio
 		std::shared_ptr<AudioData> m_AudioSource;
 		std::unique_ptr<RingBuffer<float>> m_AnalysisBuffer;
 		AnalysisParams m_Params;
-		int m_IntervalMs;
 		int m_RollingAvgCount;
 		std::atomic<bool> m_Running{ false };
-		double m_AnalysisTimestamp = 0.0;
 
 		uint32_t m_SeekGenerationSeen = 0;
+		int64_t m_LastAnalysisStreamPos = 0;
 	};
 }

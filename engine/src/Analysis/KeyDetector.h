@@ -5,7 +5,14 @@
 
 namespace Adagio
 {
-	class KeyDetector : public AnalysisStage
+	struct KeyDetectorSettings
+	{
+		float ROLLING_WINDOW = 20.0f;
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(KeyDetectorSettings, ROLLING_WINDOW)
+	};
+
+	class KeyDetector : public ConfigurableStage<KeyDetectorSettings>
 	{
 	private:
 		const std::array<double, 12> KrumhanslMajor = {
@@ -35,22 +42,33 @@ namespace Adagio
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
-			auto& data = context->Peaks;
-			nlohmann::json settings = context->Settings;
+			const double dt = context->Frame.DeltaTime;
+			const double decay = std::exp(-dt / (m_Settings.ROLLING_WINDOW / 3.0));
 
-			std::map<int, float> frequencyHistogram;
-			std::array<double, 12> notesHistogram = { 0.0 };
-			for (const auto& note : context->PersistentData->RollingNotes)
+			auto& frequencyAccumulator = context->PersistentData->FreqAccumulator;
+			auto& noteClassAccumulator = context->PersistentData->NoteClassAccumulator;
+
+			for (auto& value : noteClassAccumulator)
+				value *= decay;
+
+			for (auto it = frequencyAccumulator.begin(); it != frequencyAccumulator.end();)
 			{
-				int roundedFrequency = std::round(note.PeakInfo.Frequency);
-				frequencyHistogram[roundedFrequency] += note.PeakInfo.Score;
-
-				int noteClass = note.Midi % 12;
-				notesHistogram[noteClass] += note.PeakInfo.Score;
+				it->second *= (float)decay;
+				if (it->second < PruneThreshold)
+					it = frequencyAccumulator.erase(it);
+				else
+					++it;
 			}
 
-			float sum = std::reduce(notesHistogram.begin(), notesHistogram.end(), 0.0f, std::plus<float>());
+			for (const auto& note : context->Notes)
+			{
+				const double weight = note.PeakInfo.Score * dt;
+				frequencyAccumulator[(int)std::round(note.PeakInfo.Frequency)] += static_cast<float>(weight);
+				noteClassAccumulator[note.Midi % 12] += weight;
+			}
+
+			std::array<double, 12> notesHistogram = noteClassAccumulator;
+			double sum = std::reduce(notesHistogram.begin(), notesHistogram.end(), 0.0);
 			if (sum > 0)
 			{
 				for (auto& val : notesHistogram)
@@ -79,7 +97,7 @@ namespace Adagio
 			else
 				keyName = NoteNames.at(bestKey) + " Major";
 
-			context->KeyFrequencyHistogram = frequencyHistogram;
+			context->KeyFrequencyHistogram = frequencyAccumulator;
 			context->DetectedKey = keyName;
 		}
 
@@ -88,12 +106,22 @@ namespace Adagio
 			return AnalysisStageType::FeatureExtractor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
-			return nlohmann::json::parse(R"({})");
+			return nlohmann::json::parse(R"({
+				"ROLLING_WINDOW": {
+					"name": "Rolling Window",
+					"type": "float",
+					"min": 5.0,
+					"max": 50.0
+				}
+			})");
 		}
 
 	private:
+		static constexpr float PruneThreshold = 1e-6f;
+
 		void FindTotalScaleSimilarity(const std::array<double, 12>& histogram, std::array<double, 12>& outSimilarity)
 		{
 			for (int i = 0; i < 12; i++)

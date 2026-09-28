@@ -7,17 +7,22 @@
 
 namespace Adagio
 {
-	class FFTProcessor : public AnalysisStage
+	struct FFTProcessorSettings
+	{
+		std::string WINDOW = "Hamming";
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(FFTProcessorSettings, WINDOW)
+	};
+
+	class FFTProcessor : public ConfigurableStage<FFTProcessorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
 			auto& data = context->Samples;
 			const size_t frameLength = data.size();
-			nlohmann::json settings = context->Settings;
 
-			const std::string windowType = GetSetting<std::string>(settings, "WINDOW");
+			const std::string windowType = m_Settings.WINDOW;
 
 			if (windowType == "Hamming")
 				data *= kfr::window_hamming<float>(frameLength);
@@ -50,14 +55,14 @@ namespace Adagio
 			return AnalysisStageType::Processor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
 			return nlohmann::json::parse(R"({
 				"WINDOW": {
 					"name": "Window Function",
 					"type": "enum",	
-					"options": ["Rectangle","Hamming","Hann","BlackmannHarris"],
-					"default": "Hamming"
+					"options": ["Rectangle","Hamming","Hann","BlackmannHarris"]
 				}
 			})");
 		}

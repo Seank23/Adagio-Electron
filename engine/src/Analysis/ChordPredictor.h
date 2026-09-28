@@ -8,44 +8,55 @@
 
 namespace Adagio
 {
-	class ChordPredictor : public AnalysisStage
+	struct ChordPredictorSettings
+	{
+		float ROLLING_WINDOW = 0.5f;
+		float SCORE_THRESHOLD = 0.05f;
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ChordPredictorSettings, ROLLING_WINDOW, SCORE_THRESHOLD)
+	};
+
+	class ChordPredictor : public ConfigurableStage<ChordPredictorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
-			auto& data = context->Peaks;
-			nlohmann::json settings = context->Settings;
-
-			const float rollingWindowTime = GetSetting<float>(settings, "ROLLING_WINDOW");
+			const float rollingWindowTime = m_Settings.ROLLING_WINDOW;
 			const double timestamp = context->Frame.Timestamp;
 
-			if (context->PersistentData->RollingNotes.empty())
-				return;
-
-			std::vector<Note> rollingNotes;
-			for (size_t i = context->PersistentData->RollingNotes.size(); i-- > 0;)
-			{
-				if (std::abs(timestamp - context->PersistentData->RollingNotes[i].Timestamp) <= rollingWindowTime)
-					rollingNotes.push_back(context->PersistentData->RollingNotes[i]);
-				else
-					break;
-			}
+			auto& frames = context->PersistentData->ChordFrames;
+			frames.push_back({ timestamp, context->Frame.DeltaTime, context->Notes });
+			while (!frames.empty() && std::abs(timestamp - frames.front().Timestamp) > rollingWindowTime)
+				frames.pop_front();
 
 			std::map<int, float> frequencyHistogram;
 			std::array<double, 12> notesHistogram = { 0.0 };
+			std::array<double, 12> presenceSeconds = { 0.0 };
 			std::map<int, std::vector<Note>> noteClasses;
-			for (const auto& note : rollingNotes)
+			for (const auto& frame : frames)
 			{
-				int roundedFrequency = std::round(note.PeakInfo.Frequency);
-				frequencyHistogram[roundedFrequency] += note.PeakInfo.Score;
+				std::array<bool, 12> sounded = { false };
+				for (const auto& note : frame.Notes)
+				{
+					const double weight = note.PeakInfo.Score * frame.DeltaTime;
+					frequencyHistogram[(int)std::round(note.PeakInfo.Frequency)] += weight;
 
-				int noteClass = note.Midi % 12;
-				notesHistogram[noteClass] += note.PeakInfo.Score;
-				noteClasses[noteClass].push_back(note);
+					const int noteClass = note.Midi % 12;
+					notesHistogram[noteClass] += weight;
+					noteClasses[noteClass].push_back(note);
+					sounded[noteClass] = true;
+				}
+				for (int i = 0; i < 12; i++)
+				{
+					if (sounded[i])
+						presenceSeconds[i] += frame.DeltaTime;
+				}
 			}
 
-			float sum = std::reduce(notesHistogram.begin(), notesHistogram.end(), 0.0f, std::plus<float>());
+			if (noteClasses.empty())
+				return;
+
+			double sum = std::reduce(notesHistogram.begin(), notesHistogram.end(), 0.0);
 			if (sum > 0)
 			{
 				for (auto& val : notesHistogram)
@@ -55,7 +66,7 @@ namespace Adagio
 			std::vector<std::pair<int, float>> chordNotes;
 			for (int i = 0; i < notesHistogram.size(); i++)
 			{
-				if (notesHistogram[i] >= GetSetting<float>(settings, "SCORE_THRESHOLD"))
+				if (notesHistogram[i] >= m_Settings.SCORE_THRESHOLD)
 					chordNotes.push_back({ i, notesHistogram[i] });
 
 				std::sort(noteClasses[i].begin(), noteClasses[i].end(), [](const Note& a, const Note& b)
@@ -93,7 +104,7 @@ namespace Adagio
 					chord.Quality = chordQuality;
 					chord.Name = chord.Root + chord.Quality;
 					chord.Notes = prominentNotes;
-					chord.RootOccurences = noteClasses[chordNotes[0].first].size();
+					chord.RootPresenceSeconds = presenceSeconds[chordNotes[0].first];
 					chord.NumExtentions = fifthOmitted == 1 ? intervals.size() - 2 : std::max((int)intervals.size() - 3, 0);
 					chord.FifthOmitted = fifthOmitted;
 					possibleChords.push_back(chord);
@@ -116,25 +127,6 @@ namespace Adagio
 			return AnalysisStageType::FeatureExtractor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
-		{
-			return nlohmann::json::parse(R"({
-				"ROLLING_WINDOW": {
-					"name": "Rolling Window",
-					"type": "float",	
-					"min": 0.01,
-					"max": 5.0,	
-					"default": 0.5
-				},
-				"SCORE_THRESHOLD": {
-					"name": "Score Threshold",
-					"type": "float",	
-					"min": 0.0,
-					"max": 1.0,	
-					"default": 0.05
-				}
-			})");
-		}
 		std::string GetChordQuality(std::vector<int> intervals, int& outFifthOmitted)
 		{
 			outFifthOmitted = 0;
@@ -307,6 +299,26 @@ namespace Adagio
 			return "N/A";
 		}
 
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
+		{
+			return nlohmann::json::parse(R"({
+				"ROLLING_WINDOW": {
+					"name": "Rolling Window",
+					"type": "float",	
+					"min": 0.01,
+					"max": 5.0,	
+					"default": 0.5
+				},
+				"SCORE_THRESHOLD": {
+					"name": "Score Threshold",
+					"type": "float",	
+					"min": 0.0,
+					"max": 1.0,	
+					"default": 0.05
+				}
+			})");
+		}
 
 	private:
 		bool Contains(const std::vector<int>& vec, int value)
@@ -386,7 +398,7 @@ namespace Adagio
 			float avgOccurences = 0.0f;
 			for (int i = 0; i < chords.size(); i++)
 			{
-				rootOccurences[i] = chords[i].RootOccurences;
+				rootOccurences[i] = (float)chords[i].RootPresenceSeconds;
 				avgOccurences += rootOccurences[i];
 			}
 			avgOccurences /= rootOccurences.size();

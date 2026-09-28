@@ -142,6 +142,13 @@ namespace Adagio
 		return static_cast<double>(m_CurrentPlaybackFrame.load(std::memory_order_acquire)) / m_AudioSource->SampleRate;
 	}
 
+	uint64_t PlaybackService::GetPositionSamples() const
+	{
+		if (!m_AudioSource || m_AudioSource->SampleRate <= 0.0f)
+			return 0;
+		return m_CurrentPlaybackFrame.load(std::memory_order_acquire);
+	}
+
 	void PlaybackService::SeekToSample(uint64_t sample)
 	{
 		if (!m_Decoder)
@@ -156,6 +163,15 @@ namespace Adagio
 
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)
 	{
+		auto calculateMaxCallbackUs = [this](const std::chrono::high_resolution_clock::time_point& start)
+		{
+			const auto now = std::chrono::high_resolution_clock::now();
+			auto elapsedUs = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start).count() / 1000.0;
+			if (elapsedUs > m_MaxCallbackUs.load(std::memory_order_relaxed))
+				m_MaxCallbackUs.store(static_cast<float>(elapsedUs), std::memory_order_relaxed);
+		};
+
+		const auto callbackStart = std::chrono::high_resolution_clock::now();
 		const uint32_t channels = static_cast<uint32_t>(m_AudioSource->Channels);
 		const uint32_t samplesRequested = framesToRead * channels;
 
@@ -166,6 +182,7 @@ namespace Adagio
 			if (!m_PlaybackBuffer || !m_PlaybackBuffer->DropToMark(generation))
 			{
 				std::memset(outBuffer, 0, samplesRequested * sizeof(float));
+				calculateMaxCallbackUs(callbackStart);
 				return;
 			}
 
@@ -177,6 +194,8 @@ namespace Adagio
 
 		const bool sourceExhausted = m_Decoder->GetIsSourceExhausted(generation);
 		const ProcessAudioResult result = m_TimeProcessor->ProcessAudio(outBuffer, samplesRequested, sourceExhausted);
+		if (result.FramesConsumed < framesToRead)
+			m_UnderrunCount.fetch_add(1, std::memory_order_relaxed);
 
 		const float volume = m_Volume.load(std::memory_order_relaxed);
 		for (size_t i = 0; i < samplesRequested; i++)
@@ -204,22 +223,17 @@ namespace Adagio
 
 		if (reachedEnd)
 		{
-			if (!m_EndReported.exchange(true, std::memory_order_acq_rel))
-				MessageQueue::GetInstance().Push(std::string("{\"type\":\"") + Protocol::Event::EndOfPlay + "\"}");
+			m_EndReported.store(true, std::memory_order_release);
+			calculateMaxCallbackUs(callbackStart);
 			return;
 		}
 
 		const int updateCounter = m_PlaybackUpdateCounter.load(std::memory_order_relaxed);
 		if (updateCounter >= 4)
-		{
-			MessageQueue::GetInstance().Push(
-				std::string("{\"type\":\"") + Protocol::Event::Position + "\",\"value\":" + std::to_string(seconds) + "}"
-			);
 			m_PlaybackUpdateCounter.store(0, std::memory_order_relaxed);
-		}
 		else
-		{
 			m_PlaybackUpdateCounter.store(updateCounter + 1, std::memory_order_relaxed);
-		}
+
+		calculateMaxCallbackUs(callbackStart);
 	}
 }

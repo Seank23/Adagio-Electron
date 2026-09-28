@@ -6,22 +6,32 @@
 
 namespace Adagio
 {
-	class HPSDownsamplerProcessor : public AnalysisStage
+	struct HPSDownsamplerProcessorSettings
+	{
+		int HARMONICS = 2;
+		int INTERP_FACTOR = 1;
+		float MAG_SCALE = 1.0f;
+		std::string SQUARE = "No";
+		float FLOOR = 1.0f;
+		std::string NORMALIZE = "No";
+
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(HPSDownsamplerProcessorSettings, HARMONICS, INTERP_FACTOR, MAG_SCALE, SQUARE, FLOOR, NORMALIZE)
+	};
+
+	class HPSDownsamplerProcessor : public ConfigurableStage<HPSDownsamplerProcessorSettings>
 	{
 	public:
 		virtual void Execute(AnalysisContext* context) override
 		{
-			AnalysisStage::Execute(context);
 			auto& data = context->Magnitudes;
 			const size_t frameLength = data.size();
-			nlohmann::json settings = context->Settings;
 
-			const float floor = GetSetting<float>(settings, "FLOOR");
-			const int harmonics = GetSetting<int>(settings, "HARMONICS");
-			const float magScale = GetSetting<float>(settings, "MAG_SCALE");
-			const std::string shouldSquare = GetSetting<std::string>(settings, "SQUARE");
-			const std::string normalizeOutput = GetSetting<std::string>(settings, "NORMALIZE");
-			const int interpolationFactor = GetSetting<int>(settings, "INTERP_FACTOR");
+			const float floor = m_Settings.FLOOR;
+			const int harmonics = m_Settings.HARMONICS;
+			const float magScale = m_Settings.MAG_SCALE;
+			const std::string shouldSquare = m_Settings.SQUARE;
+			const std::string normalizeOutput = m_Settings.NORMALIZE;
+			const int interpolationFactor = m_Settings.INTERP_FACTOR;
 
 			if (floor > 0.0f)
 			{
@@ -87,48 +97,43 @@ namespace Adagio
 			return AnalysisStageType::Processor;
 		}
 
-		virtual nlohmann::json GetSettings() const override
+	protected:
+		virtual nlohmann::json BuildSettingsSchema() const override
 		{
 			return nlohmann::json::parse(R"({
 				"HARMONICS": {
 					"name": "Number of Harmonics",
 					"type": "int",	
 					"min": 0,
-					"max": 5,	
-					"default": 2
+					"max": 5
 				},
 				"INTERP_FACTOR": {
 					"name": "Interpolation Factor",
 					"type": "int",	
 					"min": 1,
-					"max": 5,	
-					"default": 1
+					"max": 5
 				},
 				"MAG_SCALE": {
 					"name": "Magnitude Scale Factor",
 					"type": "float",	
 					"min": 1.0,
-					"max": 5.0,	
-					"default": 1.0
+					"max": 5.0
 				},
 				"SQUARE": {
 					"name": "Square Output",
 					"type": "enum",	
-					"options": ["Yes","No"],	
-					"default": "No"
+					"options": ["Yes","No"]
 				},
 				"FLOOR": {
 					"name": "Spectrum Floor",
 					"type": "float",	
 					"min": 0.0,
-					"max": 10.0,	
-					"default": 1.0
+					"max": 10.0
 				},
 				"NORMALIZE": {
 					"name": "Normalize Output",
 					"type": "enum",	
-					"options": ["Before Downsampling", "After Downsampling", "No"],	
-					"default": "No"
+					"options": ["Before Downsampling", "After Downsampling", "No"]
 				}
 			})");
 		}

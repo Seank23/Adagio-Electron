@@ -22,19 +22,10 @@ namespace Adagio
 		Clear();
 		m_AudioSource = audioData;
 
-		const int channels = audioData->Channels;
-		const size_t frames = static_cast<size_t>(audioData->SamplesPerChannel);
+		const size_t channels = (size_t)audioData->Channels; 
 
-		m_FeederData.resize(frames * static_cast<size_t>(channels));
-		for (size_t i = 0; i < frames; ++i)
-		{
-			for (int ch = 0; ch < channels; ++ch)
-				m_FeederData[i * channels + ch] = audioData->PCMData[ch][i];
-		}
-
-		m_SamplesPerChunk = m_FramesPerChunk * static_cast<size_t>(channels);
-		m_TotalSamples.store(m_FeederData.size(), std::memory_order_release);
-
+		m_SamplesPerChunk = m_FramesPerChunk * channels;
+		m_TotalSamples.store((size_t)audioData->SamplesPerChannel * channels, std::memory_order_release);
 		m_FeederState.store(FeederState::Stopped, std::memory_order_release);
 		m_FeederPosition.store(0, std::memory_order_release);
 		m_SeekTargetSample.store(0, std::memory_order_release);
@@ -47,7 +38,8 @@ namespace Adagio
 	{
 		m_FeederThread = std::thread([this]()
 		{
-			const size_t totalSamples = m_FeederData.size();
+			kfr::univector<float> chunkBuffer(m_SamplesPerChunk);
+			const size_t totalSamples = m_TotalSamples.load(std::memory_order_acquire);
 			const int channels = m_AudioSource ? m_AudioSource->Channels : 1;
 			uint32_t seenGeneration = m_SeekGeneration.load(std::memory_order_acquire);
 
@@ -78,12 +70,16 @@ namespace Adagio
 				const size_t samplesRemaining = totalSamples - static_cast<size_t>(pos);
 				const size_t toWrite = std::min(samplesRemaining, m_SamplesPerChunk);
 
-				const float* chunk = m_FeederData.data() + pos;
+				for (size_t i = 0; i < toWrite; ++i)
+				{
+					const uint64_t sample = pos + i;
+					chunkBuffer[i] = m_AudioSource->PCMData[sample % channels][sample / channels];
+				}
 				bool shouldSleep = false;
 				size_t minWritten = SIZE_MAX;
 				for (auto& [name, buffer] : m_Buffers)
 				{
-					const size_t written = buffer->Write(chunk, toWrite);
+					const size_t written = buffer->Write(chunkBuffer.data(), toWrite);
 					minWritten = std::min(minWritten, written);
 					if (written == 0)
 						shouldSleep = true;
@@ -136,7 +132,6 @@ namespace Adagio
 			m_FeederThread.join();
 
 		m_Buffers.clear();
-		m_FeederData = kfr::univector<float>();
 		m_AudioSource.reset();
 		m_FeederPosition.store(0, std::memory_order_release);
 		m_TotalSamples.store(0, std::memory_order_release);
