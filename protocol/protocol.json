@@ -1,5 +1,5 @@
 {
-    "version": 1,
+    "version": 2,
     "transport": {
         "host": "127.0.0.1",
         "port": 9001,
@@ -31,7 +31,6 @@
         { "name": "fileLoaded", "cpp": "FileLoaded", "js": "FILE_LOADED" },
         { "name": "fileClosed", "cpp": "FileClosed", "js": "FILE_CLOSED" },
         { "name": "endOfPlay", "cpp": "EndOfPlay", "js": "END_OF_PLAY" },
-        { "name": "waveformData", "cpp": "WaveformData", "js": "WAVEFORM_DATA" },
         { "name": "analysis", "cpp": "Analysis", "js": "ANALYSIS" },
         { "name": "info", "cpp": "Info", "js": "INFO" },
         { "name": "error", "cpp": "Error", "js": "ERROR" },
@@ -44,6 +43,29 @@
         { "name": "playing", "cpp": "Playing", "js": "PLAYING" },
         { "name": "paused", "cpp": "Paused", "js": "PAUSED" }
     ],
+    "binaryFrames": {
+        "comment": "High-rate data travels as binary WebSocket messages: a fixed little-endian header, then count elements. Every field is naturally aligned, so the data can be viewed in place at headerSize. resolution is binHz for a spectrum and frames per peak for a waveform. A spectrum is Uint16 of magnitude / maxMagnitude.",
+        "headerSize": 32,
+        "kinds": [
+            { "name": "spectrum", "cpp": "Spectrum", "js": "SPECTRUM", "value": 1 },
+            { "name": "waveform", "cpp": "Waveform", "js": "WAVEFORM", "value": 2 }
+        ],
+        "elementTypes": [
+            { "name": "float32", "cpp": "Float32", "js": "FLOAT32", "value": 1 },
+            { "name": "uint16", "cpp": "Uint16", "js": "UINT16", "value": 2 }
+        ],
+        "header": [
+            { "name": "kind", "cpp": "Kind", "type": "u8", "byteOffset": 0 },
+            { "name": "version", "cpp": "Version", "type": "u8", "byteOffset": 1 },
+            { "name": "elementType", "cpp": "ElementType", "type": "u16", "byteOffset": 2 },
+            { "name": "seekGeneration", "cpp": "SeekGeneration", "type": "u32", "byteOffset": 4 },
+            { "name": "timestamp", "cpp": "Timestamp", "type": "f64", "byteOffset": 8 },
+            { "name": "resolution", "cpp": "Resolution", "type": "f32", "byteOffset": 16 },
+            { "name": "maxMagnitude", "cpp": "MaxMagnitude", "type": "f32", "byteOffset": 20 },
+            { "name": "count", "cpp": "Count", "type": "u32", "byteOffset": 24 },
+            { "name": "reserved", "cpp": "Reserved", "type": "u32", "byteOffset": 28 }
+        ]
+    },
     "limits": {
         "comment": "Volume and speed travel as normalised floats, not percentages. The sliders are the only place percentages exist.",
         "volumeMin": 0.0,

@@ -54,6 +54,7 @@ namespace Adagio
 		std::unique_ptr<AnalysisResult> result = std::make_unique<AnalysisResult>();
 		result->MaxMagnitude = *std::max_element(context->Magnitudes.begin(), context->Magnitudes.end());
 		result->SampleRate = static_cast<float>(frame.SampleRate);
+		result->Timestamp = frame.Timestamp;
 		auto endTime = std::chrono::high_resolution_clock::now();
 		result->ExecutionTimeMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
 		result->Context = std::move(context);
@@ -172,15 +173,13 @@ namespace Adagio
 		for (const auto& chord : result.Context->PredictedChords)
 			chordsJson.push_back({ {"name", chord.Name}, {"probability", chord.Probability} });
 
+		// The spectrum itself, its maximum and binHz travel in the binary spectrum frame.
 		return
 		{
-			{"type", "analysis"},
+			{"type", Protocol::Event::Analysis},
 			{"value", {
 					{"executionTimeMs", result.ExecutionTimeMs},
 					{"sampleRate", result.SampleRate},
-					{"binHz", result.Context->BinHz},
-					{"magnitudes", result.Context->Magnitudes},
-					{"maxMagnitude", result.MaxMagnitude},
 					{"notes", notesJson},
 					{"keyHistogram", keyHistogramJson},
 					{"chordHistogram", chordHistogramJson},

@@ -23,7 +23,9 @@
 [CmdletBinding()]
 param(
     [string]$EnginePath = (Join-Path $PSScriptRoot '../build/Release/AdagioEngine.exe'),
-    [int]$Port = 9001
+    [int]$Port = 9001,
+    # A Uint16 spectrum every 64-sample hop (125 Hz) plus the 30 Hz analysis event.
+    [double]$ThroughputBudgetKBps = 768
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,8 +42,9 @@ $script:Events = @()
 $script:Token = [guid]::NewGuid().ToString('N')
 
 # A .NET reader thread rather than a PowerShell loop: during playback the engine
-# broadcasts a ~25 KB analysis frame every 5 ms, and those are dropped here instead
-# of being handed to PowerShell to parse.
+# sends a spectrum frame every hop and a position event at 30 Hz, and those are
+# counted or dropped here instead of being handed to PowerShell to parse. Binary
+# frames are never text, so they are counted by kind and never queued.
 Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Concurrent;
@@ -56,6 +59,22 @@ public class AdagioSocket
     private ConcurrentQueue<string> _messages = new ConcurrentQueue<string>();
     private Thread _reader;
     private string _closeReason;
+    private int _spectrumFrames;
+    private int _waveformFrames;
+    private int _analysisEvents;
+    private int _endOfPlayEvents;
+
+    public int SpectrumFrames { get { return Volatile.Read(ref _spectrumFrames); } }
+    public int WaveformFrames { get { return Volatile.Read(ref _waveformFrames); } }
+    public int AnalysisEvents { get { return Volatile.Read(ref _analysisEvents); } }
+    public int EndOfPlayEvents { get { return Volatile.Read(ref _endOfPlayEvents); } }
+    public void ResetCounts()
+    {
+        Interlocked.Exchange(ref _spectrumFrames, 0);
+        Interlocked.Exchange(ref _waveformFrames, 0);
+        Interlocked.Exchange(ref _analysisEvents, 0);
+        Interlocked.Exchange(ref _endOfPlayEvents, 0);
+    }
 
     public string CloseReason { get { return _closeReason; } }
     public bool IsOpen { get { return _socket != null && _socket.State == WebSocketState.Open; } }
@@ -93,6 +112,8 @@ public class AdagioSocket
             {
                 text.Length = 0;
                 WebSocketReceiveResult result;
+                bool binary = false;
+                int kind = -1;
                 do
                 {
                     var task = _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancel.Token);
@@ -103,13 +124,31 @@ public class AdagioSocket
                         _closeReason = result.CloseStatusDescription;
                         return;
                     }
+                    if (result.MessageType == WebSocketMessageType.Binary)
+                    {
+                        // The kind is the frame's first byte, so only the first fragment matters.
+                        if (!binary && result.Count > 0) kind = buffer[0];
+                        binary = true;
+                        continue;
+                    }
                     text.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
                 }
                 while (!result.EndOfMessage);
 
-                string message = text.ToString();
-                if (message.StartsWith("{\"type\":\"analysis\"") || message.StartsWith("{\"type\":\"position\""))
+                if (binary)
+                {
+                    if (kind == 1) Interlocked.Increment(ref _spectrumFrames);
+                    else if (kind == 2) Interlocked.Increment(ref _waveformFrames);
                     continue;
+                }
+
+                string message = text.ToString();
+                if (message.StartsWith("{\"type\":\"position\""))
+                    continue;
+                if (message.StartsWith("{\"type\":\"analysis\""))
+                    Interlocked.Increment(ref _analysisEvents);
+                else if (message.StartsWith("{\"type\":\"endOfPlay\""))
+                    Interlocked.Increment(ref _endOfPlayEvents);
                 _messages.Enqueue(message);
             }
         }
@@ -450,23 +489,35 @@ try {
         }
 
         Write-Host "`nPlayback (X4, T1, T7, T11)"
-        Test-Case 'play to the end at 50% speed' {
+        # The engine ends the track itself: once the source is exhausted and the stretcher's
+        # tail has been flushed, it sends endOfPlay once and stops, which rewinds to 0.
+        Test-Case 'play to the end at 50% speed ends the track once' {
+            $script:Socket.ResetCounts()
+            $started = Get-Date
             Invoke-Commands @(@('setSpeed', 0.5), 'play') | Out-Null
-            # The playhead reaches the duration only once the stretcher's tail has been flushed.
-            $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 10000
-            if ($null -eq $status) { throw "never reached the end: position stopped at $((Get-Status).position)" }
-            if ($status.state -ne 'playing') { throw "expected still playing, got $($status.state)" }
+            $status = Wait-Status { param($s) $s.state -eq 'ready' } 10000
+            if ($null -eq $status) { $s = Get-Status; throw "never ended: $($s.state) at $($s.position)" }
+            # 2 s at 50% is 4 s of audio. Ending much sooner means the tail was cut off.
+            $elapsed = ((Get-Date) - $started).TotalSeconds
+            if ($elapsed -lt 3.5) { throw ("ended after {0:N1} s, expected about 4" -f $elapsed) }
+            if ($status.position -ne 0) { throw "expected a stopped track at 0, got $($status.position)" }
+            Start-Sleep -Milliseconds 300
+            if ($script:Socket.EndOfPlayEvents -ne 1) { throw "expected one endOfPlay, got $($script:Socket.EndOfPlayEvents)" }
         }
 
-        # The feeder has written the whole 2 s track by now, so these seeks start from end of file (T10).
-        Test-Case 'seek to 0.2 s before the end' {
-            $status = Invoke-Commands @(@('setSpeed', 1.0), @('seek', 1.8))
+        Test-Case 'seek to 0.2 s before the end, then the track ends at 100%' {
+            $script:Socket.ResetCounts()
+            $status = Invoke-Commands @(@('setSpeed', 1.0), 'play', @('seek', 1.8))
             if ($status.position -gt 1.95) { throw "seek did not take: position $($status.position)" }
-            $status = Wait-Status { param($s) $s.position -ge $s.duration - 0.001 } 3000
-            if ($null -eq $status) { throw "stalled after the seek: position $((Get-Status).position)" }
+            $status = Wait-Status { param($s) $s.state -eq 'ready' } 3000
+            if ($null -eq $status) { $s = Get-Status; throw "stalled after the seek: $($s.state) at $($s.position)" }
+            Start-Sleep -Milliseconds 300
+            if ($script:Socket.EndOfPlayEvents -ne 1) { throw "expected one endOfPlay, got $($script:Socket.EndOfPlayEvents)" }
         }
 
         Test-Case 'seek backwards while playing' {
+            Invoke-Commands @('play', @('seek', 1.5)) | Out-Null
+            if ($null -eq (Wait-Status { param($s) $s.position -ge 1.6 } 3000)) { throw 'playback did not start after seeking to 1.5 s' }
             $status = Invoke-Commands @(, @('seek', 0.2))
             if ($status.position -gt 0.5) { throw "seek did not take: position $($status.position)" }
             $status = Wait-Status { param($s) $s.position -ge 0.7 } 3000
@@ -485,6 +536,46 @@ try {
             $status = Wait-Status { param($s) $s.position -ge 6.5 } 8000
             if ($null -eq $status) { throw "stalled after seeking back: position $((Get-Status).position)" }
             if ($status.position -gt 7.5) { throw "skipped ahead after seeking back: position $($status.position)" }
+        }
+
+        Write-Host "`nBinary frames (S4, F4)"
+        Test-Case 'five waveform frames arrive before the load is answered' {
+            $script:Socket.ResetCounts()
+            # They are queued ahead of fileLoaded and the reply, so the count is exact by now.
+            $status = Invoke-Commands @(, @('load', $longTonePath))
+            if ($status.state -ne 'ready') { throw "expected ready, got $($status.state)" }
+            if ($script:Socket.WaveformFrames -ne 5) { throw "expected 5 waveform frames, got $($script:Socket.WaveformFrames)" }
+        }
+
+        Test-Case 'playback streams spectrum frames and a 30 Hz analysis event without a spectrum' {
+            $script:Events = @()
+            $script:Socket.ResetCounts()
+            Invoke-Commands @(@('setSpeed', 1.0), 'play') | Out-Null
+            Start-Sleep -Milliseconds 2000
+            Get-Status | Out-Null
+            # One frame per 64-sample hop of the 8 kHz analysis stream: 125 a second at 100%.
+            $spectrum = $script:Socket.SpectrumFrames
+            if ($spectrum -lt 175 -or $spectrum -gt 275) { throw "expected about 250 spectrum frames in 2 s, got $spectrum" }
+            $analysis = $script:Socket.AnalysisEvents
+            # One per 4 spectrum frames: 31.25 Hz.
+            $expected = $spectrum / 4
+            if ($analysis -lt $expected - 3 -or $analysis -gt $expected + 3) { throw "expected one analysis event per 4 spectrum frames ($expected), got $analysis" }
+            if ($analysis -lt 58) { throw "expected at least 60 analysis events in 2 s, got $analysis" }
+            $event = $script:Events | Where-Object { $_.type -eq 'analysis' } | Select-Object -First 1
+            if ($null -eq $event) { throw 'no analysis event reached the reader' }
+            if ($null -ne $event.value.magnitudes) { throw 'the analysis event still carries the spectrum' }
+        }
+
+        Test-Case "throughput stays under $ThroughputBudgetKBps KB/s during playback" {
+            # Back to the start, so the 8 s track outlasts the measurement.
+            Invoke-Commands @(, @('seek', 0.0)) | Out-Null
+            $before = (Get-Status).bytesSent
+            Start-Sleep -Milliseconds 5000
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "playback ended early: $($status.state)" }
+            $rate = ($status.bytesSent - $before) / 5.0 / 1024.0
+            Write-Host ("{0:N1} KB/s " -f $rate) -NoNewline
+            if ($rate -gt $ThroughputBudgetKBps) { throw ("{0:N1} KB/s is over the {1} KB/s budget" -f $rate, $ThroughputBudgetKBps) }
         }
 
         Write-Host "`nTeardown (X3)"

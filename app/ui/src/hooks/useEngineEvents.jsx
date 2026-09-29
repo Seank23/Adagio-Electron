@@ -19,6 +19,24 @@ export const useEngineEvents = callback => {
     }, [ws]);
 };
 
+// Binary frames, decoded. Kept apart from events so a JSON listener never sees one.
+export const useEngineFrames = callback => {
+    const ws = useContext(WebSocketContext);
+    const callbackRef = useRef(callback);
+
+    useEffect(() => {
+        callbackRef.current = callback;
+    });
+
+    useEffect(() => {
+        if (!ws) return;
+
+        const listener = frame => callbackRef.current(frame);
+        ws.addFrameListener(listener);
+        return () => ws.removeFrameListener(listener);
+    }, [ws]);
+};
+
 export const useEngineConnection = () => {
     const ws = useContext(WebSocketContext);
 

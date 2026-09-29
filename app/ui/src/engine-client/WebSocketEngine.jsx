@@ -1,4 +1,5 @@
 import { ENGINE_WS_URL, EVENT_TYPE, TOKEN_PARAM } from '../utils/protocol';
+import { decodeFrame } from './BinaryFrame';
 
 export const CONNECTION_STATE = {
     CONNECTING: 'connecting',
@@ -18,6 +19,7 @@ export class WebSocketEngine {
         this.url = url;
         this.ws = null;
         this.listeners = [];
+        this.frameListeners = [];
         this.stateListeners = [];
         this.state = CONNECTION_STATE.DISCONNECTED;
         this.attempt = 0;
@@ -47,6 +49,7 @@ export class WebSocketEngine {
             ? `${this.url}/?${TOKEN_PARAM}=${encodeURIComponent(this.token)}`
             : this.url;
         const ws = new WebSocket(url);
+        ws.binaryType = 'arraybuffer';
         this.ws = ws;
 
         ws.onopen = () => {
@@ -55,6 +58,13 @@ export class WebSocketEngine {
         };
 
         ws.onmessage = event => {
+            if (event.data instanceof ArrayBuffer) {
+                const frame = decodeFrame(event.data);
+                if (frame)
+                    this.frameListeners.forEach(callback => callback(frame));
+                return;
+            }
+
             let msg = null;
             try {
                 msg = JSON.parse(event.data);
@@ -141,6 +151,14 @@ export class WebSocketEngine {
 
     removeListener(callback) {
         this.listeners = this.listeners.filter(cb => cb !== callback);
+    }
+
+    addFrameListener(callback) {
+        this.frameListeners.push(callback);
+    }
+
+    removeFrameListener(callback) {
+        this.frameListeners = this.frameListeners.filter(cb => cb !== callback);
     }
 
     addStateListener(callback) {

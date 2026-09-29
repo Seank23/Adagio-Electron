@@ -3,11 +3,8 @@ import { createSlice } from '@reduxjs/toolkit';
 const analysisSlice = createSlice({
     name: 'analysis',
     initialState: {
-        spectrumData: [],
         notes: [],
         spectrumSR: 0,
-        binHz: 0,
-        maxSpectrumValue: 0,
         executionTime: 0,
         keyHistogram: [],
         chordHistogram: [],
@@ -16,11 +13,8 @@ const analysisSlice = createSlice({
     },
     reducers: {
         setAnalysisData: (state, action) => {
-            state.spectrumData = action.payload?.magnitudes;
             state.notes = action.payload?.notes;
             state.spectrumSR = action.payload?.sampleRate;
-            state.binHz = action.payload?.binHz;
-            state.maxSpectrumValue = action.payload?.maxMagnitude;
             state.executionTime = action.payload?.executionTimeMs;
             state.keyHistogram = action.payload?.keyHistogram || [];
             state.chordHistogram = action.payload?.chordHistogram || [];

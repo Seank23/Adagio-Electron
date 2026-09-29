@@ -1,7 +1,9 @@
 #include "Application.h"
 #include "AudioDecoder.h"
+#include "BinaryFrame.h"
 #include "CommandParser.h"
 #include "CommandQueue.h"
+#include "HighResolutionTimer.h"
 #include "MessageQueue.h"
 #include "Trace.h"
 #include "../Analysis/AnalysisService.h"
@@ -81,15 +83,17 @@ namespace Adagio
 	void Application::Run()
 	{
 		m_Running.store(true, std::memory_order_release);
-		int timer = 0;
-		const int sleepMs = 2;
+		constexpr auto positionInterval = std::chrono::milliseconds(33);
+		HighResolutionTimer timer;
+		auto lastPosition = std::chrono::steady_clock::now();
 		while (m_Running.load(std::memory_order_acquire))
 		{
 			ProcessCommands();
-			if (timer > 32)
+			const auto now = std::chrono::steady_clock::now();
+			if (now - lastPosition >= positionInterval)
 			{
 				PushEvent({ {"type", Protocol::Event::Position}, {"value", m_PlaybackService->GetPositionSeconds()} });
-				timer = 0;
+				lastPosition = now;
 			}
 			if (m_PlaybackService->ConsumeEndOfPlay())
 			{
@@ -97,8 +101,7 @@ namespace Adagio
 				HandleCommand({ CommandType::Stop });
 			}
 
-			timer += sleepMs;
-			std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+			timer.SleepFor(std::chrono::milliseconds(2));
 		}
 		Shutdown();
 	}
@@ -297,7 +300,6 @@ namespace Adagio
 		std::thread waveformThread([&]()
 		{
 			waveformBuilder.BuildWaveform(m_AudioData);
-			nlohmann::json resolutions = nlohmann::json::array();
 			for (int resolution : waveformBuilder.GetAvailableResolutions())
 			{
 				const auto& data = waveformBuilder.GetWaveformData(resolution);
@@ -305,9 +307,8 @@ namespace Adagio
 				peaks.reserve(data.size());
 				for (const auto& peak : data)
 					peaks.push_back(peak.Max);
-				resolutions.push_back({ {"resolution", resolution}, {"peaks", std::move(peaks)} });
+				MessageQueue::GetInstance().PushBinary(BinaryFrame::EncodeWaveform(peaks, resolution));
 			}
-			PushEvent({ {"type", Protocol::Event::WaveformData}, {"value", resolutions} });
 		});
 
 		m_AudioDecoder->Init(m_AudioData);
@@ -321,8 +322,8 @@ namespace Adagio
 		}
 		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
 
-		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		waveformThread.join();
+		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		return true;
 	}
 
@@ -353,7 +354,8 @@ namespace Adagio
 			{"volume", m_PlaybackService->GetVolume()},
 			{"commandsHandled", m_CommandsHandled.load(std::memory_order_acquire)},
 			{"underrunCount", m_PlaybackService->GetUnderrunCount()},
-			{"maxCallbackUs", m_PlaybackService->GetMaxCallbackUs()}
+			{"maxCallbackUs", m_PlaybackService->GetMaxCallbackUs()},
+			{"bytesSent", MessageQueue::GetInstance().GetBytesSent()}
 		};
 	}
 }

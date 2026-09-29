@@ -9,7 +9,6 @@ const playbackSlice = createSlice({
         state: TRANSPORT_STATE.EMPTY,
         speed: 1.0,
         volume: 1.0,
-        waveformData: null,
     },
     reducers: {
         setCurrentTime(state, action) {
@@ -25,16 +24,13 @@ const playbackSlice = createSlice({
             state.volume = transport.volume ?? state.volume;
             state.duration = transport.duration ?? state.duration;
         },
-        setWaveformData(state, action) {
-            state.waveformData = action.payload;
-        },
         resetPlayback(state) {
             state.currentTime = 0.0;
         },
     },
 });
 
-export const { setCurrentTime, setDuration, setTransport, setWaveformData, resetPlayback } = playbackSlice.actions;
+export const { setCurrentTime, setDuration, setTransport, resetPlayback } = playbackSlice.actions;
 
 // Derived from the one transport state rather than stored alongside it, so they
 // cannot drift apart from it.

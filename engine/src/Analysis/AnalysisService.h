@@ -46,11 +46,13 @@ namespace Adagio
 	private:
 		// A stall longer than this is a hiccup, not audio heard; it shouldn't outweigh the history.
 		static constexpr double MaxDeltaSeconds = 0.25;
+		static constexpr int FramesPerAnalysisEvent = 4;
 
 		void BuildPipeline();
 		double EstimatePlayhead() const;
 		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);
 		void PublishCurrentFrame();
+		void PublishSpectrum(const AnalysisResult& result);
 		bool SyncSeekGeneration();
 		void PreprocessStream(kfr::univector<float>& outStream);
 

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCurrentTime } from '../store/playbackSlice';
 import { useEngineCommands } from '../hooks/useEngineCommands';
+import { subscribeWaveform, getWaveform } from '../engine-client/FrameStore';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 
@@ -10,7 +11,7 @@ const AudioTimeline = () => {
     const { token } = theme.useToken();
     const dispatch = useDispatch();
     const commands = useEngineCommands();
-    const waveformData = useSelector(state => state.playback.waveformData);
+    const waveformData = useSyncExternalStore(subscribeWaveform, getWaveform);
     const duration = useSelector(state => state.playback.duration);
     const currentTime = useSelector(state => state.playback.currentTime);
 

@@ -1,9 +1,13 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
 import { selectIsFileOpen } from '../store/playbackSlice';
 import { useSelector, useDispatch } from 'react-redux';
 import { theme } from 'antd';
 import { setCanvasWidth } from '../store/appSlice';
 import { MIN_FREQ } from '../constants';
+import { subscribeSpectrum, getLatestSpectrum } from '../engine-client/FrameStore';
+import { BINARY_FRAME } from '../utils/protocol';
+
+const EMPTY_SPECTRUM = new Uint16Array(0);
 
 const X_AXIS_PADDING = 20;
 const MAX_Y_VALUES = [1, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
@@ -14,11 +18,13 @@ const SpectrumCanvas = () => {
 
     const canvasRef = useRef(null);
     const canvasWidth = useSelector(state => state.app.canvasWidth);
-    const spectrumData = useSelector(state => state.analysis.spectrumData);
-    const spectrumSR = useSelector(state => state.analysis.spectrumSR);
-    const binHz = useSelector(state => state.analysis.binHz);
+    const spectrum = useSyncExternalStore(subscribeSpectrum, getLatestSpectrum);
+    const spectrumData = spectrum?.data ?? EMPTY_SPECTRUM;
+    const binHz = spectrum?.resolution ?? 0;
+    const maxSpectrumValue = spectrum?.maxMagnitude ?? 0;
+    // A Uint16 spectrum is magnitude / max at full scale; a Float32 one is the magnitude itself.
+    const elementScale = spectrum?.elementType === BINARY_FRAME.ELEMENT_TYPE.UINT16 ? maxSpectrumValue / 65535 : 1;
     const isFileOpen = useSelector(selectIsFileOpen);
-    const maxSpectrumValue = useSelector(state => state.analysis.maxSpectrumValue);
     const showLogScale = useSelector(state => state.settings.showLogScale);
 
     const maxSpectrumHz = useMemo(() => binHz * spectrumData.length, [binHz, spectrumData.length]);
@@ -97,7 +103,7 @@ const SpectrumCanvas = () => {
                         continue; // Skip frequencies outside the range
                     }
                     const x = showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
-                    const y = magToY(spectrumData[i], canvas.height); 
+                    const y = magToY(spectrumData[i] * elementScale, canvas.height);
                     if (i === 0) {
                         context.moveTo(x, y);
                     } else {
@@ -222,11 +228,11 @@ const SpectrumCanvas = () => {
                 context.fillText(mag, 8, y + 4);
             }
         };
-        if (canvas && context && spectrumSR > 0) {
+        if (canvas && context && spectrum) {
             draw();
         }
         return () => cancelAnimationFrame(animationFrame);
-    }, [spectrumData, notes, spectrumSR, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, token.colorBgContainer, token.colorSuccess, token.colorWarning, canvasWidth]);
+    }, [spectrum, spectrumData, elementScale, notes, showLogScale, meanMaxValue, token.colorPrimary, token.colorError, token.colorErrorBg, token.colorBgContainer, token.colorSuccess, token.colorWarning, canvasWidth]);
 
     return (
         <>

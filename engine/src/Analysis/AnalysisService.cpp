@@ -8,6 +8,8 @@
 #include "PeakExtractor.h"
 #include "SpectrumFilterProcessor.h"
 #include "../Core/AudioDecoder.h"
+#include "../Core/BinaryFrame.h"
+#include "../Core/HighResolutionTimer.h"
 #include "../Core/MessageQueue.h"
 #include "../IO/AudioData.h"
 #include "../IO/PlaybackService.h"
@@ -99,6 +101,8 @@ namespace Adagio
 		m_AnalysisThread = std::thread([this]()
 		{
 			std::vector<kfr::univector<float>> rollingAvg;
+			int framesSinceJson = 0;
+			HighResolutionTimer timer;
 			bool anchored = false;
 			while (m_Running)
 			{
@@ -135,13 +139,17 @@ namespace Adagio
 						}
 						result->Context->Magnitudes = data;
 					}
-					nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
-					MessageQueue::GetInstance().Push(json.dump());
+					PublishSpectrum(*result);
+
+					// Analysis follow the spectrum at a display rate. Frames come at a fixed wall-clock rate at any speed, so counting them keeps that rate too.
+					if (framesSinceJson == 0)
+						MessageQueue::GetInstance().Push(AnalysisPipeline::GetResultJson(*result).dump());
+					framesSinceJson = (framesSinceJson + 1) % FramesPerAnalysisEvent;
 					m_LastAnalysisStreamPos = analysisStreamPos;
 				}
 				else
 				{
-					std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					timer.SleepFor(std::chrono::milliseconds(1));
 				}
 			}
 		});
@@ -168,8 +176,16 @@ namespace Adagio
 	{
 		// An on-demand frame covers no playback, but weighting it by zero would leave the key blank after a paused seek.
 		std::unique_ptr<AnalysisResult> result = ProcessFrameAt(EstimatePlayhead(), m_Params.HopSize / (double)m_Params.SampleRate);
-		nlohmann::json json = AnalysisPipeline::GetResultJson(*result);
-		MessageQueue::GetInstance().Push(json.dump());
+		PublishSpectrum(*result);
+		MessageQueue::GetInstance().Push(AnalysisPipeline::GetResultJson(*result).dump());
+	}
+
+	void AnalysisService::PublishSpectrum(const AnalysisResult& result)
+	{
+		const AnalysisContext& context = *result.Context;
+		MessageQueue::GetInstance().PushBinary(BinaryFrame::EncodeSpectrum(
+			std::span<const float>(context.Magnitudes.data(), context.Magnitudes.size()),
+			context.BinHz, result.Timestamp, m_SeekGenerationSeen));
 	}
 
 	bool AnalysisService::SyncSeekGeneration()

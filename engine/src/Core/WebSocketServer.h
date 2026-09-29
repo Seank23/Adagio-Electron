@@ -29,11 +29,12 @@ namespace Adagio
 		bool Start();
 		void Stop();
 
-		void SendToClient(const std::string& clientId, const std::string& message);
-		void Broadcast(const std::string& message);
+		void SendToClient(const std::string& clientId, const std::string& message, bool binary = false);
+		void Broadcast(const std::string& message, bool binary = false);
 
 	private:
 		void ProcessQueue();
+		static void Send(ix::WebSocket& socket, const std::string& message, bool binary);
 		void OnOpen(const std::string& clientId, ix::WebSocket& webSocket, const ix::WebSocketOpenInfo& openInfo);
 		std::string RefusalReason(const ix::WebSocketOpenInfo& openInfo) const;
 

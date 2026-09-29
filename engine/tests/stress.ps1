@@ -82,17 +82,23 @@ public class StressSocket
             {
                 text.Length = 0;
                 WebSocketReceiveResult result;
+                bool binary = false;
+                long binaryBytes = 0;
                 do
                 {
                     var task = _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancel.Token);
                     task.Wait();
                     result = task.Result;
                     if (result.MessageType == WebSocketMessageType.Close) { CloseReason = result.CloseStatusDescription; return; }
+                    // Spectrum and waveform frames are binary: counted, never decoded as text.
+                    if (result.MessageType == WebSocketMessageType.Binary) { binary = true; binaryBytes += result.Count; continue; }
                     text.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
                 } while (!result.EndOfMessage);
 
-                string message = text.ToString();
                 Interlocked.Increment(ref Frames);
+                if (binary) { Interlocked.Add(ref Bytes, binaryBytes); continue; }
+
+                string message = text.ToString();
                 Interlocked.Add(ref Bytes, message.Length);
                 if (message.Contains("\"type\":\"reply\"")) _replies.Enqueue(message);
             }

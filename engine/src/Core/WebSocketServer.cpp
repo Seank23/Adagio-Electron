@@ -188,7 +188,13 @@ namespace Adagio
 		ix::uninitNetSystem();
 	}
 
-	void WSServer::SendToClient(const std::string& clientId, const std::string& message)
+	void WSServer::Send(ix::WebSocket& socket, const std::string& message, bool binary)
+	{
+		if (socket.send(message, binary).success)
+			MessageQueue::GetInstance().AddBytesSent(message.size());
+	}
+
+	void WSServer::SendToClient(const std::string& clientId, const std::string& message, bool binary)
 	{
 		std::shared_ptr<ix::WebSocket> socket;
 		{
@@ -198,10 +204,10 @@ namespace Adagio
 		}
 
 		if (socket)
-			socket->send(message);
+			Send(*socket, message, binary);
 	}
 
-	void WSServer::Broadcast(const std::string& message)
+	void WSServer::Broadcast(const std::string& message, bool binary)
 	{
 		// The sockets are taken under the lock and written to outside it. Sending a
 		// large message takes long enough that holding the lock across it would stall
@@ -216,7 +222,7 @@ namespace Adagio
 		}
 
 		for (const auto& socket : clients)
-			socket->send(message);
+			Send(*socket, message, binary);
 	}
 
 	void WSServer::ProcessQueue()
@@ -226,9 +232,9 @@ namespace Adagio
 		while (MessageQueue::GetInstance().Pop(msg))
 		{
 			if (msg.ClientId.empty())
-				Broadcast(msg.Payload);
+				Broadcast(msg.Payload, msg.Binary);
 			else
-				SendToClient(msg.ClientId, msg.Payload);
+				SendToClient(msg.ClientId, msg.Payload, msg.Binary);
 		}
 	}
 }

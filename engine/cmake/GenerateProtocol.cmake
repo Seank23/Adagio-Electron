@@ -79,6 +79,39 @@ function(adagio_generate_protocol_header json_path header_path)
 		string(APPEND states "\tX(${cpp}, \"${name}\") \\\n")
 	endforeach()
 
+	string(JSON binary GET "${protocol}" binaryFrames)
+	string(JSON binary_header_size GET "${binary}" headerSize)
+
+	set(binary_kinds "")
+	string(JSON kind_count LENGTH "${binary}" kinds)
+	math(EXPR last "${kind_count} - 1")
+	foreach(index RANGE ${last})
+		string(JSON entry GET "${binary}" kinds ${index})
+		string(JSON cpp GET "${entry}" cpp)
+		string(JSON value GET "${entry}" value)
+		string(APPEND binary_kinds "\t\t\t\t${cpp} = ${value},\n")
+	endforeach()
+
+	set(binary_element_types "")
+	string(JSON element_type_count LENGTH "${binary}" elementTypes)
+	math(EXPR last "${element_type_count} - 1")
+	foreach(index RANGE ${last})
+		string(JSON entry GET "${binary}" elementTypes ${index})
+		string(JSON cpp GET "${entry}" cpp)
+		string(JSON value GET "${entry}" value)
+		string(APPEND binary_element_types "\t\t\t\t${cpp} = ${value},\n")
+	endforeach()
+
+	set(binary_offsets "")
+	string(JSON field_count LENGTH "${binary}" header)
+	math(EXPR last "${field_count} - 1")
+	foreach(index RANGE ${last})
+		string(JSON entry GET "${binary}" header ${index})
+		string(JSON cpp GET "${entry}" cpp)
+		string(JSON offset GET "${entry}" byteOffset)
+		string(APPEND binary_offsets "\t\t\t\tconstexpr size_t ${cpp} = ${offset};\n")
+	endforeach()
+
 	set(allowed_origins "")
 	string(JSON origin_count LENGTH "${transport}" allowedOrigins)
 	math(EXPR last "${origin_count} - 1")
@@ -92,6 +125,8 @@ function(adagio_generate_protocol_header json_path header_path)
 #pragma once
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 // X(CppName, wireName, ArgumentKind)
@@ -123,6 +158,24 @@ ${allowed_origins}		};
 		namespace Event
 		{
 ${events}		}
+
+		// Binary frames: a fixed header, then Count elements at HeaderSize.
+		namespace Binary
+		{
+			constexpr size_t HeaderSize = ${binary_header_size};
+
+			enum class FrameKind : uint8_t
+			{
+${binary_kinds}			};
+
+			enum class ElementType : uint16_t
+			{
+${binary_element_types}			};
+
+			namespace Offset
+			{
+${binary_offsets}			}
+		}
 	}
 }
 ")

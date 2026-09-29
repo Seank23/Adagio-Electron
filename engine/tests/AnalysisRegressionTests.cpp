@@ -527,7 +527,7 @@ namespace
 				context.Notes.push_back(MakeNote(60 + scale[i], PitchHz(60 + scale[i]), weights[i] / 10.0f, frame.Timestamp));
 			detector.Execute(&context);
 		}
-		return persistent.PitchClassAccumulator;
+		return persistent.NoteClassAccumulator;
 	}
 
 	// The root presence of the top-ranked chord after holding C E G for a second.

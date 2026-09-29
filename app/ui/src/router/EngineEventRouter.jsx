@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
-import { useEngineEvents, useEngineConnection } from '../hooks/useEngineEvents';
+import { useEngineEvents, useEngineFrames, useEngineConnection } from '../hooks/useEngineEvents';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { CONNECTION_STATE } from '../engine-client/WebSocketEngine';
-import { setDuration, setCurrentTime, setWaveformData, setTransport, resetPlayback } from '../store/playbackSlice';
+import { publishSpectrum, stageWaveform, commitWaveform, clearFrames } from '../engine-client/FrameStore';
+import { BINARY_FRAME } from '../utils/protocol';
+import { setDuration, setCurrentTime, setTransport, resetPlayback } from '../store/playbackSlice';
 import { setStatusMessage, setConnectionState, setEngineStatus } from '../store/appSlice';
 import { EVENT_TYPE } from '../utils/utils';
 import { setAnalysisData } from '../store/analysisSlice';
@@ -46,9 +48,11 @@ export default function EngineEventRouter() {
             dispatch(setTransport(msg?.value));
             break;
         case EVENT_TYPE.FILE_LOADED:
+            commitWaveform();
             dispatch(setDuration(msg?.value?.duration));
             break;
         case EVENT_TYPE.FILE_CLOSED:
+            clearFrames();
             dispatch(setStatusMessage({ type: 'info', message: 'Audio file closed' }));
             dispatch(resetPlayback());
             dispatch(setDuration(0));
@@ -65,11 +69,21 @@ export default function EngineEventRouter() {
         case EVENT_TYPE.INFO:
             dispatch(setStatusMessage({ type: 'info', message: msg?.value }));
             break;
-        case EVENT_TYPE.WAVEFORM_DATA:
-            dispatch(setWaveformData(msg?.value));
-            break;
         case EVENT_TYPE.ANALYSIS:
             dispatch(setAnalysisData(msg?.value));
+            break;
+        default:
+            break;
+        }
+    });
+
+    useEngineFrames(frame => {
+        switch (frame.kind) {
+        case BINARY_FRAME.KIND.SPECTRUM:
+            publishSpectrum(frame);
+            break;
+        case BINARY_FRAME.KIND.WAVEFORM:
+            stageWaveform(frame);
             break;
         default:
             break;

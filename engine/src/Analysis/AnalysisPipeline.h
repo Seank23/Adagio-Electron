@@ -79,6 +79,7 @@ namespace Adagio
 		std::unique_ptr<AnalysisContext> Context;
 		float MaxMagnitude = 0.0f;
 		float SampleRate = 0.0f;
+		double Timestamp = 0.0;
 		float ExecutionTimeMs = 0.0f;
 	};
 
