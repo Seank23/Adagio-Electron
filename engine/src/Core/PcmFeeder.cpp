@@ -1,5 +1,4 @@
-#include "AudioDecoder.h"
-#include "MessageQueue.h"
+#include "PcmFeeder.h"
 #include "../IO/AudioData.h"
 
 #include <algorithm>
@@ -7,17 +6,17 @@
 
 namespace Adagio
 {
-	AudioDecoder::AudioDecoder()
+	PcmFeeder::PcmFeeder()
 		: m_FramesPerChunk(1024), m_SamplesPerChunk(0)
 	{
 	}
 
-	AudioDecoder::~AudioDecoder()
+	PcmFeeder::~PcmFeeder()
 	{
 		Clear();
 	}
 
-	void AudioDecoder::Init(std::shared_ptr<AudioData> audioData)
+	void PcmFeeder::Init(std::shared_ptr<AudioData> audioData)
 	{
 		Clear();
 		m_AudioSource = audioData;
@@ -34,7 +33,7 @@ namespace Adagio
 		LaunchFeeder();
 	}
 
-	void AudioDecoder::LaunchFeeder()
+	void PcmFeeder::LaunchFeeder()
 	{
 		m_FeederThread = std::thread([this]()
 		{
@@ -98,26 +97,26 @@ namespace Adagio
 		});
 	}
 
-	void AudioDecoder::AddBuffer(const std::string& bufferName, float durationSeconds)
+	void PcmFeeder::AddBuffer(const std::string& bufferName, float durationSeconds)
 	{
 		const size_t capacity = static_cast<size_t>(m_AudioSource->SampleRate * m_AudioSource->Channels * durationSeconds);
 		m_Buffers[bufferName] = std::make_unique<RingBuffer<float>>(capacity);
 	}
 
-	void AudioDecoder::RequestSeek(uint64_t sample)
+	void PcmFeeder::RequestSeek(uint64_t sample)
 	{
 		m_SeekTargetSample.store(sample, std::memory_order_release);
 		m_SeekGeneration.fetch_add(1, std::memory_order_acq_rel);
 	}
 
-	bool AudioDecoder::GetIsSourceExhausted(uint32_t generation) const
+	bool PcmFeeder::GetIsSourceExhausted(uint32_t generation) const
 	{
 		// Generation first: the feeder publishes it after moving, so the position read next is current.
 		return m_FeederGeneration.load(std::memory_order_acquire) == generation
 			&& m_FeederPosition.load(std::memory_order_acquire) >= m_TotalSamples.load(std::memory_order_acquire);
 	}
 
-	void AudioDecoder::ResetAudio()
+	void PcmFeeder::ResetAudio()
 	{
 		m_FeederState.store(FeederState::Stopped, std::memory_order_release);
 		RequestSeek(0);
@@ -125,7 +124,7 @@ namespace Adagio
 		SetLastPlaybackFrameTimestamp(0.0);
 	}
 
-	void AudioDecoder::Clear()
+	void PcmFeeder::Clear()
 	{
 		m_FeederState.store(FeederState::Terminated, std::memory_order_release);
 		if (m_FeederThread.joinable())
@@ -139,7 +138,7 @@ namespace Adagio
 		SetLastPlaybackFrameTimestamp(0.0);
 	}
 
-	RingBuffer<float>* AudioDecoder::GetBuffer(const std::string& bufferName)
+	RingBuffer<float>* PcmFeeder::GetBuffer(const std::string& bufferName)
 	{
 		const auto it = m_Buffers.find(bufferName);
 		return it == m_Buffers.end() ? nullptr : it->second.get();

@@ -17,6 +17,9 @@ namespace Adagio
 	class NoteDetector : public ConfigurableStage<NoteDetectorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "NoteDetector";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			auto& data = context->Peaks;

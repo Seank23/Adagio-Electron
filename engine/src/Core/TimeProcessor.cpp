@@ -94,6 +94,7 @@ namespace Adagio
 			if (read < samplesRequested)
 				std::memset(output + read, 0, (samplesRequested - read) * sizeof(float));
 			result.FramesConsumed = read / static_cast<size_t>(m_Channels);
+			result.FramesProduced = result.FramesConsumed;
 			result.Drained = sourceExhausted && read < samplesRequested;
 			return result;
 		}
@@ -195,6 +196,7 @@ namespace Adagio
 			m_LatencyToDiscard -= discard;
 		}
 		result.FramesConsumed = static_cast<size_t>(std::max<int64_t>(consumed, 0));
+		result.FramesProduced = framesProduced;
 		return result;
 	}
 }

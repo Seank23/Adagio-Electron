@@ -21,6 +21,9 @@ namespace Adagio
 	class HPSDownsamplerProcessor : public ConfigurableStage<HPSDownsamplerProcessorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "HPSDownsamplerProcessor";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			auto& data = context->Magnitudes;

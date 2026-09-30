@@ -7,7 +7,7 @@
 
 namespace Adagio
 {
-	class AudioDecoder;
+	class PcmFeeder;
 	class TimeProcessor;
 
 	template<typename T>
@@ -21,7 +21,7 @@ namespace Adagio
 
 		void OnAudioCallback(float* outBuffer, ma_uint32 framesToRead);
 
-		int Init(std::shared_ptr<AudioDecoder> decoder);
+		int Init(std::shared_ptr<PcmFeeder> feeder);
 		void Reset();
 		void PlayAudio();
 		void PauseAudio();
@@ -42,8 +42,8 @@ namespace Adagio
 	private:
 		void UninitDevice();
 
-		std::shared_ptr<AudioDecoder> m_Decoder;
-		// Owned by the decoder; cached to keep name lookups out of the audio callback.
+		std::shared_ptr<PcmFeeder> m_Feeder;
+		// Owned by the feeder; cached to keep name lookups out of the audio callback.
 		RingBuffer<float>* m_PlaybackBuffer = nullptr;
 		ma_device m_PlaybackDevice{};
 

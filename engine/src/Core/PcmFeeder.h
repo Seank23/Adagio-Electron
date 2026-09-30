@@ -20,11 +20,11 @@ namespace Adagio
 		Terminated
 	};
 
-	class AudioDecoder
+	class PcmFeeder
 	{
 	public:
-		AudioDecoder();
-		~AudioDecoder();
+		PcmFeeder();
+		~PcmFeeder();
 
 		void Init(std::shared_ptr<AudioData> audioData);
 		void AddBuffer(const std::string& bufferName, float durationSeconds);

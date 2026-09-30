@@ -4,6 +4,7 @@
 // Every rule here comes from the stage's own GetSettings(), so a new stage is
 // covered the moment it is registered.
 #include "../src/Analysis/AnalysisPipeline.h"
+#include "../src/Analysis/AnalysisService.h"
 #include "../src/Analysis/FFTProcessor.h"
 #include "../src/Analysis/NoteDetector.h"
 #include "../src/Analysis/PeakExtractor.h"
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -122,4 +124,21 @@ TEST_CASE("A changed setting reaches the stage on the next frame")
 	REQUIRE_FALSE(maxPeaks.is_null());
 	CHECK(maxPeaks.at("value") == 1);
 	CHECK(maxPeaks.at("default") != 1);
+}
+
+// A stage's name is the key its settings are stored and sent under. It used to be
+// derived from typeid, which only reads this way on MSVC; now each stage spells it,
+// and a rename that changed a key would break every client's stored settings.
+TEST_CASE("the production stages keep their settings keys, in pipeline order")
+{
+	const nlohmann::json schema = Adagio::AnalysisService::CreatePipeline()->GetSchemaJson();
+	std::vector<std::string> names;
+	for (const auto& stage : schema.at("stages"))
+		names.push_back(stage.at("name").get<std::string>());
+
+	const std::vector<std::string> expected = {
+		"FFTProcessor", "HPSDownsamplerProcessor", "SpectrumFilterProcessor",
+		"PeakExtractor", "NoteDetector", "KeyDetector", "ChordPredictor"
+	};
+	CHECK(names == expected);
 }

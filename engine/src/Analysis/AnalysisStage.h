@@ -1,6 +1,9 @@
 #pragma once
 #include <nlohmann/json.hpp>
 
+#include <string>
+#include <string_view>
+
 namespace Adagio
 {
 	struct AnalysisContext;
@@ -18,11 +21,7 @@ namespace Adagio
 
 		void Initialise()
 		{
-			std::string name = typeid(*this).name();
-			size_t pos = name.find_last_of("::");
-			if (pos != std::string::npos)
-				name = name.substr(pos + 1);
-			m_Name = name;
+			m_Name = std::string(GetStageName());
 
 			m_SettingsDefinition = BuildSettingsSchema();
 			const nlohmann::json defaults = GetDefaultValues();
@@ -34,6 +33,8 @@ namespace Adagio
 		}
 
 		virtual void Execute(AnalysisContext* context) = 0;
+
+		virtual std::string_view GetStageName() const = 0;
 		virtual AnalysisStageType GetType() const = 0;
 
 		virtual void ApplySettings(const nlohmann::json& values) {}

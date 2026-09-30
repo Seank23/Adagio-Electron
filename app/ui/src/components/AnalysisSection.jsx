@@ -3,41 +3,31 @@ import Styled from '@emotion/styled';
 import RollingNotesHeatMap from './RollingNotesHeatMap';
 import { MIN_FREQ } from '../constants';
 
+const selectKeyHistogram = state => state.analysis.keyHistogram;
+const selectChordHistogram = state => state.analysis.chordHistogram;
+
 const AnalysisSection = () => {
     const detectedKey = useSelector(state => state.analysis.detectedKey);
-    const keyHistogram = useSelector(state => state.analysis.keyHistogram);
-    const chordHistogram = useSelector(state => state.analysis.chordHistogram);
     const canvasWidth = useSelector(state => state.app.canvasWidth);
     const spectrumSR = useSelector(state => state.analysis.spectrumSR);
     const showLogScale = useSelector(state => state.settings.showLogScale);
-    const predictedChords = useSelector(state => state.analysis.predictedChords);
-
-    const SectionContainer = Styled('div')`
-        margin-bottom: 20px;
-    `;
-
-    const SummaryBar = Styled('div')`
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-    `;
+    const topChord = useSelector(state => state.analysis.predictedChords[0]?.name);
 
     return (
         <SectionContainer>
             <SummaryBar>
-                <h3>{predictedChords[0]?.name || 'N/A'}</h3>
+                <h3>{topChord || 'N/A'}</h3>
                 <h3>Detected Key: {detectedKey || 'N/A'}</h3>
             </SummaryBar>
             <RollingNotesHeatMap
-                histogram={keyHistogram}
+                histogramSelector={selectKeyHistogram}
                 width={canvasWidth}
                 minFreq={MIN_FREQ}
                 maxFreq={spectrumSR / 2}
                 showLogScale={showLogScale}
             />
             <RollingNotesHeatMap
-                histogram={chordHistogram}
+                histogramSelector={selectChordHistogram}
                 width={canvasWidth}
                 minFreq={MIN_FREQ}
                 maxFreq={spectrumSR / 2}
@@ -46,5 +36,15 @@ const AnalysisSection = () => {
         </SectionContainer>
     );
 };
-
 export default AnalysisSection;
+
+const SectionContainer = Styled('div')`
+    margin-bottom: 20px;
+`;
+
+const SummaryBar = Styled('div')`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+`;

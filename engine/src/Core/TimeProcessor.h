@@ -17,6 +17,7 @@ namespace Adagio
 	struct ProcessAudioResult
 	{
 		size_t FramesConsumed = 0;
+		size_t FramesProduced = 0;
 		bool Drained = false;
 	};
 

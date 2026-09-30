@@ -1,7 +1,4 @@
 // Holds what arrives in binary frames: the latest spectrum and the waveform set.
-// Typed arrays at up to 125 Hz don't belong in Redux, whose dev-mode checks would
-// walk every element on every action. Each half has subscribe/getSnapshot for
-// useSyncExternalStore; EngineEventRouter is the only writer.
 
 const createSignal = () => {
     const listeners = new Set();
@@ -21,7 +18,13 @@ export const subscribeSpectrum = spectrumSignal.subscribe;
 export const getLatestSpectrum = () => latestSpectrum;
 
 export const publishSpectrum = frame => {
+    if (latestSpectrum && frame.seekGeneration < latestSpectrum.seekGeneration) return;
     latestSpectrum = frame;
+    spectrumSignal.notify();
+};
+
+export const resetSpectrum = () => {
+    latestSpectrum = null;
     spectrumSignal.notify();
 };
 

@@ -9,11 +9,6 @@ import { useSelector } from 'react-redux';
 const MainContent = () => {
     const isFileOpen = useSelector(selectIsFileOpen);
 
-    const DividerBar = Styled('div')`
-        height: 50px;
-        width: 100%;
-    `;
-
     return (
         <Row style={rowStyle}>
             <AudioTimeline />
@@ -24,6 +19,11 @@ const MainContent = () => {
     )
 };
 export default MainContent;
+
+const DividerBar = Styled('div')`
+        height: 50px;
+        width: 100%;
+    `;
 
 const rowStyle = {
     margin: '20px',

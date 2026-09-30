@@ -17,6 +17,9 @@ namespace Adagio
 	class FFTProcessor : public ConfigurableStage<FFTProcessorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "FFTProcessor";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			auto& data = context->Samples;

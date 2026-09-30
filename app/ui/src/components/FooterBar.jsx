@@ -12,8 +12,6 @@ const FooterBar = () => {
     const status = useSelector(state => state.app.statusMessage);
     const connectionState = useSelector(state => state.app.connectionState);
     const engineStatus = useSelector(state => state.app.engineStatus);
-    const excutionTime = useSelector(state => state.analysis.executionTime);
-    const isPlaying = useSelector(selectIsPlaying);
     const statusTimeout = useRef(null);
 
     useEffect(() => {
@@ -22,12 +20,6 @@ const FooterBar = () => {
             statusTimeout.current = setTimeout(() => dispatch(resetStatus()), 3000);
         }
     }, [status]);
-
-    const Container = Styled.div`
-        display: flex;
-        flex-direction: row;
-        justify-content: space-between;
-    `;
 
     const iconMap = {
         'error': <ExclamationCircleOutlined style={{ color: token.colorError, marginRight: '8px' }} />,
@@ -43,7 +35,7 @@ const FooterBar = () => {
 
     return (
         <Container>
-            <div>{isPlaying && `Execution time: ${Number(excutionTime ?? 0).toFixed(2)}ms`}</div>
+            <ExecutionTime />
             <div style={rightGroupStyle}>
                 <div>{status?.type && iconMap[status.type]}{status?.message && status.message}</div>
                 <Tooltip title={connection.title}>
@@ -56,6 +48,12 @@ const FooterBar = () => {
     );
 };
 export default FooterBar;
+
+const ExecutionTime = () => {
+    const executionTime = useSelector(state => state.analysis.executionTime);
+    const isPlaying = useSelector(selectIsPlaying);
+    return <div>{isPlaying && `Execution time: ${Number(executionTime ?? 0).toFixed(2)}ms`}</div>;
+};
 
 // The dot carries no label, so the title has to say the whole thing in every state.
 const describeConnection = (connectionState, engineStatus, token) => {
@@ -71,6 +69,12 @@ const describeConnection = (connectionState, engineStatus, token) => {
 
     return { colour: token.colorWarning, title: 'Connecting to the engine...' };
 };
+
+const Container = Styled.div`
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+`;
 
 const rightGroupStyle = {
     display: 'flex',
@@ -89,3 +93,4 @@ const dotStyle = {
     height: '8px',
     borderRadius: '50%',
 };
+

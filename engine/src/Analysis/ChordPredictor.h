@@ -19,6 +19,9 @@ namespace Adagio
 	class ChordPredictor : public ConfigurableStage<ChordPredictorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "ChordPredictor";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			const float rollingWindowTime = m_Settings.ROLLING_WINDOW;

@@ -7,7 +7,7 @@
 #include "NoteDetector.h"
 #include "PeakExtractor.h"
 #include "SpectrumFilterProcessor.h"
-#include "../Core/AudioDecoder.h"
+#include "../Core/PcmFeeder.h"
 #include "../Core/BinaryFrame.h"
 #include "../Core/HighResolutionTimer.h"
 #include "../Core/MessageQueue.h"
@@ -32,15 +32,15 @@ namespace Adagio
 	{
 	}
 
-	void AnalysisService::Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params, const PlaybackService* playback)
+	void AnalysisService::Init(std::shared_ptr<PcmFeeder> feeder, AnalysisParams params, const PlaybackService* playback)
 	{
 		StopAnalysis();
 		m_Pipeline->ResetPersistentData();
 
-		m_Decoder = decoder;
+		m_Feeder = feeder;
 		m_Playback = playback;
 		m_Params = params;
-		m_AudioSource = m_Decoder->GetAudioSource();
+		m_AudioSource = m_Feeder->GetAudioSource();
 
 		kfr::univector<float> preprocessed;
 		PreprocessStream(preprocessed);
@@ -79,7 +79,7 @@ namespace Adagio
 	void AnalysisService::Reset()
 	{
 		StopAnalysis();
-		m_Decoder.reset();
+		m_Feeder.reset();
 		m_Playback = nullptr;
 		m_Params = AnalysisParams{};
 		m_AudioSource.reset();
@@ -190,7 +190,7 @@ namespace Adagio
 
 	bool AnalysisService::SyncSeekGeneration()
 	{
-		const uint32_t generation = m_Decoder->GetSeekGeneration();
+		const uint32_t generation = m_Feeder->GetSeekGeneration();
 		if (generation == m_SeekGenerationSeen)
 			return false;
 
@@ -212,7 +212,7 @@ namespace Adagio
 	{
 		const double now = std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9;
 		const double speed = m_Playback ? m_Playback->GetSpeed() : 1.0;
-		return ExtrapolatePlayhead(m_Decoder->GetPlaybackTime(), m_Decoder->GetLastPlaybackFrameTimestamp(), now, speed, m_Running.load(std::memory_order_acquire));
+		return ExtrapolatePlayhead(m_Feeder->GetPlaybackTime(), m_Feeder->GetLastPlaybackFrameTimestamp(), now, speed, m_Running.load(std::memory_order_acquire));
 	}
 
 	std::unique_ptr<AnalysisResult> AnalysisService::ProcessFrameAt(double sourceSeconds, double deltaTime)

@@ -129,11 +129,19 @@ namespace Adagio
 #ifndef ADAGIO_PROFILE
 #define ADAGIO_PROFILE 0
 #endif
+#if defined(_MSC_VER)
+#define ADAGIO_FUNCTION_SIGNATURE __FUNCSIG__
+#elif defined(__GNUC__) || defined(__clang__)
+#define ADAGIO_FUNCTION_SIGNATURE __PRETTY_FUNCTION__
+#else
+#define ADAGIO_FUNCTION_SIGNATURE __func__
+#endif
+
 #if ADAGIO_PROFILE
 #define ADAGIO_PROFILE_BEGIN_SESSION(name, filepath) ::Adagio::Instrumentor::Get().BeginSession(name, filepath)
 #define ADAGIO_PROFILE_END_SESSION() ::Adagio::Instrumentor::Get().EndSession()
 #define ADAGIO_PROFILE_SCOPE(name) ::Adagio::InstrumentationTimer timer##__LINE__(name)
-#define ADAGIO_PROFILE_FUNCTION() ADAGIO_PROFILE_SCOPE(__FUNCSIG__)
+#define ADAGIO_PROFILE_FUNCTION() ADAGIO_PROFILE_SCOPE(ADAGIO_FUNCTION_SIGNATURE)
 #else
 #define ADAGIO_PROFILE_BEGIN_SESSION(name, filepath)
 #define ADAGIO_PROFILE_END_SESSION()

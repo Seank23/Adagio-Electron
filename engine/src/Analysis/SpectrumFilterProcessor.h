@@ -20,6 +20,9 @@ namespace Adagio
 	class SpectrumFilterProcessor : public ConfigurableStage<SpectrumFilterProcessorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "SpectrumFilterProcessor";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			auto& data = context->Magnitudes;

@@ -17,7 +17,7 @@ namespace Adagio
 	};
 	struct AnalysisResult;
 
-	class AudioDecoder;
+	class PcmFeeder;
 	class AnalysisPipeline;
 	class AudioData;
 	class PlaybackService;
@@ -31,7 +31,7 @@ namespace Adagio
 		AnalysisService();
 		~AnalysisService();
 
-		void Init(std::shared_ptr<AudioDecoder> decoder, AnalysisParams params, const PlaybackService* playback);
+		void Init(std::shared_ptr<PcmFeeder> feeder, AnalysisParams params, const PlaybackService* playback);
 		void Reset();
 		void StartAnalysis();
 		void StopAnalysis();
@@ -57,7 +57,7 @@ namespace Adagio
 		void PreprocessStream(kfr::univector<float>& outStream);
 
 		std::thread m_AnalysisThread;
-		std::shared_ptr<AudioDecoder> m_Decoder;
+		std::shared_ptr<PcmFeeder> m_Feeder;
 		const PlaybackService* m_Playback = nullptr;
 		std::unique_ptr<AnalysisPipeline> m_Pipeline;
 		std::shared_ptr<AudioData> m_AudioSource;

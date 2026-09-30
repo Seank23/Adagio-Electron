@@ -10,7 +10,7 @@
 namespace Adagio
 {
 	class AudioData;
-	class AudioDecoder;
+	class PcmFeeder;
 	class FileIOService;
 	class PlaybackService;
 	class AnalysisService;
@@ -42,7 +42,7 @@ namespace Adagio
 		bool LoadAudio(const std::string& filePath, std::string& outError);
 		void ClearAudio();
 
-		std::shared_ptr<AudioDecoder> m_AudioDecoder;
+		std::shared_ptr<PcmFeeder> m_PcmFeeder;
 		std::unique_ptr<FileIOService> m_FileIOService;
 		std::unique_ptr<PlaybackService> m_PlaybackService;
 		std::unique_ptr<AnalysisService> m_AnalysisService;

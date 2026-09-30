@@ -13,16 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
-      # RubberBand is not fetched by CMake yet: engine/external/rubberband is
-      # gitignored and the build drives its checked-in vcxproj through msbuild.
-      # Phase 6 replaces this with FetchContent over single/RubberBandSingle.cpp,
-      # and this step goes away with it.
-      - name: Fetch RubberBand
-        run: git clone --depth 1 --branch v4.0.0 https://github.com/breakfastquay/rubberband.git engine/external/rubberband
-
+      # Every dependency, RubberBand included, comes from FetchContent at a pinned tag.
       - name: Configure
         run: cmake -S engine -B engine/build
 

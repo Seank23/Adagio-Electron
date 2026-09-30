@@ -63,17 +63,20 @@ public class AdagioSocket
     private int _waveformFrames;
     private int _analysisEvents;
     private int _endOfPlayEvents;
+    private int _positionEvents;
 
     public int SpectrumFrames { get { return Volatile.Read(ref _spectrumFrames); } }
     public int WaveformFrames { get { return Volatile.Read(ref _waveformFrames); } }
     public int AnalysisEvents { get { return Volatile.Read(ref _analysisEvents); } }
     public int EndOfPlayEvents { get { return Volatile.Read(ref _endOfPlayEvents); } }
+    public int PositionEvents { get { return Volatile.Read(ref _positionEvents); } }
     public void ResetCounts()
     {
         Interlocked.Exchange(ref _spectrumFrames, 0);
         Interlocked.Exchange(ref _waveformFrames, 0);
         Interlocked.Exchange(ref _analysisEvents, 0);
         Interlocked.Exchange(ref _endOfPlayEvents, 0);
+        Interlocked.Exchange(ref _positionEvents, 0);
     }
 
     public string CloseReason { get { return _closeReason; } }
@@ -144,7 +147,10 @@ public class AdagioSocket
 
                 string message = text.ToString();
                 if (message.StartsWith("{\"type\":\"position\""))
+                {
+                    Interlocked.Increment(ref _positionEvents);
                     continue;
+                }
                 if (message.StartsWith("{\"type\":\"analysis\""))
                     Interlocked.Increment(ref _analysisEvents);
                 else if (message.StartsWith("{\"type\":\"endOfPlay\""))
@@ -566,6 +572,16 @@ try {
             if ($null -ne $event.value.magnitudes) { throw 'the analysis event still carries the spectrum' }
         }
 
+        # Position comes from the command thread's pump, not the audio callback (T4),
+        # so its rate is fixed whatever the device period is.
+        Test-Case 'position arrives at about 30 Hz' {
+            $script:Socket.ResetCounts()
+            Start-Sleep -Milliseconds 2000
+            Get-Status | Out-Null
+            $positions = $script:Socket.PositionEvents
+            if ($positions -lt 50 -or $positions -gt 70) { throw "expected about 60 position events in 2 s, got $positions" }
+        }
+
         Test-Case "throughput stays under $ThroughputBudgetKBps KB/s during playback" {
             # Back to the start, so the 8 s track outlasts the measurement.
             Invoke-Commands @(, @('seek', 0.0)) | Out-Null
@@ -576,6 +592,21 @@ try {
             $rate = ($status.bytesSent - $before) / 5.0 / 1024.0
             Write-Host ("{0:N1} KB/s " -f $rate) -NoNewline
             if ($rate -gt $ThroughputBudgetKBps) { throw ("{0:N1} KB/s is over the {1} KB/s budget" -f $rate, $ThroughputBudgetKBps) }
+        }
+
+        # underrunCount once compared source frames consumed with output frames
+        # requested, so at 50% every callback counted.
+        Test-Case 'no underruns while playing at 50% speed' {
+            Invoke-Commands @(@('seek', 0.0), @('setSpeed', 0.5)) | Out-Null
+            # Past the speed change, which resets the stretcher.
+            Start-Sleep -Milliseconds 300
+            $before = (Get-Status).underrunCount
+            Start-Sleep -Milliseconds 3000
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "playback ended early: $($status.state)" }
+            $underruns = $status.underrunCount - $before
+            if ($underruns -ne 0) { throw "expected no underruns in 3 s, got $underruns" }
+            Invoke-Commands @(, @('setSpeed', 1.0)) | Out-Null
         }
 
         Write-Host "`nTeardown (X3)"

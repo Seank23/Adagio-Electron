@@ -1,7 +1,6 @@
 #include "PlaybackService.h"
 #include "../Buffers/RingBuffer.h"
-#include "../Core/AudioDecoder.h"
-#include "../Core/MessageQueue.h"
+#include "../Core/PcmFeeder.h"
 #include "Protocol.generated.h"
 #include "../Core/TimeProcessor.h"
 
@@ -46,17 +45,17 @@ namespace Adagio
 		m_DeviceInitialised = false;
 	}
 
-	int PlaybackService::Init(std::shared_ptr<AudioDecoder> decoder)
+	int PlaybackService::Init(std::shared_ptr<PcmFeeder> feeder)
 	{
 		UninitDevice();
 
-		m_Decoder = decoder;
-		m_PlaybackBuffer = m_Decoder->GetBuffer("Playback");
-		m_AudioSource = m_Decoder->GetAudioSource();
+		m_Feeder = feeder;
+		m_PlaybackBuffer = m_Feeder->GetBuffer("Playback");
+		m_AudioSource = m_Feeder->GetAudioSource();
 		m_CurrentPlaybackFrame.store(0, std::memory_order_release);
 		m_PlaybackUpdateCounter.store(0, std::memory_order_release);
 		m_EndReported.store(false, std::memory_order_release);
-		m_SeekGenerationSeen = m_Decoder->GetSeekGeneration();
+		m_SeekGenerationSeen = m_Feeder->GetSeekGeneration();
 
 		m_TimeProcessor = std::make_unique<TimeProcessor>();
 		m_TimeProcessor->Init(static_cast<int>(m_AudioSource->SampleRate), m_AudioSource->Channels, m_PlaybackBuffer);
@@ -86,9 +85,9 @@ namespace Adagio
 			m_TimeProcessor->Reset();
 		m_TimeProcessor.reset();
 		m_PlaybackBuffer = nullptr;
-		if (m_Decoder)
-			m_Decoder->Clear();
-		m_Decoder.reset();
+		if (m_Feeder)
+			m_Feeder->Clear();
+		m_Feeder.reset();
 		m_AudioSource.reset();
 	}
 
@@ -98,7 +97,7 @@ namespace Adagio
 			return;
 		m_EndReported.store(false, std::memory_order_release);
 		ma_device_start(&m_PlaybackDevice);
-		m_Decoder->SetFeederState(FeederState::Running);
+		m_Feeder->SetFeederState(FeederState::Running);
 	}
 
 	void PlaybackService::PauseAudio()
@@ -106,7 +105,7 @@ namespace Adagio
 		if (!m_DeviceInitialised)
 			return;
 		ma_device_stop(&m_PlaybackDevice);
-		m_Decoder->SetFeederState(FeederState::Stopped);
+		m_Feeder->SetFeederState(FeederState::Stopped);
 	}
 
 	void PlaybackService::StopAudio()
@@ -116,18 +115,18 @@ namespace Adagio
 		ma_device_stop(&m_PlaybackDevice);
 		m_CurrentPlaybackFrame.store(0, std::memory_order_release);
 		m_EndReported.store(false, std::memory_order_release);
-		m_Decoder->ResetAudio();
+		m_Feeder->ResetAudio();
 	}
 
 	void PlaybackService::SetVolume(float volume)
 	{
-		m_Volume.store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_release);
+		m_Volume.store(std::clamp(volume, Protocol::VolumeMin, Protocol::VolumeMax), std::memory_order_release);
 	}
 
 	void PlaybackService::SetSpeed(float speed)
 	{
 		if (m_TimeProcessor)
-			m_TimeProcessor->SetSpeed(std::clamp(speed, 0.2f, 2.0f));
+			m_TimeProcessor->SetSpeed(std::clamp(speed, Protocol::SpeedMin, Protocol::SpeedMax));
 	}
 
 	float PlaybackService::GetSpeed() const
@@ -151,14 +150,14 @@ namespace Adagio
 
 	void PlaybackService::SeekToSample(uint64_t sample)
 	{
-		if (!m_Decoder)
+		if (!m_Feeder)
 			return;
 
 		// Seek before position, so a callback finishing the track can't pin the playhead at the end.
-		m_Decoder->RequestSeek(sample);
+		m_Feeder->RequestSeek(sample);
 		m_CurrentPlaybackFrame.store(sample, std::memory_order_release);
 		if (m_AudioSource && m_AudioSource->SampleRate > 0.0f)
-			m_Decoder->SetPlaybackTime(static_cast<double>(sample) / m_AudioSource->SampleRate);
+			m_Feeder->SetPlaybackTime(static_cast<double>(sample) / m_AudioSource->SampleRate);
 	}
 
 	void PlaybackService::OnAudioCallback(float* outBuffer, ma_uint32 framesToRead)
@@ -175,7 +174,7 @@ namespace Adagio
 		const uint32_t channels = static_cast<uint32_t>(m_AudioSource->Channels);
 		const uint32_t samplesRequested = framesToRead * channels;
 
-		const uint32_t generation = m_Decoder->GetSeekGeneration();
+		const uint32_t generation = m_Feeder->GetSeekGeneration();
 		if (generation != m_SeekGenerationSeen)
 		{
 			// No mark until the feeder has taken the seek; play silence rather than stale audio.
@@ -187,14 +186,15 @@ namespace Adagio
 			}
 
 			m_TimeProcessor->ResetStretcher();
-			m_CurrentPlaybackFrame.store(m_Decoder->GetSeekTargetSample(), std::memory_order_release);
+			m_CurrentPlaybackFrame.store(m_Feeder->GetSeekTargetSample(), std::memory_order_release);
 			m_EndReported.store(false, std::memory_order_release);
 			m_SeekGenerationSeen = generation;
 		}
 
-		const bool sourceExhausted = m_Decoder->GetIsSourceExhausted(generation);
+		const bool sourceExhausted = m_Feeder->GetIsSourceExhausted(generation);
 		const ProcessAudioResult result = m_TimeProcessor->ProcessAudio(outBuffer, samplesRequested, sourceExhausted);
-		if (result.FramesConsumed < framesToRead)
+		// Short output is a dropout only while there is source left to play.
+		if (result.FramesProduced < framesToRead && !sourceExhausted)
 			m_UnderrunCount.fetch_add(1, std::memory_order_relaxed);
 
 		const float volume = m_Volume.load(std::memory_order_relaxed);
@@ -203,7 +203,7 @@ namespace Adagio
 
 		// Read before the generation check, so a racing seek fails either that check or the compare-exchange.
 		uint64_t playheadBefore = m_CurrentPlaybackFrame.load(std::memory_order_acquire);
-		const bool reachedEnd = result.Drained && m_Decoder->GetSeekGeneration() == generation;
+		const bool reachedEnd = result.Drained && m_Feeder->GetSeekGeneration() == generation;
 		if (reachedEnd)
 		{
 			// Start-delay accounting leaves the counter short of the end, so snap to it.
@@ -218,8 +218,8 @@ namespace Adagio
 		const uint64_t playbackFrame = m_CurrentPlaybackFrame.load(std::memory_order_acquire);
 		const double seconds = static_cast<double>(playbackFrame) / static_cast<double>(m_AudioSource->SampleRate);
 
-		m_Decoder->SetPlaybackTime(seconds);
-		m_Decoder->SetLastPlaybackFrameTimestamp(std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9);
+		m_Feeder->SetPlaybackTime(seconds);
+		m_Feeder->SetLastPlaybackFrameTimestamp(std::chrono::high_resolution_clock::now().time_since_epoch().count() / 1e9);
 
 		if (reachedEnd)
 		{

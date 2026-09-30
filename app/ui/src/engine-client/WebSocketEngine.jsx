@@ -1,5 +1,6 @@
 import { ENGINE_WS_URL, EVENT_TYPE, TOKEN_PARAM } from '../utils/protocol';
 import { decodeFrame } from './BinaryFrame';
+import { measure } from '../utils/devPerf';
 
 export const CONNECTION_STATE = {
     CONNECTING: 'connecting',
@@ -57,29 +58,10 @@ export class WebSocketEngine {
             this.setState(CONNECTION_STATE.CONNECTED);
         };
 
-        ws.onmessage = event => {
-            if (event.data instanceof ArrayBuffer) {
-                const frame = decodeFrame(event.data);
-                if (frame)
-                    this.frameListeners.forEach(callback => callback(frame));
-                return;
-            }
-
-            let msg = null;
-            try {
-                msg = JSON.parse(event.data);
-            } catch {
-                console.error('Invalid message from backend:', event.data);
-                return;
-            }
-
-            // A reply belongs to one caller; everything else is an event for everyone.
-            if (msg?.type === EVENT_TYPE.REPLY) {
-                this.settle(msg);
-                return;
-            }
-            this.listeners.forEach(callback => callback(msg));
-        };
+        ws.onmessage = event => measure(
+            event.data instanceof ArrayBuffer ? 'socket frame' : 'socket event',
+            () => this.handleMessage(event)
+        );
 
         ws.onerror = () => {};
 
@@ -90,6 +72,30 @@ export class WebSocketEngine {
             this.setState(CONNECTION_STATE.DISCONNECTED);
             this.scheduleReconnect();
         };
+    }
+
+    handleMessage(event) {
+        if (event.data instanceof ArrayBuffer) {
+            const frame = decodeFrame(event.data);
+            if (frame)
+                this.frameListeners.forEach(callback => callback(frame));
+            return;
+        }
+
+        let msg = null;
+        try {
+            msg = JSON.parse(event.data);
+        } catch {
+            console.error('Invalid message from backend:', event.data);
+            return;
+        }
+
+        // A reply belongs to one caller; everything else is an event for everyone.
+        if (msg?.type === EVENT_TYPE.REPLY) {
+            this.settle(msg);
+            return;
+        }
+        this.listeners.forEach(callback => callback(msg));
     }
 
     // Sends a command and resolves with { ok, value, error } once the engine answers.

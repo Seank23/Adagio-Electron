@@ -1,5 +1,5 @@
 #include "Application.h"
-#include "AudioDecoder.h"
+#include "PcmFeeder.h"
 #include "BinaryFrame.h"
 #include "CommandParser.h"
 #include "CommandQueue.h"
@@ -68,7 +68,7 @@ namespace Adagio
 	{
 		ADAGIO_PROFILE_BEGIN_SESSION("Application", "Application_Profile.json");
 		m_AudioData = std::make_shared<AudioData>();
-		m_AudioDecoder = std::make_shared<AudioDecoder>();
+		m_PcmFeeder = std::make_shared<PcmFeeder>();
 		m_FileIOService = std::make_unique<FileIOService>();
 		m_PlaybackService = std::make_unique<PlaybackService>();
 		m_AnalysisService = std::make_unique<AnalysisService>();
@@ -311,16 +311,16 @@ namespace Adagio
 			}
 		});
 
-		m_AudioDecoder->Init(m_AudioData);
-		m_AudioDecoder->AddBuffer("Playback", 5.0f);
+		m_PcmFeeder->Init(m_AudioData);
+		m_PcmFeeder->AddBuffer("Playback", 5.0f);
 
-		if (m_PlaybackService->Init(m_AudioDecoder) < 0)
+		if (m_PlaybackService->Init(m_PcmFeeder) < 0)
 		{
 			waveformThread.join();
 			outError = "Could not open an audio output device.";
 			return false;
 		}
-		m_AnalysisService->Init(m_AudioDecoder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
+		m_AnalysisService->Init(m_PcmFeeder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
 
 		waveformThread.join();
 		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
@@ -333,7 +333,7 @@ namespace Adagio
 		{
 			m_AnalysisService->Reset();
 			m_PlaybackService->Reset();
-			m_AudioDecoder->Clear();
+			m_PcmFeeder->Clear();
 			m_AudioData->Clear();
 			m_Duration.store(0.0, std::memory_order_release);
 		}

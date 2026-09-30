@@ -14,6 +14,10 @@ namespace Adagio
 
 	class KeyDetector : public ConfigurableStage<KeyDetectorSettings>
 	{
+	public:
+		static constexpr std::string_view Name = "KeyDetector";
+		std::string_view GetStageName() const override { return Name; }
+
 	private:
 		const std::array<double, 12> KrumhanslMajor = {
 			6.35f, 2.23f, 3.48f, 2.33f, 4.38f, 4.09f,

@@ -87,6 +87,29 @@ TEST_CASE("T11: an empty buffer is not the end while the feeder may still write"
 	CHECK(framesConsumed > 0);
 }
 
+// The underrun counter compares output with the request. It used to compare the
+// source frames consumed, which at 50% is half of every full callback.
+TEST_CASE("a stretched callback with input to spare fills its output while consuming less")
+{
+	Adagio::RingBuffer<float> buffer(CapacityFor(5.0));
+	Adagio::TimeProcessor processor;
+	processor.Init(SAMPLE_RATE, CHANNELS, &buffer, BLOCK_FRAMES);
+	processor.SetSpeed(0.5f);
+
+	WriteTone(buffer, SAMPLE_RATE);
+
+	std::vector<float> output(BLOCK_FRAMES * CHANNELS);
+	size_t framesConsumed = 0;
+	for (int blocks = 0; blocks < 20; ++blocks)
+	{
+		const Adagio::ProcessAudioResult result = processor.ProcessAudio(output.data(), output.size(), false);
+		CHECK(result.FramesProduced == BLOCK_FRAMES);
+		framesConsumed += result.FramesConsumed;
+	}
+	// About half of the 20 blocks played, less the start delay that is discarded.
+	CHECK(framesConsumed < 20 * BLOCK_FRAMES * 3 / 4);
+}
+
 TEST_CASE("T11: at 100% speed the end is the first short read of an exhausted source")
 {
 	Adagio::RingBuffer<float> buffer(CapacityFor(1.0));
@@ -98,6 +121,7 @@ TEST_CASE("T11: at 100% speed the end is the first short read of an exhausted so
 	std::vector<float> output(BLOCK_FRAMES * CHANNELS);
 	const Adagio::ProcessAudioResult full = processor.ProcessAudio(output.data(), output.size(), true);
 	CHECK(full.FramesConsumed == BLOCK_FRAMES);
+	CHECK(full.FramesProduced == BLOCK_FRAMES);
 	CHECK_FALSE(full.Drained);
 
 	const Adagio::ProcessAudioResult last = processor.ProcessAudio(output.data(), output.size(), true);

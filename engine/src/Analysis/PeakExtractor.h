@@ -28,6 +28,9 @@ namespace Adagio
 	class PeakExtractor : public ConfigurableStage<PeakExtractorSettings>
 	{
 	public:
+		static constexpr std::string_view Name = "PeakExtractor";
+		std::string_view GetStageName() const override { return Name; }
+
 		virtual void Execute(AnalysisContext* context) override
 		{
 			auto& data = context->Magnitudes;
@@ -83,7 +86,6 @@ namespace Adagio
 				float score;
 			};
 
-			std::vector<std::pair<size_t, float>> localMedianArray;
 			std::vector<PeakCandidate> candidates;
 			for (size_t i = startBin; i <= endBin; ++i)
 			{
@@ -113,7 +115,6 @@ namespace Adagio
 					localMedian = (lower + localMedian) * 0.5f;
 				}
 				const float whitened = spectrum[i] - localMedian;
-				localMedianArray.push_back({ i, localMedian });
 
 				// SNR: whitened value above local median envelope
 				if (whitened < minSnr)

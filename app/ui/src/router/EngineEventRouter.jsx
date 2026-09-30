@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { useEngineEvents, useEngineFrames, useEngineConnection } from '../hooks/useEngineEvents';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { CONNECTION_STATE } from '../engine-client/WebSocketEngine';
-import { publishSpectrum, stageWaveform, commitWaveform, clearFrames } from '../engine-client/FrameStore';
+import { publishSpectrum, resetSpectrum, stageWaveform, commitWaveform, clearFrames } from '../engine-client/FrameStore';
 import { BINARY_FRAME } from '../utils/protocol';
 import { setDuration, setCurrentTime, setTransport, resetPlayback } from '../store/playbackSlice';
 import { setStatusMessage, setConnectionState, setEngineStatus } from '../store/appSlice';
@@ -49,6 +49,7 @@ export default function EngineEventRouter() {
             break;
         case EVENT_TYPE.FILE_LOADED:
             commitWaveform();
+            resetSpectrum();
             dispatch(setDuration(msg?.value?.duration));
             break;
         case EVENT_TYPE.FILE_CLOSED:

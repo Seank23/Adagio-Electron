@@ -86,40 +86,27 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-include(ExternalProject)
-
-set(RUBBERBAND_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/rubberband)
-set(RUBBERBAND_LIB_DIR ${RUBBERBAND_SOURCE_DIR}/otherbuilds/x64)
-
-# RubberBand's vcxproj hardcodes PlatformToolset v142 (VS 2019). Override it with
-# the toolset of the compiler CMake is actually using, so it builds on any VS.
-# Debug engine builds need the Debug library: mixing /MDd and /MD fails to link
-# with LNK2038 (_ITERATOR_DEBUG_LEVEL / RuntimeLibrary mismatch).
-ExternalProject_Add(
-    rubberband_external
-    SOURCE_DIR ${RUBBERBAND_SOURCE_DIR}
-    CONFIGURE_COMMAND ""   # No CMake configure step
-    BUILD_COMMAND
-        msbuild otherbuilds/rubberband-library.vcxproj
-        /p:Configuration=$<IF:$<CONFIG:Debug>,Debug,Release>
-        /p:Platform=x64
-        /p:PlatformToolset=v${MSVC_TOOLSET_VERSION}
-    BUILD_IN_SOURCE 1
-    INSTALL_COMMAND ""
+# RubberBand has no CMake build, but it ships RubberBandSingle.cpp, one translation
+# unit that compiles the whole library with its built-in FFT and resampler. Building
+# that as our own static library needs no msbuild, no hand-copied checkout, and
+# works with any generator and configuration. It must stay where it is in the
+# source tree, because it includes the rest of the library by relative path.
+FetchContent_Declare(
+    rubberband
+    GIT_REPOSITORY https://github.com/breakfastquay/rubberband.git
+    GIT_TAG        v4.0.0
 )
+FetchContent_MakeAvailable(rubberband)
 
-add_library(rubberband STATIC IMPORTED GLOBAL)
-
-set_target_properties(rubberband PROPERTIES
-        IMPORTED_CONFIGURATIONS "DEBUG;RELEASE"
-        IMPORTED_LOCATION_DEBUG ${RUBBERBAND_LIB_DIR}/Debug/rubberband-library.lib
-        IMPORTED_LOCATION_RELEASE ${RUBBERBAND_LIB_DIR}/Release/rubberband-library.lib
-        MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
-        MAP_IMPORTED_CONFIG_MINSIZEREL Release
-        INTERFACE_INCLUDE_DIRECTORIES
-        ${RUBBERBAND_SOURCE_DIR}
-    )
-add_dependencies(rubberband rubberband_external)
+add_library(rubberband STATIC ${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp)
+target_include_directories(rubberband PUBLIC ${rubberband_SOURCE_DIR})
+if (MSVC)
+    # Its own sources, not ours: keep the build log to our warnings.
+    target_compile_options(rubberband PRIVATE /W0)
+    # What its own Visual Studio project defines: windows.h's min/max macros break
+    # std::min, and M_PI needs _USE_MATH_DEFINES.
+    target_compile_definitions(rubberband PRIVATE __MSVC__ NOMINMAX _USE_MATH_DEFINES)
+endif()
 
 if (MSVC)
     # These have to be target options. add_compile_options() only feeds targets
