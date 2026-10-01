@@ -566,7 +566,7 @@ try {
             # One per 4 spectrum frames: 31.25 Hz.
             $expected = $spectrum / 4
             if ($analysis -lt $expected - 3 -or $analysis -gt $expected + 3) { throw "expected one analysis event per 4 spectrum frames ($expected), got $analysis" }
-            if ($analysis -lt 58) { throw "expected at least 60 analysis events in 2 s, got $analysis" }
+            if ($analysis -lt 58) { throw "expected at least 58 analysis events in 2 s, got $analysis" }
             $event = $script:Events | Where-Object { $_.type -eq 'analysis' } | Select-Object -First 1
             if ($null -eq $event) { throw 'no analysis event reached the reader' }
             if ($null -ne $event.value.magnitudes) { throw 'the analysis event still carries the spectrum' }

@@ -37,9 +37,10 @@ export default function EngineEventRouter() {
     }, [connectionState, commands, dispatch]);
 
     // The other half of the engine's health: whether main could start the process at
-    // all. The socket only says whether it is reachable now.
+    // all. The socket only says whether it is reachable now. Outside Electron there is
+    // no main, and so no status to follow.
     useEffect(() => {
-        return window.api.onEngineStatus(status => dispatch(setEngineStatus(status)));
+        return window.api?.onEngineStatus?.(status => dispatch(setEngineStatus(status)));
     }, [dispatch]);
 
     useEngineEvents(async msg => {

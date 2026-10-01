@@ -107,7 +107,7 @@ namespace Adagio
 			while (m_Running)
 			{
 				const double playhead = EstimatePlayhead();
-				const int64_t analysisStreamPos = std::llround(playhead * m_Params.SampleRate);
+				const double analysisStreamPos = playhead * m_Params.SampleRate;
 
 				const bool seeked = SyncSeekGeneration();
 				if (seeked || !anchored || analysisStreamPos < m_LastAnalysisStreamPos)
@@ -119,10 +119,15 @@ namespace Adagio
 					continue;
 				}
 
-				const int64_t deltaSamples = analysisStreamPos - m_LastAnalysisStreamPos;
-				if (deltaSamples >= m_Params.HopSize * m_Playback->GetSpeed())
+				const double hopSamples = m_Params.HopSize * m_Playback->GetSpeed();
+				const double deltaSamples = analysisStreamPos - m_LastAnalysisStreamPos;
+				if (deltaSamples >= hopSamples)
 				{
-					const double deltaTime = std::min(deltaSamples / (double)m_Params.SampleRate, MaxDeltaSeconds);
+					// Advance by exactly one hop, so the time it takes to wake and process doesn't stretch every period. Only a stall of
+					// two hops or more resyncs to the playhead instead of bursting frames to catch up.
+					const bool stalled = deltaSamples >= 2.0 * hopSamples;
+					const double advanceSamples = stalled ? deltaSamples : hopSamples;
+					const double deltaTime = std::min(advanceSamples / m_Params.SampleRate, MaxDeltaSeconds);
 					std::unique_ptr<AnalysisResult> result = ProcessFrameAt(playhead, deltaTime);
 					auto data = result->Context->Magnitudes;
 					if (m_RollingAvgCount > 1)
@@ -145,7 +150,7 @@ namespace Adagio
 					if (framesSinceJson == 0)
 						MessageQueue::GetInstance().Push(AnalysisPipeline::GetResultJson(*result).dump());
 					framesSinceJson = (framesSinceJson + 1) % FramesPerAnalysisEvent;
-					m_LastAnalysisStreamPos = analysisStreamPos;
+					m_LastAnalysisStreamPos = stalled ? analysisStreamPos : m_LastAnalysisStreamPos + hopSamples;
 				}
 				else
 				{

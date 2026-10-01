@@ -67,6 +67,6 @@ namespace Adagio
 		std::atomic<bool> m_Running{ false };
 
 		uint32_t m_SeekGenerationSeen = 0;
-		int64_t m_LastAnalysisStreamPos = 0;
+		double m_LastAnalysisStreamPos = 0.0;
 	};
 }
