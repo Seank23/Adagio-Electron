@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { theme } from 'antd';
 import { clamp01, toRgbChannels } from '../utils/utils';
 import { useStoreListener } from '../hooks/useStoreListener';
 import { measure } from '../utils/devPerf';
+import { fitToElement } from '../utils/canvas';
+import { usePalette } from '../hooks/usePalette';
 
 const DEFAULT_MIN_FREQ = 50;
 const DEFAULT_MAX_FREQ = 22050;
@@ -17,21 +18,8 @@ const NOTE_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 
 const intensityOf = (score, maxScore) =>
     maxScore > 0 ? clamp01(Math.pow((score / maxScore) * HOTSPOT_GAIN, HOTSPOT_EXPONENT)) : 0;
 
-// Sizes the backing store to the element at the screen's pixel ratio, which also
-// clears it. Returns the ratio so drawing can stay in CSS pixels.
-const fitToElement = canvas => {
-    const ratio = window.devicePixelRatio || 1;
-    const width = Math.max(1, Math.round(canvas.clientWidth * ratio));
-    const height = Math.max(1, Math.round(canvas.clientHeight * ratio));
-    if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-    }
-    return ratio;
-};
-
 const RollingNotesHeatMap = ({ histogramSelector, width, minFreq = DEFAULT_MIN_FREQ, maxFreq = DEFAULT_MAX_FREQ, showLogScale = false }) => {
-    const { token } = theme.useToken();
+    const palette = usePalette();
     const stripRef = useRef(null);
     const ticksRef = useRef(null);
     const histogramRef = useRef([]);
@@ -76,9 +64,13 @@ const RollingNotesHeatMap = ({ histogramSelector, width, minFreq = DEFAULT_MIN_F
         const twoSigmaSquared = 2 * sigmaInSamples * sigmaInSamples;
         const samples = new Float32Array(sampleCount);
 
-        const [highRed, highGreen, highBlue] = toRgbChannels(token.colorPrimary);
-        const heatChannel = (high, t) => Math.round(255 + ((high - 255) * t));
-        const heatColor = t => `rgb(${heatChannel(highRed, t)}, ${heatChannel(highGreen, t)}, ${heatChannel(highBlue, t)})`;
+        // The ramp runs from the plot's inset background to the accent.
+        const [lowRed, lowGreen, lowBlue] = toRgbChannels(palette.bg.inset);
+        const [highRed, highGreen, highBlue] = toRgbChannels(palette.accent.primaryFg);
+        const heatChannel = (low, high, t) => Math.round(low + ((high - low) * t));
+        // Labels sit on the panel, so theirs starts from the panel: a note that isn't sounding has no label.
+        const [labelRed, labelGreen, labelBlue] = toRgbChannels(palette.bg.panel);
+        const labelColor = t => `rgb(${heatChannel(labelRed, highRed, t)}, ${heatChannel(labelGreen, highGreen, t)}, ${heatChannel(labelBlue, highBlue, t)})`;
 
         // One pixel per sample, stretched across the strip with smoothing on
         const row = document.createElement('canvas');
@@ -122,9 +114,9 @@ const RollingNotesHeatMap = ({ histogramSelector, width, minFreq = DEFAULT_MIN_F
             const pixels = rowImage.data;
             for (let index = 0; index < sampleCount; index += 1) {
                 const t = intensityOf(samples[index], maxScore);
-                pixels[index * 4] = heatChannel(highRed, t);
-                pixels[index * 4 + 1] = heatChannel(highGreen, t);
-                pixels[index * 4 + 2] = heatChannel(highBlue, t);
+                pixels[index * 4] = heatChannel(lowRed, highRed, t);
+                pixels[index * 4 + 1] = heatChannel(lowGreen, highGreen, t);
+                pixels[index * 4 + 2] = heatChannel(lowBlue, highBlue, t);
                 pixels[index * 4 + 3] = 255;
             }
             rowContext.putImageData(rowImage, 0, 0);
@@ -142,22 +134,22 @@ const RollingNotesHeatMap = ({ histogramSelector, width, minFreq = DEFAULT_MIN_F
             tickContext.textAlign = 'center';
             tickContext.textBaseline = 'middle';
             noteTicks.forEach(tick => {
-                tickContext.fillStyle = heatColor(intensityOf(samples[tick.sampleIndex], maxScore));
+                tickContext.fillStyle = labelColor(intensityOf(samples[tick.sampleIndex], maxScore));
                 tickContext.fillText(tick.label, tick.fraction * ticks.clientWidth, TICK_HEIGHT / 2);
             });
         };
 
         measure('heat map draw', () => drawRef.current(histogramRef.current));
-    }, [width, minFreq, maxFreq, showLogScale, token.colorPrimary]);
+    }, [width, minFreq, maxFreq, showLogScale, palette]);
 
     return (
         <div style={{ width: width || '100%', marginTop: 8 }}>
             <div
                 style={{
                     padding: 6,
-                    border: `1px solid ${token.colorBorderSecondary}`,
-                    borderRadius: token.borderRadius,
-                    backgroundColor: token.colorBgContainer
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 6,
+                    backgroundColor: 'var(--bg-panel)'
                 }}
             >
                 <canvas
@@ -167,8 +159,8 @@ const RollingNotesHeatMap = ({ histogramSelector, width, minFreq = DEFAULT_MIN_F
                         width: '100%',
                         height: STRIP_HEIGHT,
                         boxSizing: 'border-box',
-                        borderRadius: Math.max(2, token.borderRadiusSM || 2),
-                        border: `1px solid ${token.colorBorderSecondary}`
+                        borderRadius: 4,
+                        border: '1px solid var(--border-subtle)'
                     }}
                     title={`Rolling frequency score density`}
                 />

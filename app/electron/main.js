@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme } = require('electron');
 const { spawn } = require('child_process');
 const { randomBytes } = require('crypto');
 const path = require('path');
@@ -135,6 +135,9 @@ const createWindow = () => {
     mainWindow = new BrowserWindow({
         width: 1920,
         height: 1080,
+        backgroundColor: nativeTheme.shouldUseDarkColors ? '#121212' : '#E8E8E8',
+        minWidth: 1100,
+        minHeight: 700,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js')
         }

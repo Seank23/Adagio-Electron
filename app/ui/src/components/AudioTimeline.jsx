@@ -1,14 +1,14 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
-import { theme } from 'antd';
 import { setCurrentTime } from '../store/playbackSlice';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { subscribeWaveform, getWaveform } from '../engine-client/FrameStore';
+import { usePalette } from '../hooks/usePalette';
 import WaveSurfer from 'wavesurfer.js';
 import TimelinePlugin from "wavesurfer.js/dist/plugins/timeline";
 
 const AudioTimeline = () => {
-    const { token } = theme.useToken();
+    const palette = usePalette();
     const dispatch = useDispatch();
     const commands = useEngineCommands();
     const waveformData = useSyncExternalStore(subscribeWaveform, getWaveform);
@@ -42,9 +42,7 @@ const AudioTimeline = () => {
         const waveSurfer = WaveSurfer.create({
             container: containerRef.current,
             height: 120,
-            waveColor: '#666',
-            progressColor: token.colorPrimary,
-            cursorColor: token.colorPrimaryActive,
+            ...waveColours(palette),
             barWidth: 2,
             barGap: 0,
             interact: true,
@@ -67,6 +65,11 @@ const AudioTimeline = () => {
         };
     }, [waveformData, duration]);
 
+    // A theme change recolours the waveform in place rather than rebuilding it.
+    useEffect(() => {
+        waveSurferRef.current?.setOptions(waveColours(palette));
+    }, [palette]);
+
     useEffect(() => {
         if (!waveSurferRef.current || !duration || waveformBusyRef.current) return;
         const ratio = currentTime / duration;
@@ -81,6 +84,12 @@ const AudioTimeline = () => {
     )
 };
 export default AudioTimeline;
+
+const waveColours = palette => ({
+    waveColor: palette.text.secondary,
+    progressColor: palette.accent.primaryFg,
+    cursorColor: palette.text.primary,
+});
 
 const viewportStyle = {
     width: '100%',

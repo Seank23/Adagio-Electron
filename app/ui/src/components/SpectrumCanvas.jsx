@@ -1,13 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { selectIsFileOpen } from '../store/playbackSlice';
 import { useSelector, useDispatch } from 'react-redux';
-import { theme } from 'antd';
 import { setCanvasWidth } from '../store/appSlice';
 import { MIN_FREQ } from '../constants';
 import { getLatestSpectrum } from '../engine-client/FrameStore';
 import { BINARY_FRAME } from '../utils/protocol';
 import { measure } from '../utils/devPerf';
 import { useStoreListener } from '../hooks/useStoreListener';
+import { usePalette } from '../hooks/usePalette';
 
 const selectNotes = state => state.analysis.notes;
 
@@ -21,7 +21,7 @@ const MAX_Y_VALUES = [1, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 
 
 // The canvas runs one rAF loop per mount that reads the latest frame from FrameStore and redraws only when the frame or the notes have changed
 const SpectrumCanvas = () => {
-    const { token } = theme.useToken();
+    const palette = usePalette();
     const dispatch = useDispatch();
 
     const canvasRef = useRef(null);
@@ -130,7 +130,7 @@ const SpectrumCanvas = () => {
 
         const drawSpectrum = (spectrumData, binHz, maxSpectrumHz, elementScale, toX, magToY) => {
             context.lineWidth = 2;
-            context.strokeStyle = token.colorPrimary;
+            context.strokeStyle = palette.accent.primaryFg;
             context.beginPath();
 
             for (let i = 0; i < spectrumData.length; i++) {
@@ -154,14 +154,14 @@ const SpectrumCanvas = () => {
             const absError = Math.abs(errorCents);
 
             if (absError <= 10) {
-                return token.colorSuccess;
+                return palette.tuning.in;
             }
 
             if (absError <= 20) {
-                return token.colorWarning;
+                return palette.tuning.near;
             }
 
-            return token.colorError;
+            return palette.tuning.off;
         };
 
         const peakMagnitude = (spectrumData, binHz, elementScale, freq) => {
@@ -224,7 +224,7 @@ const SpectrumCanvas = () => {
                 const textX = Math.min(x + 6, canvas.width - 36);
                 const textY = Math.max(8, Math.min(easedY, canvas.height - X_AXIS_PADDING - 8));
 
-                context.strokeStyle = token.colorBgContainer;
+                context.strokeStyle = palette.bg.panel;
                 context.lineWidth = 3;
                 context.strokeText(noteLabel, textX, textY);
                 context.fillStyle = noteColor;
@@ -240,11 +240,11 @@ const SpectrumCanvas = () => {
         };
 
         const drawXAxis = (toX) => {
-            context.fillStyle = '#fff';
+            context.fillStyle = palette.bg.inset;
             context.fillRect(0, canvas.height - X_AXIS_PADDING, canvas.width, X_AXIS_PADDING);
 
-            context.strokeStyle = "#666";
-            context.fillStyle = "#888";
+            context.strokeStyle = palette.border.strong;
+            context.fillStyle = palette.text.muted;
             context.font = "12px sans-serif";
 
             context.beginPath();
@@ -272,8 +272,8 @@ const SpectrumCanvas = () => {
         };
 
         const drawYAxis = (meanMaxValue, magToY) => {
-            context.strokeStyle = "#666";
-            context.fillStyle = "#aaa";
+            context.strokeStyle = palette.border.strong;
+            context.fillStyle = palette.text.muted;
             context.font = "12px sans-serif";
 
             context.beginPath();
@@ -298,7 +298,7 @@ const SpectrumCanvas = () => {
 
         draw();
         return () => cancelAnimationFrame(animationFrame);
-    }, [isFileOpen, showLogScale, canvasWidth, token.colorPrimary, token.colorError, token.colorBgContainer, token.colorSuccess, token.colorWarning]);
+    }, [isFileOpen, showLogScale, canvasWidth, palette]);
 
     return (
         <>
