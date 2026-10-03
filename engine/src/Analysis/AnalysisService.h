@@ -35,10 +35,14 @@ namespace Adagio
 		void Reset();
 		void StartAnalysis();
 		void StopAnalysis();
-		void RequestCurrentFrameAnalysis();
+		void RequestCurrentFrameAnalysis(bool shouldReset = true);
+		void ResetAnalysis();
+		bool HasUnseenSeek() const;
 
 		nlohmann::json GetSchemaJson() const;
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
+
+		const AnalysisParams& GetParams() const { return m_Params; }
 
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
 		static std::unique_ptr<AnalysisPipeline> CreatePipeline();
@@ -53,7 +57,7 @@ namespace Adagio
 		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);
 		void PublishCurrentFrame();
 		void PublishSpectrum(const AnalysisResult& result);
-		bool SyncSeekGeneration();
+		bool SyncSeekGeneration(bool shouldReset = true);
 		void PreprocessStream(kfr::univector<float>& outStream);
 
 		std::thread m_AnalysisThread;
@@ -65,6 +69,7 @@ namespace Adagio
 		AnalysisParams m_Params;
 		int m_RollingAvgCount;
 		std::atomic<bool> m_Running{ false };
+		std::atomic<bool> m_ResetRequested{ false };
 
 		uint32_t m_SeekGenerationSeen = 0;
 		double m_LastAnalysisStreamPos = 0.0;

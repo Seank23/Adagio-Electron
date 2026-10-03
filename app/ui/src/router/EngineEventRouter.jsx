@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useStore } from 'react-redux';
 import { useEngineEvents, useEngineFrames, useEngineConnection } from '../hooks/useEngineEvents';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { CONNECTION_STATE } from '../engine-client/WebSocketEngine';
@@ -8,10 +8,11 @@ import { BINARY_FRAME } from '../utils/protocol';
 import { setDuration, setCurrentTime, setTransport, resetPlayback } from '../store/playbackSlice';
 import { setStatusMessage, setConnectionState, setEngineStatus } from '../store/appSlice';
 import { EVENT_TYPE } from '../utils/utils';
-import { setAnalysisData } from '../store/analysisSlice';
+import { setAnalysisData, resetAnalysis } from '../store/analysisSlice';
 
 export default function EngineEventRouter() {
     const dispatch = useDispatch();
+    const store = useStore();
     const connectionState = useEngineConnection();
     const commands = useEngineCommands();
 
@@ -64,6 +65,11 @@ export default function EngineEventRouter() {
             break;
         case EVENT_TYPE.END_OF_PLAY:
             dispatch(resetPlayback());
+            if (store.getState().settings.repeat) {
+                const result = await commands.play();
+                if (!result.ok)
+                    dispatch(setStatusMessage({ type: 'error', message: result.error }));
+            }
             break;
         case EVENT_TYPE.ERROR:
             dispatch(setStatusMessage({ type: 'error', message: msg?.value }));
@@ -73,6 +79,10 @@ export default function EngineEventRouter() {
             break;
         case EVENT_TYPE.ANALYSIS:
             dispatch(setAnalysisData(msg?.value));
+            break;
+        case EVENT_TYPE.ANALYSIS_RESET:
+            resetSpectrum();
+            dispatch(resetAnalysis());
             break;
         default:
             break;

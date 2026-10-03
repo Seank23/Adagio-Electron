@@ -11,6 +11,8 @@ export const createEngineCommands = engine => ({
     setVolume: volume => engine.request(COMMAND.SET_VOLUME, volume),
     setSpeed: speed => engine.request(COMMAND.SET_SPEED, speed),
     analyseFrame: () => engine.request(COMMAND.ANALYSE_FRAME),
+    stepFrame: () => engine.request(COMMAND.STEP_FRAME),
+    resetAnalysis: () => engine.request(COMMAND.RESET_ANALYSIS),
     getAnalysisSchema: () => engine.request(COMMAND.GET_ANALYSIS_SCHEMA),
     setAnalysisSetting: (stage, key, value) => engine.request(COMMAND.SET_ANALYSIS_SETTING, { stage, key, value }),
     status: () => engine.request(COMMAND.STATUS),

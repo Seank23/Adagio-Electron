@@ -32,6 +32,8 @@ namespace
 		CommandType::SetVolume,
 		CommandType::SetSpeed,
 		CommandType::AnalyseFrame,
+		CommandType::StepFrame,
+		CommandType::ResetAnalysis,
 		CommandType::GetAnalysisSchema,
 		CommandType::SetAnalysisSetting,
 		CommandType::Status,
@@ -40,7 +42,7 @@ namespace
 
 	// Rows are commands in AllCommands order, columns are states in AllStates order:
 	//                          Empty  Loading  Ready  Playing  Paused
-	const bool Legal[13][5] = {
+	const bool Legal[15][5] = {
 		/* Play              */ { false, false,  true,  true,    true  },
 		/* Pause             */ { false, false,  false, true,    true  },
 		/* Stop              */ { false, false,  true,  true,    true  },
@@ -50,6 +52,9 @@ namespace
 		/* SetVolume         */ { true,  true,   true,  true,    true  },
 		/* SetSpeed          */ { false, false,  true,  true,    true  },
 		/* AnalyseFrame      */ { false, false,  true,  true,    true  },
+		// A step plays nothing, so it waits for the transport to be still.
+		/* StepFrame         */ { false, false,  true,  false,   true  },
+		/* ResetAnalysis     */ { false, false,  true,  true,    true  },
 		// The analysis settings belong to the pipeline, which outlives the file.
 		/* GetAnalysisSchema */ { true,  true,   true,  true,    true  },
 		/* SetAnalysisSetting*/ { true,  true,   true,  true,    true  },
@@ -103,7 +108,7 @@ TEST_CASE("Commands that need a file are refused when none is loaded")
 	// Play, Pause, Stop and Clear used to dereference an empty shared_ptr here.
 	for (CommandType command : { CommandType::Play, CommandType::Pause, CommandType::Stop,
 								 CommandType::Clear, CommandType::Seek, CommandType::SetSpeed,
-								 CommandType::AnalyseFrame })
+								 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis })
 	{
 		CAPTURE(Adagio::ToString(command));
 		CHECK_FALSE(Adagio::IsCommandLegal(TransportState::Empty, command));
@@ -111,12 +116,19 @@ TEST_CASE("Commands that need a file are refused when none is loaded")
 	CHECK(std::string(Adagio::RejectionReason(TransportState::Empty, CommandType::Play)) == "No audio file is loaded.");
 }
 
+TEST_CASE("Stepping while playing says to pause first")
+{
+	CHECK(std::string(Adagio::RejectionReason(TransportState::Playing, CommandType::StepFrame)) == "Pause before stepping.");
+	CHECK(std::string(Adagio::RejectionReason(TransportState::Empty, CommandType::StepFrame)) == "No audio file is loaded.");
+}
+
 TEST_CASE("Only the transport commands move the transport")
 {
 	for (TransportState state : AllStates)
 	{
 		for (CommandType command : { CommandType::Seek, CommandType::SetVolume, CommandType::SetSpeed,
-									 CommandType::AnalyseFrame, CommandType::GetAnalysisSchema,
+									 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis,
+									 CommandType::GetAnalysisSchema,
 									 CommandType::SetAnalysisSetting, CommandType::Status, CommandType::Shutdown })
 		{
 			CAPTURE(Adagio::ToString(state));

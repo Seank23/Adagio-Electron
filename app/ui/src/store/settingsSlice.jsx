@@ -6,6 +6,8 @@ const settingsSlice = createSlice({
         showLogScale: true,
         // 'system' follows the OS; 'dark' and 'light' force one.
         themeMode: 'system',
+        repeat: false,
+        follow: true,
     },
     reducers: {
         setShowLogScale: (state, action) => {
@@ -14,8 +16,14 @@ const settingsSlice = createSlice({
         setThemeMode: (state, action) => {
             state.themeMode = action.payload;
         },
+        toggleRepeat: state => {
+            state.repeat = !state.repeat;
+        },
+        toggleFollow: state => {
+            state.follow = !state.follow;
+        },
     },
 });
 
-export const { setShowLogScale, setThemeMode } = settingsSlice.actions;
+export const { setShowLogScale, setThemeMode, toggleRepeat, toggleFollow } = settingsSlice.actions;
 export default settingsSlice.reducer;

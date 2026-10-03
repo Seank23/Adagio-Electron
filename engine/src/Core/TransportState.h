@@ -12,6 +12,8 @@ namespace Adagio
 #undef ADAGIO_STATE_ENUM
 	};
 
+	bool HasFile(TransportState state);
+
 	const char* ToString(TransportState state);
 
 	bool IsCommandLegal(TransportState state, CommandType command);

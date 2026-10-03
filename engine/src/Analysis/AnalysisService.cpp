@@ -106,6 +106,13 @@ namespace Adagio
 			bool anchored = false;
 			while (m_Running)
 			{
+				if (m_ResetRequested.exchange(false))
+				{
+					m_Pipeline->ResetPersistentData();
+					rollingAvg.clear();
+					MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
+				}
+
 				const double playhead = EstimatePlayhead();
 				const double analysisStreamPos = playhead * m_Params.SampleRate;
 
@@ -167,14 +174,32 @@ namespace Adagio
 			m_AnalysisThread.join();
 	}
 
-	void AnalysisService::RequestCurrentFrameAnalysis()
+	void AnalysisService::RequestCurrentFrameAnalysis(bool shouldReset)
 	{
 		// Ensure that the analysis thread is not running before making an adhoc request
 		if (m_Running.load(std::memory_order_acquire) || !m_Pipeline || !m_AnalysisBuffer)
 			return;
 
-		SyncSeekGeneration();
+		SyncSeekGeneration(shouldReset);
 		PublishCurrentFrame();
+	}
+
+	void AnalysisService::ResetAnalysis()
+	{
+		if (m_Running.load(std::memory_order_acquire))
+		{
+			m_ResetRequested.store(true, std::memory_order_release);
+		}
+		else
+		{
+			m_Pipeline->ResetPersistentData();
+			MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
+		}
+	}
+
+	bool AnalysisService::HasUnseenSeek() const
+	{
+		return m_Feeder && m_Feeder->GetSeekGeneration() != m_SeekGenerationSeen;
 	}
 
 	void AnalysisService::PublishCurrentFrame()
@@ -193,14 +218,14 @@ namespace Adagio
 			context.BinHz, result.Timestamp, m_SeekGenerationSeen));
 	}
 
-	bool AnalysisService::SyncSeekGeneration()
+	bool AnalysisService::SyncSeekGeneration(bool shouldReset)
 	{
 		const uint32_t generation = m_Feeder->GetSeekGeneration();
 		if (generation == m_SeekGenerationSeen)
 			return false;
 
 		m_SeekGenerationSeen = generation;
-		m_Pipeline->ResetPersistentData();
+		if (shouldReset) m_Pipeline->ResetPersistentData();
 		return true;
 	}
 

@@ -17,6 +17,8 @@
         { "name": "stop", "cpp": "Stop", "js": "STOP", "arg": "none" },
         { "name": "clear", "cpp": "Clear", "js": "CLEAR", "arg": "none" },
         { "name": "seek", "cpp": "Seek", "js": "SEEK", "arg": "number" },
+        { "name": "stepFrame", "cpp": "StepFrame", "js": "STEP_FRAME", "arg": "none" },
+        { "name": "resetAnalysis", "cpp": "ResetAnalysis", "js": "RESET_ANALYSIS", "arg": "none" },
         { "name": "setVolume", "cpp": "SetVolume", "js": "SET_VOLUME", "arg": "number" },
         { "name": "setSpeed", "cpp": "SetSpeed", "js": "SET_SPEED", "arg": "number" },
         { "name": "analyseFrame", "cpp": "AnalyseFrame", "js": "ANALYSE_FRAME", "arg": "none" },
@@ -32,6 +34,7 @@
         { "name": "fileClosed", "cpp": "FileClosed", "js": "FILE_CLOSED" },
         { "name": "endOfPlay", "cpp": "EndOfPlay", "js": "END_OF_PLAY" },
         { "name": "analysis", "cpp": "Analysis", "js": "ANALYSIS" },
+        { "name": "analysisReset", "cpp": "AnalysisReset", "js": "ANALYSIS_RESET" },
         { "name": "info", "cpp": "Info", "js": "INFO" },
         { "name": "error", "cpp": "Error", "js": "ERROR" },
         { "name": "reply", "cpp": "Reply", "js": "REPLY" }

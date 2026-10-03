@@ -12,6 +12,7 @@
 #include "../IO/FileIOService.h"
 #include "../IO/PlaybackService.h"
 #include "../IO/WaveformBuilder.h"
+#include "TransportState.h"
 
 #include <nlohmann/json.hpp>
 
@@ -55,6 +56,7 @@ namespace Adagio
 			case CommandType::Stop:
 			case CommandType::Clear:
 			case CommandType::Seek:
+			case CommandType::StepFrame:
 			case CommandType::SetVolume:
 			case CommandType::SetSpeed:
 				return true;
@@ -204,11 +206,29 @@ namespace Adagio
 		case CommandType::Seek:
 		{
 			const double duration = m_Duration.load(std::memory_order_acquire);
-			double seconds = static_cast<double>(cmd.Value);
+			double seconds = (double)cmd.Value;
 			seconds = std::clamp(seconds, 0.0, duration);
-			m_PlaybackService->SeekToSample(static_cast<uint64_t>(seconds * m_AudioData->SampleRate));
+			m_PlaybackService->SeekToSample((uint64_t)(seconds * m_AudioData->SampleRate));
 			break;
 		}
+		case CommandType::StepFrame:
+		{
+			const AnalysisParams& params = m_AnalysisService->GetParams();
+			const uint64_t hop = (uint64_t)std::llround((double)params.HopSize / params.SampleRate * m_AudioData->SampleRate);
+			const uint64_t currentSample = (uint64_t)std::llround(m_PlaybackService->GetPositionSeconds() * m_AudioData->SampleRate);
+			if (currentSample + hop > (uint64_t)m_AudioData->SamplesPerChannel)
+			{
+				outcome = Failed("At the end of the track.");
+				break;
+			}
+			const bool resetTrackers = m_AnalysisService->HasUnseenSeek();
+			m_PlaybackService->SeekToSample(currentSample + hop);
+			m_AnalysisService->RequestCurrentFrameAnalysis(resetTrackers);
+			break;
+		}
+		case CommandType::ResetAnalysis:
+			m_AnalysisService->ResetAnalysis();
+			break;
 		case CommandType::SetVolume:
 			m_PlaybackService->SetVolume(std::clamp(cmd.Value, Protocol::VolumeMin, Protocol::VolumeMax));
 			break;
@@ -323,6 +343,7 @@ namespace Adagio
 		m_AnalysisService->Init(m_PcmFeeder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
 
 		waveformThread.join();
+		m_TrackPath = filePath;
 		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		return true;
 	}
@@ -348,7 +369,9 @@ namespace Adagio
 		const TransportState state = m_State.load(std::memory_order_acquire);
 		return {
 			{"state", ToString(state)},
-			{"duration", m_Duration.load(std::memory_order_acquire)},
+			{"track", HasFile(state)
+				? nlohmann::json{ {"path", m_TrackPath}, {"sampleRate", m_AudioData->SampleRate}, {"channels", m_AudioData->Channels}, {"duration", m_Duration.load(std::memory_order_acquire)} }
+				: nlohmann::json(nullptr)},
 			{"position", m_PlaybackService->GetPositionSeconds()},
 			{"speed", m_PlaybackService->GetSpeed()},
 			{"volume", m_PlaybackService->GetVolume()},

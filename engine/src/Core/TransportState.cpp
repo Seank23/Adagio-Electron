@@ -2,6 +2,13 @@
 
 namespace Adagio
 {
+	bool HasFile(TransportState state)
+	{
+		return state == TransportState::Ready
+			|| state == TransportState::Playing
+			|| state == TransportState::Paused;
+	}
+
 	const char* ToString(TransportState state)
 	{
 		switch (state)
@@ -11,16 +18,6 @@ namespace Adagio
 #undef ADAGIO_STATE_NAME
 		}
 		return "unknown";
-	}
-
-	namespace
-	{
-		bool HasFile(TransportState state)
-		{
-			return state == TransportState::Ready
-				|| state == TransportState::Playing
-				|| state == TransportState::Paused;
-		}
 	}
 
 	bool IsCommandLegal(TransportState state, CommandType command)
@@ -48,6 +45,10 @@ namespace Adagio
 		case CommandType::SetSpeed:
 		case CommandType::AnalyseFrame:
 			return HasFile(state);
+		case CommandType::StepFrame:
+			return state == TransportState::Ready || state == TransportState::Paused;
+		case CommandType::ResetAnalysis:
+			return state == TransportState::Ready || state == TransportState::Playing || state == TransportState::Paused;
 		}
 		return false;
 	}
@@ -83,6 +84,8 @@ namespace Adagio
 			return "No audio file is loaded.";
 		if (command == CommandType::Pause)
 			return "Nothing is playing.";
+		if (command == CommandType::StepFrame && state == TransportState::Playing)
+			return "Pause before stepping.";
 		return "The command is not valid in this state.";
 	}
 }

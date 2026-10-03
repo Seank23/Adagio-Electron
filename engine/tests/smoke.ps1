@@ -450,7 +450,7 @@ try {
 
     Write-Host "`nCommands with no file loaded (X5)"
     Test-Case 'play, pause, stop, clear, seek, speed, analysis on an empty engine' {
-        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame',
+        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame', 'stepFrame', 'resetAnalysis',
             @('seek', 1.5), @('setSpeed', 0.5), @('setVolume', 0.8))
         if ($status.state -ne 'empty') { throw "expected state empty, got $($status.state)" }
     }
@@ -459,6 +459,7 @@ try {
     Test-Case 'load with an empty path' {
         $status = Invoke-Commands @(, @('load', ''))
         if ($status.state -ne 'empty') { throw "expected state empty, got $($status.state)" }
+        if ($null -ne $status.track) { throw "expected no track with no file, got $($status.track | ConvertTo-Json -Compress)" }
     }
 
     Test-Case 'load an unsupported extension' {
@@ -472,8 +473,10 @@ try {
         if ($status.state -eq 'empty') {
             $script:deviceAvailable = $false
             $script:Skipped += 'playback cases (no audio output device on this machine)'
-        } elseif ($status.duration -lt 1.9 -or $status.duration -gt 2.1) {
-            throw "expected a 2 s duration, got $($status.duration)"
+        } elseif ($status.track.duration -lt 1.9 -or $status.track.duration -gt 2.1) {
+            throw "expected a 2 s duration, got $($status.track.duration)"
+        } elseif ($status.track.path -ne $tonePath) {
+            throw "expected the track path $tonePath, got $($status.track.path)"
         }
     }
 
@@ -607,6 +610,95 @@ try {
             $underruns = $status.underrunCount - $before
             if ($underruns -ne 0) { throw "expected no underruns in 3 s, got $underruns" }
             Invoke-Commands @(, @('setSpeed', 1.0)) | Out-Null
+        }
+
+        Write-Host "`nFrame step and analysis reset"
+        # One 64-sample hop of the 8 kHz analysis stream, in the fixture's 44.1 kHz samples.
+        $hopSeconds = [Math]::Round(64 / 8000 * 44100) / 44100
+
+        Test-Case 'a step is refused while playing' {
+            Invoke-Commands @(, 'play') | Out-Null
+            $reply = Invoke-EngineCommand -Cmd 'stepFrame'
+            if ($reply.ok) { throw 'the engine stepped while playing' }
+            if ($reply.error -ne 'Pause before stepping.') { throw "unexpected refusal: $($reply.error)" }
+        }
+
+        Test-Case 'a reset while playing is answered by an analysisReset event' {
+            $script:Events = @()
+            $reply = Invoke-EngineCommand -Cmd 'resetAnalysis'
+            if (-not $reply.ok) { throw "reset refused: $($reply.error)" }
+            # The analysis thread does the reset, a moment after the reply.
+            $deadline = (Get-Date).AddMilliseconds(1000)
+            while ((Get-Date) -lt $deadline -and -not ($script:Events | Where-Object { $_.type -eq 'analysisReset' })) {
+                Get-Status | Out-Null
+            }
+            if (-not ($script:Events | Where-Object { $_.type -eq 'analysisReset' })) { throw 'no analysisReset event followed' }
+        }
+
+        # The key accumulators are raw weights, so their total says whether the trackers were kept or cleared.
+        function Get-KeyWeight {
+            $event = $script:Events | Where-Object { $_.type -eq 'analysis' } | Select-Object -Last 1
+            if ($null -eq $event) { throw 'no analysis event followed the step' }
+            $sum = ($event.value.keyHistogram | Measure-Object -Property score -Sum).Sum
+            if ($null -eq $sum) { return 0.0 }
+            return [double]$sum
+        }
+
+        Test-Case 'a reset while paused is answered by an analysisReset event' {
+            Invoke-Commands @('pause', @('seek', 1.0)) | Out-Null
+            $script:Events = @()
+            $reply = Invoke-EngineCommand -Cmd 'resetAnalysis'
+            if (-not $reply.ok) { throw "reset refused: $($reply.error)" }
+            if (-not ($script:Events | Where-Object { $_.type -eq 'analysisReset' })) { throw 'no analysisReset event before the reply' }
+        }
+
+        Test-Case 'a step while paused moves one hop, analyses it and keeps the trackers' {
+            $start = (Get-Status).position
+            $script:Events = @()
+            $script:Socket.ResetCounts()
+            $reply = Invoke-EngineCommand -Cmd 'stepFrame'
+            if (-not $reply.ok) { throw "step refused: $($reply.error)" }
+            $status = Get-Status
+            if ($status.state -ne 'paused') { throw "expected paused, got $($status.state)" }
+            if ([Math]::Abs($status.position - ($start + $hopSeconds)) -gt 0.5 / 44100) {
+                throw ("expected the position to move {0:N6} s from {1:N6}, got {2:N6}" -f $hopSeconds, $start, $status.position)
+            }
+            if ($script:Socket.SpectrumFrames -ne 1) { throw "expected one spectrum frame, got $($script:Socket.SpectrumFrames)" }
+            $first = Get-KeyWeight
+            if ($first -le 0) { throw 'the stepped frame put no weight on the key for a 440 Hz tone' }
+
+            $script:Events = @()
+            $reply = Invoke-EngineCommand -Cmd 'stepFrame'
+            if (-not $reply.ok) { throw "second step refused: $($reply.error)" }
+            $second = Get-KeyWeight
+            # Kept, the second frame adds about as much again; cleared, it would match the first.
+            if ($second -lt 1.5 * $first) { throw ("the step reset the trackers: key weight {0:G4} after one step, {1:G4} after two" -f $first, $second) }
+        }
+
+        Test-Case 'a step after a paused seek starts the trackers afresh' {
+            Invoke-Commands @(, @('seek', 2.0)) | Out-Null
+            $script:Events = @()
+            Invoke-EngineCommand -Cmd 'stepFrame' | Out-Null
+            $afterSeek = Get-KeyWeight
+            $script:Events = @()
+            Invoke-EngineCommand -Cmd 'stepFrame' | Out-Null
+            $afterTwo = Get-KeyWeight
+            if ($afterTwo -lt 1.5 * $afterSeek) { throw 'the steps after the seek did not accumulate' }
+            if ($afterSeek -gt 0.6 * $afterTwo) { throw ("the seek kept the trackers: {0:G4} after the first step" -f $afterSeek) }
+        }
+
+        Test-Case 'a step from Ready leaves the transport Ready' {
+            $status = Invoke-Commands @('stop', 'stepFrame')
+            if ($status.state -ne 'ready') { throw "expected ready, got $($status.state)" }
+            if ([Math]::Abs($status.position - $hopSeconds) -gt 0.5 / 44100) { throw "expected one hop from 0, got $($status.position)" }
+        }
+
+        Test-Case 'a step past the end is refused' {
+            $duration = (Get-Status).track.duration
+            Invoke-Commands @(, @('seek', $duration)) | Out-Null
+            $reply = Invoke-EngineCommand -Cmd 'stepFrame'
+            if ($reply.ok) { throw 'the engine stepped past the end of the track' }
+            if ($reply.error -ne 'At the end of the track.') { throw "unexpected refusal: $($reply.error)" }
         }
 
         Write-Host "`nTeardown (X3)"

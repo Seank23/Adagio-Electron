@@ -14,13 +14,28 @@ const createSignal = () => {
 let latestSpectrum = null;
 const spectrumSignal = createSignal();
 
+// Arrival times of the spectrum frames shown in the last second, for the status bar.
+const RATE_WINDOW_MS = 1000;
+const spectrumTimes = [];
+const pruneSpectrumTimes = now => {
+    while (spectrumTimes.length > 0 && spectrumTimes[0] < now - RATE_WINDOW_MS) spectrumTimes.shift();
+};
+
 export const subscribeSpectrum = spectrumSignal.subscribe;
 export const getLatestSpectrum = () => latestSpectrum;
 
 export const publishSpectrum = frame => {
     if (latestSpectrum && frame.seekGeneration < latestSpectrum.seekGeneration) return;
     latestSpectrum = frame;
+    const now = performance.now();
+    spectrumTimes.push(now);
+    pruneSpectrumTimes(now);
     spectrumSignal.notify();
+};
+
+export const getSpectrumRate = () => {
+    pruneSpectrumTimes(performance.now());
+    return spectrumTimes.length * 1000 / RATE_WINDOW_MS;
 };
 
 export const resetSpectrum = () => {

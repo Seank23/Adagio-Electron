@@ -7,6 +7,7 @@ const appSlice = createSlice({
         canvasWidth: 1000,
         connectionState: 'connecting',
         engineStatus: {state: 'starting', error: ''},
+        loadingFile: '',
     },
     reducers: {
         setStatusMessage: (state, action) => {
@@ -24,6 +25,9 @@ const appSlice = createSlice({
         setEngineStatus: (state, action) => {
             state.engineStatus = action.payload;
         },
+        setLoadingFile: (state, action) => {
+            state.loadingFile = action.payload;
+        },
     },
 });
 
@@ -33,5 +37,6 @@ export const {
     setCanvasWidth,
     setConnectionState,
     setEngineStatus,
+    setLoadingFile,
 } = appSlice.actions;
 export default appSlice.reducer;

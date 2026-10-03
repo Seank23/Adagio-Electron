@@ -9,6 +9,8 @@ const playbackSlice = createSlice({
         state: TRANSPORT_STATE.EMPTY,
         speed: 1.0,
         volume: 1.0,
+        // { path, sampleRate, channels, duration }, or null with no file.
+        track: null,
     },
     reducers: {
         setCurrentTime(state, action) {
@@ -22,7 +24,10 @@ const playbackSlice = createSlice({
             state.state = transport.state ?? state.state;
             state.speed = transport.speed ?? state.speed;
             state.volume = transport.volume ?? state.volume;
-            state.duration = transport.duration ?? state.duration;
+            if ('track' in transport) {
+                state.track = transport.track;
+                state.duration = transport.track?.duration ?? 0.0;
+            }
         },
         resetPlayback(state) {
             state.currentTime = 0.0;

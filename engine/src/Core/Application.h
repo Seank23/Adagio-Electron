@@ -47,6 +47,7 @@ namespace Adagio
 		std::unique_ptr<PlaybackService> m_PlaybackService;
 		std::unique_ptr<AnalysisService> m_AnalysisService;
 
+		std::string m_TrackPath;
 		std::shared_ptr<AudioData> m_AudioData;
 
 		std::atomic<TransportState> m_State{ TransportState::Empty };

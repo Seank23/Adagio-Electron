@@ -1,16 +1,18 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+const initialState = {
+    notes: [],
+    spectrumSR: 0,
+    executionTime: 0,
+    keyHistogram: [],
+    chordHistogram: [],
+    detectedKey: null,
+    predictedChords: [],
+};
+
 const analysisSlice = createSlice({
     name: 'analysis',
-    initialState: {
-        notes: [],
-        spectrumSR: 0,
-        executionTime: 0,
-        keyHistogram: [],
-        chordHistogram: [],
-        detectedKey: null,
-        predictedChords: [],
-    },
+    initialState,
     reducers: {
         setAnalysisData: (state, action) => {
             state.notes = action.payload?.notes;
@@ -21,8 +23,9 @@ const analysisSlice = createSlice({
             state.detectedKey = action.payload?.detectedKey;
             state.predictedChords = action.payload?.predictedChords || [];
         },
+        resetAnalysis: state => ({ ...initialState, spectrumSR: state.spectrumSR }),
     },
 });
 
-export const { setAnalysisData } = analysisSlice.actions;
+export const { setAnalysisData, resetAnalysis } = analysisSlice.actions;
 export default analysisSlice.reducer;
