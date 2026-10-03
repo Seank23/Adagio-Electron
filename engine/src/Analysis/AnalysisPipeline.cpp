@@ -135,6 +135,17 @@ namespace Adagio
 			outError = "Setting '" + key + "' is a number.";
 			return false;
 		}
+		if (type == "int" || type == "float")
+		{
+			const float val = value.get<float>();
+			const float min = definition.value("min", -std::numeric_limits<float>::infinity());
+			const float max = definition.value("max", std::numeric_limits<float>::infinity());
+			if (val < min || val > max)
+			{
+				outError = "Setting '" + key + "' should be between " + std::to_string(min) + " and " + std::to_string(max) + ".";
+				return false;
+			}
+		}
 		if (type == "enum")
 		{
 			const nlohmann::json options = definition.value("options", nlohmann::json::array());
@@ -157,6 +168,7 @@ namespace Adagio
 		for (const auto& note : result.Context->Notes)
 			notesJson.push_back({
 				{"name", note.Name},
+				{"midi", note.Midi},
 				{"frequency", note.PeakInfo.Frequency},
 				{"magnitude", note.PeakInfo.Magnitude},
 				{"score", note.PeakInfo.Score},

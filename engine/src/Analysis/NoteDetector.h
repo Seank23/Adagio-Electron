@@ -10,8 +10,9 @@ namespace Adagio
 	struct NoteDetectorSettings
 	{
 		float ERROR_THRESHOLD = 25.0f;
+		float A440_TUNING = 440.0f;
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteDetectorSettings, ERROR_THRESHOLD)
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteDetectorSettings, ERROR_THRESHOLD, A440_TUNING)
 	};
 
 	class NoteDetector : public ConfigurableStage<NoteDetectorSettings>
@@ -25,6 +26,7 @@ namespace Adagio
 			auto& data = context->Peaks;
 
 			const float errorThreshold = m_Settings.ERROR_THRESHOLD;
+			const float A440 = m_Settings.A440_TUNING;
 			const double timestamp = context->Frame.Timestamp;
 
 			std::vector<Note> notes;
@@ -36,7 +38,7 @@ namespace Adagio
 					continue;
 				int note = ((midi % 12) + 12) % 12;
 				int octave = std::floor(midi / 12) - 1;
-				float cents = 1200 * std::log2(freq / MidiToFrequency(midi));
+				float cents = 1200 * std::log2(freq / MidiToFrequency(midi, A440));
 
 				if (std::abs(cents) > errorThreshold)
 					continue;
@@ -62,16 +64,20 @@ namespace Adagio
 					"type": "float",	
 					"min": 0.0,
 					"max": 50.0
+				},
+				"A440_TUNING": {
+					"name": "A440 Reference",
+					"type": "float",	
+					"min": 415.0,
+					"max": 466.0
 				}
 			})");
 		}
 
 	private:
-		static constexpr float A440 = 440.0f;
-
-		float MidiToFrequency(int midi) const
+		float MidiToFrequency(int midi, float tuningReference = 440.0f) const
 		{
-			return A440 * std::pow(2.0f, (midi - 69) / 12.0f);
+			return tuningReference * std::pow(2.0f, (midi - 69) / 12.0f);
 		}
 	};
 }

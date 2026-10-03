@@ -241,6 +241,11 @@ namespace Adagio
 		case CommandType::GetAnalysisSchema:
 			outcome.Value = m_AnalysisService->GetSchemaJson();
 			break;
+		case CommandType::GetWaveform:
+			for (const std::string& frame : m_WaveformFrames)
+				MessageQueue::GetInstance().PushBinaryTo(cmd.ClientId, frame);
+			outcome.Value = m_WaveformFrames.size();
+			break;
 		case CommandType::SetAnalysisSetting:
 		{
 			if (!cmd.Args.contains("stage") || !cmd.Args.at("stage").is_string()
@@ -317,6 +322,7 @@ namespace Adagio
 		m_Duration.store(static_cast<double>(m_AudioData->Duration), std::memory_order_release);
 
 		WaveformBuilder waveformBuilder;
+		std::vector<std::string> waveformFrames;
 		std::thread waveformThread([&]()
 		{
 			waveformBuilder.BuildWaveform(m_AudioData);
@@ -327,7 +333,8 @@ namespace Adagio
 				peaks.reserve(data.size());
 				for (const auto& peak : data)
 					peaks.push_back(peak.Max);
-				MessageQueue::GetInstance().PushBinary(BinaryFrame::EncodeWaveform(peaks, resolution));
+				waveformFrames.push_back(BinaryFrame::EncodeWaveform(peaks, resolution));
+				MessageQueue::GetInstance().PushBinary(waveformFrames.back());
 			}
 		});
 
@@ -343,6 +350,7 @@ namespace Adagio
 		m_AnalysisService->Init(m_PcmFeeder, AnalysisParams{ 8000, 4096, 64 }, m_PlaybackService.get());
 
 		waveformThread.join();
+		m_WaveformFrames = std::move(waveformFrames);
 		m_TrackPath = filePath;
 		PushEvent({ {"type", Protocol::Event::FileLoaded}, {"value", { {"duration", m_AudioData->Duration} }} });
 		return true;
@@ -356,6 +364,7 @@ namespace Adagio
 			m_PlaybackService->Reset();
 			m_PcmFeeder->Clear();
 			m_AudioData->Clear();
+			m_WaveformFrames.clear();
 			m_Duration.store(0.0, std::memory_order_release);
 		}
 		catch (...)

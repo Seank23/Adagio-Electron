@@ -25,6 +25,7 @@
         { "name": "getAnalysisSchema", "cpp": "GetAnalysisSchema", "js": "GET_ANALYSIS_SCHEMA", "arg": "none" },
         { "name": "setAnalysisSetting", "cpp": "SetAnalysisSetting", "js": "SET_ANALYSIS_SETTING", "arg": "object" },
         { "name": "status", "cpp": "Status", "js": "STATUS", "arg": "none" },
+        { "name": "getWaveform", "cpp": "GetWaveform", "js": "GET_WAVEFORM", "arg": "none" },
         { "name": "shutdown", "cpp": "Shutdown", "js": "SHUTDOWN", "arg": "none" }
     ],
     "events": [

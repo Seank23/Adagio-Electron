@@ -35,7 +35,7 @@ namespace Adagio
 		void Reset();
 		void StartAnalysis();
 		void StopAnalysis();
-		void RequestCurrentFrameAnalysis(bool shouldReset = true);
+		void RequestCurrentFrameAnalysis(bool shouldReset = false);
 		void ResetAnalysis();
 		bool HasUnseenSeek() const;
 

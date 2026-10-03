@@ -37,12 +37,13 @@ namespace
 		CommandType::GetAnalysisSchema,
 		CommandType::SetAnalysisSetting,
 		CommandType::Status,
+		CommandType::GetWaveform,
 		CommandType::Shutdown
 	};
 
 	// Rows are commands in AllCommands order, columns are states in AllStates order:
 	//                          Empty  Loading  Ready  Playing  Paused
-	const bool Legal[15][5] = {
+	const bool Legal[16][5] = {
 		/* Play              */ { false, false,  true,  true,    true  },
 		/* Pause             */ { false, false,  false, true,    true  },
 		/* Stop              */ { false, false,  true,  true,    true  },
@@ -59,6 +60,8 @@ namespace
 		/* GetAnalysisSchema */ { true,  true,   true,  true,    true  },
 		/* SetAnalysisSetting*/ { true,  true,   true,  true,    true  },
 		/* Status            */ { true,  true,   true,  true,    true  },
+		// Resends the loaded file's waveform, so there has to be one.
+		/* GetWaveform       */ { false, false,  true,  true,    true  },
 		/* Shutdown          */ { true,  true,   true,  true,    true  }
 	};
 }
@@ -108,7 +111,8 @@ TEST_CASE("Commands that need a file are refused when none is loaded")
 	// Play, Pause, Stop and Clear used to dereference an empty shared_ptr here.
 	for (CommandType command : { CommandType::Play, CommandType::Pause, CommandType::Stop,
 								 CommandType::Clear, CommandType::Seek, CommandType::SetSpeed,
-								 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis })
+								 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis,
+									 CommandType::GetWaveform })
 	{
 		CAPTURE(Adagio::ToString(command));
 		CHECK_FALSE(Adagio::IsCommandLegal(TransportState::Empty, command));
@@ -129,7 +133,8 @@ TEST_CASE("Only the transport commands move the transport")
 		for (CommandType command : { CommandType::Seek, CommandType::SetVolume, CommandType::SetSpeed,
 									 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis,
 									 CommandType::GetAnalysisSchema,
-									 CommandType::SetAnalysisSetting, CommandType::Status, CommandType::Shutdown })
+									 CommandType::SetAnalysisSetting, CommandType::Status, CommandType::GetWaveform,
+										 CommandType::Shutdown })
 		{
 			CAPTURE(Adagio::ToString(state));
 			CAPTURE(Adagio::ToString(command));

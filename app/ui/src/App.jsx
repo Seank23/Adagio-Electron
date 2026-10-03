@@ -4,8 +4,8 @@ import EngineEventRouter from './router/EngineEventRouter';
 import TopBar from './components/TopBar';
 import TransportBar from './components/TransportBar';
 import StatusBar from './components/StatusBar';
-import AudioTimeline from './components/AudioTimeline';
-import SpectrumCanvas from './components/SpectrumCanvas';
+import TimelinePanel from './components/TimelinePanel';
+import SpectrumPanel from './components/SpectrumPanel';
 import AnalysisSection from './components/AnalysisSection';
 import EmptyState from './components/EmptyState';
 import { Panel } from './components/Panel';
@@ -27,15 +27,13 @@ const App = () => {
                 <TopBar />
                 <TimelineGroup fileOpen={isFileOpen}>
                     <TransportBar />
-                    {isFileOpen && <TimelineSlot><AudioTimeline /></TimelineSlot>}
+                    {isFileOpen && <TimelinePanel />}
                 </TimelineGroup>
                 {isFileOpen
                     ? (
                         <Body>
                             <Main>
-                                <SpectrumSlot>
-                                    <CanvasHost><SpectrumCanvas /></CanvasHost>
-                                </SpectrumSlot>
+                                <SpectrumPanel />
                                 <NoteActivitySlot>
                                     <AnalysisSection />
                                 </NoteActivitySlot>
@@ -89,23 +87,6 @@ const Main = Styled.div`
     gap: 1px;
     min-width: 0;
     min-height: 0;
-`;
-
-const TimelineSlot = Styled(Panel)`
-    padding: 12px 12px 8px;
-`;
-
-const SpectrumSlot = Styled(Panel)`
-    padding: 0 12px 12px;
-`;
-
-const CanvasHost = Styled.div`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    min-height: 0;
-    overflow: hidden;
 `;
 
 const NoteActivitySlot = Styled(Panel)`

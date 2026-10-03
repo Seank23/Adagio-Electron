@@ -1,313 +1,292 @@
-import React, { useEffect, useRef } from 'react';
-import { selectIsFileOpen } from '../store/playbackSlice';
-import { useSelector, useDispatch } from 'react-redux';
-import { setCanvasWidth } from '../store/appSlice';
-import { MIN_FREQ } from '../constants';
+import { useEffect, useRef } from 'react';
+import Styled from '@emotion/styled';
+import { useSelector } from 'react-redux';
 import { getLatestSpectrum } from '../engine-client/FrameStore';
 import { BINARY_FRAME } from '../utils/protocol';
 import { measure } from '../utils/devPerf';
 import { useStoreListener } from '../hooks/useStoreListener';
 import { usePalette } from '../hooks/usePalette';
+import { fitToElement, withAlpha } from '../utils/canvas';
+import { formatHz, makeAxis } from '../utils/frequencyAxis';
+import { formatCents, tuningBand } from '../utils/music';
+import { FONTS } from '../theme/tokens';
 
 const selectNotes = state => state.analysis.notes;
+const selectSpectrumRate = state => state.analysis.spectrumSR;
 
-const X_AXIS_PADDING = 20;
+// The band under the plot for the frequency labels, and the headroom above the tallest peak.
+const AXIS_HEIGHT = 22;
+const HEADROOM = 16;
 // Notes are found to within a few bins of the peak the curve draws.
 const PEAK_SEARCH_BINS = 2;
-// Labels ease towards their peak rather than following every frame's height.
+// Tags ease towards their peak rather than following every frame's height.
 const LABEL_TIME_CONSTANT_MS = 20;
-const LABEL_OFFSET = 12;
-const MAX_Y_VALUES = [1, 10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000];
+const TAG_RISE = 24;
+const TAG_HEIGHT = 24;
+const TAG_PADDING = 5;
+const TAG_GAP = 4;
 
-// The canvas runs one rAF loop per mount that reads the latest frame from FrameStore and redraws only when the frame or the notes have changed
+const NAME_FONT = `700 12px ${FONTS.mono}`;
+const CENTS_FONT = `500 10px ${FONTS.mono}`;
+const AXIS_FONT = `400 9px ${FONTS.mono}`;
+
+// One rAF loop per mount reads the latest frame from FrameStore and redraws only when
+// the frame, the notes or the canvas size have changed, or a tag is still easing.
 const SpectrumCanvas = () => {
     const palette = usePalette();
-    const dispatch = useDispatch();
-
-    const canvasRef = useRef(null);
-    const canvasWidth = useSelector(state => state.app.canvasWidth);
-    const isFileOpen = useSelector(selectIsFileOpen);
     const showLogScale = useSelector(state => state.settings.showLogScale);
+    const canvasRef = useRef(null);
 
     // Read by the draw loop, which notices the change itself; no render needed.
     const notesRef = useRef([]);
     useStoreListener(selectNotes, notes => {
-        notesRef.current = notes;
+        notesRef.current = notes ?? [];
+    });
+    const spectrumRateRef = useRef(0);
+    useStoreListener(selectSpectrumRate, rate => {
+        spectrumRateRef.current = rate || 0;
     });
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        const parent = canvas?.parentElement;
-
-        if (!parent) {
-            return;
-        }
-
-        const updateWidth = () => {
-            dispatch(setCanvasWidth(parent.clientWidth || 1000));
-        };
-
-        updateWidth();
-
-        const observer = new ResizeObserver(updateWidth);
-        observer.observe(parent);
-
-        return () => observer.disconnect();
-    }, [isFileOpen, dispatch]);
-
-    useEffect(() => {
-        const canvas = canvasRef.current;
         const context = canvas?.getContext('2d');
-        if (!canvas || !context) {
+        if (!context)
             return;
-        }
 
         let animationFrame;
         let drawnSpectrum;
         let drawnNotes;
-
-        const labelY = new Map();
+        let drawnWidth = 0;
+        let drawnHeight = 0;
         let labelsSettling = false;
         let lastDrawTime = performance.now();
+        const labelY = new Map();
 
-        const draw = (now = performance.now()) => {
-            animationFrame = requestAnimationFrame(draw);
+        const loop = now => {
+            animationFrame = requestAnimationFrame(loop);
             measure('spectrum draw', () => render(now));
         };
 
         const render = now => {
             const spectrum = getLatestSpectrum();
             const notes = notesRef.current;
-            if (spectrum === drawnSpectrum && notes === drawnNotes && !labelsSettling) {
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+            // A reset publishes a null frame, which counts as a change: it draws the empty grid.
+            if (spectrum === drawnSpectrum && notes === drawnNotes && width === drawnWidth
+                && height === drawnHeight && !labelsSettling) {
                 lastDrawTime = now;
                 return;
             }
             drawnSpectrum = spectrum;
             drawnNotes = notes;
+            drawnWidth = width;
+            drawnHeight = height;
             const elapsedMs = now - lastDrawTime;
             lastDrawTime = now;
 
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            if (!spectrum || spectrum.count === 0) {
+            const ratio = fitToElement(canvas);
+            context.setTransform(ratio, 0, 0, ratio, 0, 0);
+            context.clearRect(0, 0, width, height);
+
+            const maxHz = spectrum?.count > 0
+                ? spectrum.resolution * spectrum.data.length
+                : spectrumRateRef.current / 2;
+            const axis = makeAxis({ maxHz, width, log: showLogScale });
+            if (!axis) {
                 labelY.clear();
                 labelsSettling = false;
                 return;
             }
+            const plotHeight = height - AXIS_HEIGHT;
 
-            const spectrumData = spectrum.data;
+            drawGrid(axis, width, plotHeight);
+            if (spectrum?.count > 0) {
+                const maxMagnitude = spectrum.maxMagnitude || 1;
+                // A Uint16 spectrum is magnitude / max at full scale; a Float32 one is the magnitude itself.
+                const elementScale = spectrum.elementType === BINARY_FRAME.ELEMENT_TYPE.UINT16 ? maxMagnitude / 65535 : 1;
+                const toY = magnitude => HEADROOM + (1 - Math.min(1, magnitude / maxMagnitude)) * (plotHeight - HEADROOM);
+                drawSpectrum(spectrum, elementScale, axis, toY, plotHeight);
+                drawNotes(notes, spectrum, elementScale, axis, toY, width, plotHeight, elapsedMs);
+            } else {
+                labelY.clear();
+                labelsSettling = false;
+            }
+            drawAxisLabels(axis, width, plotHeight);
+        };
+
+        const drawGrid = (axis, width, plotHeight) => {
+            context.fillStyle = palette.border.subtle;
+            for (const hz of axis.ticks)
+                context.fillRect(Math.round(axis.toX(hz)), 0, 1, plotHeight);
+            for (const fraction of [0.25, 0.5, 0.75])
+                context.fillRect(0, Math.round(plotHeight * fraction), width, 1);
+            context.fillStyle = palette.border.strong;
+            context.fillRect(0, Math.round(plotHeight), width, 1);
+        };
+
+        const drawSpectrum = (spectrum, elementScale, axis, toY, plotHeight) => {
+            const data = spectrum.data;
             const binHz = spectrum.resolution;
-            const maxSpectrumHz = binHz * spectrumData.length;
-            const meanMaxValue = spectrum.maxMagnitude || 1;
-            // A Uint16 spectrum is magnitude / max at full scale; a Float32 one is the magnitude itself.
-            const elementScale = spectrum.elementType === BINARY_FRAME.ELEMENT_TYPE.UINT16 ? spectrum.maxMagnitude / 65535 : 1;
-
-            const freqToXLog = (freq, width) => {
-                const minLog = Math.log10(MIN_FREQ);
-                const maxLog = Math.log10(maxSpectrumHz);
-                const logFreq = Math.log10(freq);
-
-                return (
-                    (logFreq - minLog) /
-                    (maxLog - minLog)
-                ) * width;
-            };
-
-            const freqToX = (freq, width) => {
-                return (freq / maxSpectrumHz) * width;
-            };
-
-            const toX = freq => showLogScale ? freqToXLog(freq, canvas.width) : freqToX(freq, canvas.width);
-
-            const magToY = (mag, height) => {
-                return (height - X_AXIS_PADDING) - ((mag / meanMaxValue) * height) * 0.9;
-            };
-
-            drawSpectrum(spectrumData, binHz, maxSpectrumHz, elementScale, toX, magToY);
-            drawNotes(notes, spectrumData, binHz, elementScale, maxSpectrumHz, toX, magToY, elapsedMs);
-            drawXAxis(toX);
-            drawYAxis(meanMaxValue, magToY);
-        };
-
-        const drawSpectrum = (spectrumData, binHz, maxSpectrumHz, elementScale, toX, magToY) => {
-            context.lineWidth = 2;
-            context.strokeStyle = palette.accent.primaryFg;
-            context.beginPath();
-
-            for (let i = 0; i < spectrumData.length; i++) {
-                const freq = i * binHz;
-                if (freq < MIN_FREQ || freq > maxSpectrumHz) {
-                    continue; // Skip frequencies outside the range
-                }
-                const x = toX(freq);
-                const y = magToY(spectrumData[i] * elementScale, canvas.height);
-                if (i === 0) {
-                    context.moveTo(x, y);
+            const path = new Path2D();
+            let firstX = null;
+            let lastX = 0;
+            for (let i = 0; i < data.length; i++) {
+                const hz = i * binHz;
+                if (hz < axis.minHz || hz > axis.maxHz)
+                    continue;
+                const x = axis.toX(hz);
+                const y = toY(data[i] * elementScale);
+                if (firstX === null) {
+                    path.moveTo(x, y);
+                    firstX = x;
                 } else {
-                    context.lineTo(x, y);
+                    path.lineTo(x, y);
                 }
+                lastX = x;
             }
-            context.lineTo(canvas.width, canvas.height - X_AXIS_PADDING);
-            context.stroke();
+            if (firstX === null)
+                return;
+
+            const area = new Path2D(path);
+            area.lineTo(lastX, plotHeight);
+            area.lineTo(firstX, plotHeight);
+            area.closePath();
+            const gradient = context.createLinearGradient(0, HEADROOM, 0, plotHeight);
+            gradient.addColorStop(0, withAlpha(palette.accent.primaryFg, 0.28));
+            gradient.addColorStop(1, withAlpha(palette.accent.primaryFg, 0.02));
+            context.fillStyle = gradient;
+            context.fill(area);
+
+            context.lineWidth = 1.5;
+            context.lineJoin = 'round';
+            context.strokeStyle = palette.accent.primaryFg;
+            context.stroke(path);
         };
 
-        const getNoteLabelColor = (errorCents) => {
-            const absError = Math.abs(errorCents);
-
-            if (absError <= 10) {
-                return palette.tuning.in;
-            }
-
-            if (absError <= 20) {
-                return palette.tuning.near;
-            }
-
-            return palette.tuning.off;
-        };
-
-        const peakMagnitude = (spectrumData, binHz, elementScale, freq) => {
-            const centre = Math.round(freq / binHz);
+        const peakMagnitude = (spectrum, elementScale, hz) => {
+            const data = spectrum.data;
+            const centre = Math.round(hz / spectrum.resolution);
             let peak = 0;
-            for (let i = Math.max(0, centre - PEAK_SEARCH_BINS); i <= Math.min(spectrumData.length - 1, centre + PEAK_SEARCH_BINS); i++) {
-                peak = Math.max(peak, spectrumData[i]);
-            }
+            for (let i = Math.max(0, centre - PEAK_SEARCH_BINS); i <= Math.min(data.length - 1, centre + PEAK_SEARCH_BINS); i++)
+                peak = Math.max(peak, data[i]);
             return peak * elementScale;
         };
 
-        const drawNotes = (notes, spectrumData, binHz, elementScale, maxSpectrumHz, toX, magToY, elapsedMs) => {
-            const seen = new Set();
+        const drawNotes = (notes, spectrum, elementScale, axis, toY, width, plotHeight, elapsedMs) => {
             labelsSettling = false;
-            // Frame-rate independent: the same fraction of the gap closes per unit of time.
-            const ease = 1 - Math.exp(-elapsedMs / LABEL_TIME_CONSTANT_MS);
-
-            if (!notes || notes.length === 0) {
+            if (!notes?.length) {
                 labelY.clear();
                 return;
             }
+            // Frame-rate independent: the same fraction of the gap closes per unit of time.
+            const ease = 1 - Math.exp(-elapsedMs / LABEL_TIME_CONSTANT_MS);
+            const seen = new Set();
+            const placed = [];
 
-            context.font = '12px sans-serif';
-            context.textAlign = 'left';
-            context.textBaseline = 'middle';
+            for (const note of notes) {
+                const hz = note.frequency;
+                if (!Number.isFinite(hz) || hz < axis.minHz || hz > axis.maxHz)
+                    continue;
+                const name = note.name || '';
+                const cents = Number.isFinite(Number(note.errorCents)) ? Number(note.errorCents) : 0;
+                const x = axis.toX(hz);
+                const y = toY(peakMagnitude(spectrum, elementScale, hz));
 
-            notes.forEach(note => {
-                const freq = note.frequency;
-                const mag = note.magnitude;
-                const noteLabel = note.name || '';
-                const parsedErrorCents = Number(note.errorCents);
-                const errorCents = Number.isFinite(parsedErrorCents) ? parsedErrorCents : 0;
-                const noteColor = getNoteLabelColor(errorCents);
-
-                if (freq === undefined || mag === undefined || Number.isNaN(freq) || Number.isNaN(mag)) {
-                    return;
-                }
-
-                if (freq < MIN_FREQ || freq > maxSpectrumHz) {
-                    return;
-                }
-
-                const x = toX(freq);
-                const y = magToY(peakMagnitude(spectrumData, binHz, elementScale, freq), canvas.height);
-
-                context.fillStyle = noteColor;
-                context.beginPath();
-                context.arc(x, y, 3, 0, Math.PI * 2);
-                context.fill();
-
-                const targetY = y - LABEL_OFFSET;
-                const previousY = labelY.get(noteLabel);
+                const targetY = y - TAG_RISE;
+                const previousY = labelY.get(name);
                 const easedY = previousY === undefined ? targetY : previousY + (targetY - previousY) * ease;
-                labelY.set(noteLabel, easedY);
-                seen.add(noteLabel);
-                if (Math.abs(targetY - easedY) > 0.5) {
+                labelY.set(name, easedY);
+                seen.add(name);
+                if (Math.abs(targetY - easedY) > 0.5)
                     labelsSettling = true;
-                }
+                placed.push({ name, cents, x, y, tagY: easedY });
+            }
 
-                const textX = Math.min(x + 6, canvas.width - 36);
-                const textY = Math.max(8, Math.min(easedY, canvas.height - X_AXIS_PADDING - 8));
+            // Stems and markers first, so every tag sits above every marker.
+            for (const { x, y } of placed) {
+                context.globalAlpha = 0.35;
+                context.fillStyle = palette.text.secondary;
+                context.fillRect(Math.round(x), y, 1, plotHeight - y);
+                context.globalAlpha = 1;
 
-                context.strokeStyle = palette.bg.panel;
-                context.lineWidth = 3;
-                context.strokeText(noteLabel, textX, textY);
-                context.fillStyle = noteColor;
-                context.fillText(noteLabel, textX, textY);
-            });
+                context.beginPath();
+                context.arc(x, y, 3.5, 0, Math.PI * 2);
+                context.lineWidth = 2;
+                context.strokeStyle = palette.bg.inset;
+                context.stroke();
+                context.fillStyle = palette.text.primary;
+                context.fill();
+            }
+
+            context.textBaseline = 'middle';
+            context.textAlign = 'left';
+            for (const { name, cents, x, tagY } of placed) {
+                const centsText = formatCents(cents);
+                context.font = NAME_FONT;
+                const nameWidth = context.measureText(name).width;
+                context.font = CENTS_FONT;
+                const centsWidth = context.measureText(centsText).width;
+                const tagWidth = TAG_PADDING + nameWidth + TAG_GAP + centsWidth + TAG_PADDING;
+                const left = Math.round(Math.min(x + 6, width - tagWidth - 4));
+                const top = Math.round(Math.min(Math.max(4, tagY), plotHeight - TAG_HEIGHT - 2));
+
+                context.beginPath();
+                context.roundRect(left + 0.5, top + 0.5, tagWidth, TAG_HEIGHT, 4);
+                context.fillStyle = withAlpha(palette.bg.panel, 0.9);
+                context.fill();
+                context.lineWidth = 1;
+                context.strokeStyle = palette.border.strong;
+                context.stroke();
+
+                const middle = top + TAG_HEIGHT / 2 + 1;
+                context.font = NAME_FONT;
+                context.fillStyle = palette.text.primary;
+                context.fillText(name, left + TAG_PADDING, middle);
+                context.font = CENTS_FONT;
+                context.fillStyle = palette.tuning[tuningBand(cents)];
+                context.fillText(centsText, left + TAG_PADDING + nameWidth + TAG_GAP, middle);
+            }
 
             // A note that returns later starts at its peak rather than easing in from where it left.
             for (const name of labelY.keys()) {
-                if (!seen.has(name)) {
+                if (!seen.has(name))
                     labelY.delete(name);
-                }
             }
         };
 
-        const drawXAxis = (toX) => {
-            context.fillStyle = palette.bg.inset;
-            context.fillRect(0, canvas.height - X_AXIS_PADDING, canvas.width, X_AXIS_PADDING);
-
-            context.strokeStyle = palette.border.strong;
+        const drawAxisLabels = (axis, width, plotHeight) => {
+            context.font = AXIS_FONT;
+            context.textBaseline = 'top';
+            context.textAlign = 'left';
             context.fillStyle = palette.text.muted;
-            context.font = "12px sans-serif";
-
-            context.beginPath();
-            context.moveTo(0, canvas.height - X_AXIS_PADDING);
-            context.lineTo(canvas.width, canvas.height - X_AXIS_PADDING);
-            context.stroke();
-
-            const logTicks = [50, 100, 200, 300, 500, 1000, 2000, 3000, 5000];
-            const linearTicks = [0, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000];
-            const ticks = showLogScale ? logTicks : linearTicks;
-            ticks.forEach(freq => {
-                const x = toX(freq);
-
-                context.beginPath();
-                context.moveTo(x, canvas.height - X_AXIS_PADDING);
-                context.lineTo(x, canvas.height - X_AXIS_PADDING + 5);
-                context.stroke();
-
-                context.fillText(
-                    freq >= 1000 ? `${freq / 1000}k` : `${freq}`,
-                    x + 2,
-                    canvas.height - 4
-                );
-            });
-        };
-
-        const drawYAxis = (meanMaxValue, magToY) => {
-            context.strokeStyle = palette.border.strong;
-            context.fillStyle = palette.text.muted;
-            context.font = "12px sans-serif";
-
-            context.beginPath();
-            context.moveTo(0, 0);
-            context.lineTo(0, canvas.height);
-            context.stroke();
-            const ticksCount = 5;
-            const roundedMax = MAX_Y_VALUES.find(val => val >= meanMaxValue) || meanMaxValue;
-
-            for (let mag = 0; mag <= roundedMax; mag += roundedMax / ticksCount) {
-                if (mag === 0) continue;
-                const y = magToY(mag, canvas.height);
-
-                context.beginPath();
-                context.moveTo(0, y);
-                context.lineTo(5, y);
-                context.stroke();
-
-                context.fillText(mag, 8, y + 4);
+            const y = plotHeight + 6;
+            const labels = [axis.minHz, ...axis.ticks].map(hz => ({ x: axis.toX(hz) + 4, text: formatHz(hz) }));
+            const end = `${formatHz(axis.maxHz)} Hz`;
+            const endX = width - context.measureText(end).width - 6;
+            for (const { x, text } of labels) {
+                if (x + context.measureText(text).width + 8 < endX)
+                    context.fillText(text, x, y);
             }
+            context.fillText(end, endX, y);
         };
 
-        draw();
+        animationFrame = requestAnimationFrame(loop);
+        // Canvas text measured before the fonts arrive is measured in the fallback.
+        document.fonts?.ready.then(() => {
+            drawnSpectrum = undefined;
+        });
         return () => cancelAnimationFrame(animationFrame);
-    }, [isFileOpen, showLogScale, canvasWidth, palette]);
+    }, [showLogScale, palette]);
 
-    return (
-        <>
-            {isFileOpen && (
-                <>
-                    <canvas ref={canvasRef} width={canvasWidth} height={300} />
-                </>
-            )}
-        </>
-    );
-}
+    return <Canvas ref={canvasRef} />;
+};
 export default SpectrumCanvas;
+
+const Canvas = Styled.canvas`
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+`;

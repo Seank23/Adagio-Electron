@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace Adagio
 {
@@ -49,6 +50,7 @@ namespace Adagio
 
 		std::string m_TrackPath;
 		std::shared_ptr<AudioData> m_AudioData;
+		std::vector<std::string> m_WaveformFrames;
 
 		std::atomic<TransportState> m_State{ TransportState::Empty };
 		std::atomic<bool> m_Running{ false };

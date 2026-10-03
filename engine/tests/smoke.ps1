@@ -450,7 +450,7 @@ try {
 
     Write-Host "`nCommands with no file loaded (X5)"
     Test-Case 'play, pause, stop, clear, seek, speed, analysis on an empty engine' {
-        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame', 'stepFrame', 'resetAnalysis',
+        $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame', 'stepFrame', 'resetAnalysis', 'getWaveform',
             @('seek', 1.5), @('setSpeed', 0.5), @('setVolume', 0.8))
         if ($status.state -ne 'empty') { throw "expected state empty, got $($status.state)" }
     }
@@ -548,12 +548,21 @@ try {
         }
 
         Write-Host "`nBinary frames (S4, F4)"
-        Test-Case 'five waveform frames arrive before the load is answered' {
+        Test-Case 'six waveform frames arrive before the load is answered' {
             $script:Socket.ResetCounts()
             # They are queued ahead of fileLoaded and the reply, so the count is exact by now.
             $status = Invoke-Commands @(, @('load', $longTonePath))
             if ($status.state -ne 'ready') { throw "expected ready, got $($status.state)" }
-            if ($script:Socket.WaveformFrames -ne 5) { throw "expected 5 waveform frames, got $($script:Socket.WaveformFrames)" }
+            if ($script:Socket.WaveformFrames -ne 6) { throw "expected 6 waveform frames, got $($script:Socket.WaveformFrames)" }
+        }
+
+        Test-Case 'getWaveform resends them, ahead of its reply' {
+            # What a client that connects after the load uses to draw the timeline.
+            $script:Socket.ResetCounts()
+            $reply = Invoke-EngineCommand -Cmd 'getWaveform'
+            if (-not $reply.ok) { throw "getWaveform was refused: $($reply.error)" }
+            if ($reply.value -ne 6) { throw "expected the reply to count 6 frames, got $($reply.value)" }
+            if ($script:Socket.WaveformFrames -ne 6) { throw "expected 6 waveform frames before the reply, got $($script:Socket.WaveformFrames)" }
         }
 
         Test-Case 'playback streams spectrum frames and a 30 Hz analysis event without a spectrum' {

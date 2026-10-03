@@ -15,7 +15,7 @@ namespace Adagio
 	class WaveformBuilder
 	{
 	public:
-		WaveformBuilder(std::vector<int> resolutionList = { 512, 1024, 2048, 4096, 8192 });
+		WaveformBuilder(std::vector<int> resolutionList = { 256, 512, 1024, 2048, 4096, 8192 });
 		~WaveformBuilder();
 
 		void BuildWaveform(std::shared_ptr<AudioData> audioData);

@@ -16,4 +16,5 @@ export const createEngineCommands = engine => ({
     getAnalysisSchema: () => engine.request(COMMAND.GET_ANALYSIS_SCHEMA),
     setAnalysisSetting: (stage, key, value) => engine.request(COMMAND.SET_ANALYSIS_SETTING, { stage, key, value }),
     status: () => engine.request(COMMAND.STATUS),
+    getWaveform: () => engine.request(COMMAND.GET_WAVEFORM),
 });

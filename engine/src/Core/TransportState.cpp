@@ -44,6 +44,7 @@ namespace Adagio
 		case CommandType::Seek:
 		case CommandType::SetSpeed:
 		case CommandType::AnalyseFrame:
+		case CommandType::GetWaveform:
 			return HasFile(state);
 		case CommandType::StepFrame:
 			return state == TransportState::Ready || state == TransportState::Paused;

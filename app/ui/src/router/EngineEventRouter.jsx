@@ -9,6 +9,7 @@ import { setDuration, setCurrentTime, setTransport, resetPlayback } from '../sto
 import { setStatusMessage, setConnectionState, setEngineStatus } from '../store/appSlice';
 import { EVENT_TYPE } from '../utils/utils';
 import { setAnalysisData, resetAnalysis } from '../store/analysisSlice';
+import { setSchema } from '../store/pipelineSlice';
 
 export default function EngineEventRouter() {
     const dispatch = useDispatch();
@@ -22,15 +23,28 @@ export default function EngineEventRouter() {
 
     // Transport events describe changes, so a client that arrives mid-session has to
     // ask once. This is what makes a reload, or a reconnect to an engine that is
-    // already playing, show the truth instead of an empty transport.
+    // already playing, show the truth instead of an empty transport. The waveform went
+    // out once with the load, so with a file open it is asked for too: its frames are
+    // staged as they arrive and published on the reply, which comes after them.
     useEffect(() => {
         if (connectionState !== CONNECTION_STATE.CONNECTED)
             return;
 
         let cancelled = false;
         commands.status().then(result => {
+            if (cancelled || !result.ok)
+                return;
+            dispatch(setTransport(result.value));
+            if (result.value?.track) {
+                commands.getWaveform().then(reply => {
+                    if (reply.ok)
+                        commitWaveform();
+                });
+            }
+        });
+        commands.getAnalysisSchema().then(result => {
             if (!cancelled && result.ok)
-                dispatch(setTransport(result.value));
+                dispatch(setSchema(result.value));
         });
         return () => {
             cancelled = true;

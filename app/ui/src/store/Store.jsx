@@ -3,6 +3,7 @@ import appReducer from './appSlice';
 import playbackReducer from './playbackSlice';
 import analysisReducer from './analysisSlice';
 import settingsReducer from './settingsSlice';
+import pipelineReducer from './pipelineSlice';
 
 export const store = configureStore({
     reducer: {
@@ -10,5 +11,6 @@ export const store = configureStore({
         playback: playbackReducer,
         analysis: analysisReducer,
         settings: settingsReducer,
+        pipeline: pipelineReducer,
     },
 });

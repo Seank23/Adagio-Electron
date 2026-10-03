@@ -126,6 +126,44 @@ TEST_CASE("A changed setting reaches the stage on the next frame")
 	CHECK(maxPeaks.at("default") != 1);
 }
 
+TEST_CASE("The A4 reference is range-checked and names notes against itself")
+{
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+
+	// The schema reports the default before anything is set: the field is in the
+	// settings macro under the schema's own key.
+	const nlohmann::json tuning = FindSetting(pipeline->GetSchemaJson(), "NoteDetector", "A440_TUNING");
+	REQUIRE_FALSE(tuning.is_null());
+	CHECK(tuning.at("value") == doctest::Approx(440.0));
+
+	CHECK_FALSE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 400.0, error));
+	CHECK(error.find("A440_TUNING") != std::string::npos);
+	CHECK(pipeline->SetSetting("NoteDetector", "A440_TUNING", 442.0, error));
+
+	// 452.9 Hz is about 50 cents sharp of A4 at 440, past the error threshold, so it
+	// names nothing. Named against 452.9, it is A4 to within a few cents.
+	// Each result is held, not iterated straight off ProcessFrame: the loop would bind
+	// to a member of a temporary that is gone before the body runs.
+	const Adagio::AudioFrame frame = MakeToneFrame(452.9f, 8000, 4096);
+	REQUIRE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 440.0, error));
+	const auto atDefault = pipeline->ProcessFrame(frame);
+	for (const auto& note : atDefault->Context->Notes)
+		CHECK(note.Midi != 69);
+
+	REQUIRE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 452.9, error));
+	const auto retuned = pipeline->ProcessFrame(frame);
+	bool foundA4 = false;
+	for (const auto& note : retuned->Context->Notes)
+	{
+		if (note.Midi != 69)
+			continue;
+		foundA4 = true;
+		CHECK(std::abs(note.ErrorCents) < 5.0f);
+	}
+	CHECK(foundA4);
+}
+
 // A stage's name is the key its settings are stored and sent under. It used to be
 // derived from typeid, which only reads this way on MSVC; now each stage spells it,
 // and a rename that changed a key would break every client's stored settings.

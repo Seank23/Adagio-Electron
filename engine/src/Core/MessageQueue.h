@@ -47,6 +47,12 @@ namespace Adagio
 			m_Queue.push({ std::move(frame), {}, true });
 		}
 
+		void PushBinaryTo(std::string clientId, std::string frame)
+		{
+			std::lock_guard<std::mutex> lock(m_Mutex);
+			m_Queue.push({ std::move(frame), std::move(clientId), true });
+		}
+
 		bool Pop(OutboundMessage& outMsg)
 		{
 			std::lock_guard<std::mutex> lock(m_Mutex);
