@@ -1,6 +1,6 @@
 import Styled from '@emotion/styled';
 
-const Chip = Styled('button', { shouldForwardProp: prop => prop !== 'selected' })`
+const Button = Styled('button', { shouldForwardProp: prop => prop !== 'selected' })`
     padding: 4px 10px;
     border: none;
     border-radius: 5px;
@@ -19,4 +19,6 @@ const Chip = Styled('button', { shouldForwardProp: prop => prop !== 'selected' }
         outline-offset: 1px;
     }
 `;
+
+const Chip = ({ selected = false, ...rest }) => <Button selected={selected} aria-pressed={selected} {...rest} />;
 export default Chip;

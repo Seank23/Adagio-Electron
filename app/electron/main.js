@@ -158,7 +158,8 @@ const createWindow = () => {
             console.log('[renderer -> main]', channel, args);
         });
         mainWindow.loadURL('http://localhost:5173');
-        mainWindow.webContents.openDevTools();
+        if (!process.env.ADAGIO_E2E)
+            mainWindow.webContents.openDevTools();
     } else {
         // Vite builds to app/dist/ui; ui/index.html is the source page and points at
         // /src/main.jsx, which does not exist in a packaged app.

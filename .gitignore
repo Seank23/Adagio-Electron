@@ -49,3 +49,4 @@ app/dist/*
 .vs/
 engine/out/
 app/release/*
+app/test-results/*

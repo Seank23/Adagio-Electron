@@ -11,7 +11,7 @@ const EngineSlider = ({ icon, label, min, max, percent, onChange, onChangeComple
             value={percent}
             disabled={disabled}
             tooltip={{ open: false }}
-            aria-label={label}
+            ariaLabelForHandle={label}
             onChange={onChange}
             onChangeComplete={onChangeComplete}
         />

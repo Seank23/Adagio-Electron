@@ -29,4 +29,11 @@ export default defineConfig({
     dedupe: ['react', 'react-dom'],
     alias: { '@protocol': protocolDir },
   },
+  // Vitest: unit and component tests under test/, run in jsdom against the real modules.
+  test: {
+    environment: 'jsdom',
+    include: ['test/**/*.test.jsx'],
+    setupFiles: ['test/setup.jsx'],
+    restoreMocks: true,
+  },
 });

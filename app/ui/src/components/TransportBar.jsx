@@ -84,12 +84,14 @@ const TransportBar = () => {
             <Modes inert={!isFileOpen}>
                 <IconButton
                     variant={repeat ? 'active' : 'ghost'}
+                    pressed={repeat}
                     label="Repeat"
                     icon={<Repeat size={16} />}
                     onClick={() => dispatch(toggleRepeat())}
                 />
                 <IconButton
                     variant={follow ? 'active' : 'ghost'}
+                    pressed={follow}
                     label="Follow the playhead"
                     icon={<Locate size={16} />}
                     onClick={() => dispatch(toggleFollow())}

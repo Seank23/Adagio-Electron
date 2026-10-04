@@ -3,7 +3,7 @@ import { Tooltip } from 'antd';
 
 // variant: 'ghost' | 'default' | 'active' | 'primary'.
 // The label is the tooltip and the accessible name, since the button shows only an icon.
-const IconButton = ({ icon, label, variant = 'ghost', disabled = false, onClick, tooltipProps = {}, ...rest }) => {
+const IconButton = ({ icon, label, variant = 'ghost', pressed, disabled = false, onClick, tooltipProps = {}, ...rest }) => {
     const button = (
         <Button
             type="button"
@@ -11,7 +11,7 @@ const IconButton = ({ icon, label, variant = 'ghost', disabled = false, onClick,
             disabled={disabled}
             onClick={onClick}
             aria-label={label}
-            aria-pressed={variant === 'active' ? true : undefined}
+            aria-pressed={pressed ?? (variant === 'active' ? true : undefined)}
             {...rest}
         >
             {icon}

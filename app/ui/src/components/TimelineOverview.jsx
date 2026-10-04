@@ -221,7 +221,7 @@ const TimelineOverview = ({ viewRef, apiRef, drawRef }) => {
 
     useStoreListener(selectCurrentTime, () => drawRef.current?.());
 
-    return <Canvas ref={canvasRef} />;
+    return <Canvas ref={canvasRef} role="img" aria-label="Track overview" />;
 };
 export default TimelineOverview;
 

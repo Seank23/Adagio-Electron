@@ -245,6 +245,24 @@ TEST_CASE("A3: a fixed C major histogram detects C Major")
 	CHECK(context.PredictedKey.Name == "C Major");
 }
 
+TEST_CASE("A3: no notes, no key")
+{
+	// An all-zero histogram used to name key 0, so silence or a detuned track read as C Major.
+	Adagio::AudioFrame frame;
+	frame.SampleRate = 8000;
+	frame.FrameLength = 4096;
+	frame.Timestamp = 1.0;
+	frame.DeltaTime = HopSeconds;
+
+	Adagio::PersistentData persistent;
+	Adagio::AnalysisContext context{ frame, &persistent };
+	Adagio::KeyDetector detector;
+	detector.Execute(&context);
+
+	CHECK(context.PredictedKey.Name.empty());
+	CHECK(context.PredictedKey.TonicClass == -1);
+}
+
 TEST_CASE("A3: key detection is deterministic for identical input")
 {
 	Adagio::AudioFrame frame;

@@ -27,6 +27,15 @@ export default defineConfig([
     },
   },
   {
+    files: ['test/**/*.jsx'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
     files: ['src/utils/protocol.jsx', 'src/utils/utils.jsx'],
     rules: {
       'react-refresh/only-export-components': 'off',

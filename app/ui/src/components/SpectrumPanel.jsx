@@ -32,7 +32,6 @@ const SpectrumPanel = () => {
                             key={label}
                             type="button"
                             selected={showLogScale === log}
-                            aria-pressed={showLogScale === log}
                             onClick={() => dispatch(setShowLogScale(log))}
                         >
                             {label}

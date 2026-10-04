@@ -16,7 +16,12 @@ cd app && npm run dev
 
 # UI only
 cd app/ui && npm run dev
-cd app/ui && npm run lint      # eslint flat config; the UI has no tests
+cd app/ui && npm run lint      # eslint flat config
+cd app/ui && npm test          # Vitest + Testing Library in jsdom: invariants, slices, router, components
+
+# End to end: the real Electron app and engine, driven by Playwright (the overhaul guide's §7).
+# Starts Vite itself, and needs a Release engine build (or ADAGIO_ENGINE_PATH) and port 9001 free.
+cd app && npm run test:e2e
 
 # Engine tests: unit suite, then a real engine driven over its socket
 ctest --test-dir engine/build -C Release
@@ -123,6 +128,8 @@ Per-event data reaches the screen without React re-renders. A component follows 
 
 ## Conventions and traps
 
+- **UI tests** live in `app/ui/test/`. `helpers.jsx` has a `FakeEngine` with `WebSocketEngine`'s listener API and scripted replies, and a fresh store per test. `invariants.test.jsx` reads the source for the architectural rules (no colour literals outside `tokens.jsx`, only the router subscribes to the engine or writes `FrameStore`, and so on), so breaking one fails `npm test`, not just review. jsdom has no canvas, so what a canvas draws is checked end to end.
+- **End-to-end tests** live in `app/e2e/`. `harness.js` writes 48 kHz WAV fixtures (one hop is exactly 384 samples there), launches Electron with `ADAGIO_E2E=1` (no DevTools window) and the engine spawned with a token, and answers the open dialog in main. The canvases carry `role="img"` and a label, and the waveform `role="group"`, so the tests find them by name. Pace `.` presses with `stepFrames`: the step gate drops a press under 33 ms after the last. `e2e/README.md` lists what stays manual.
 - C++ uses tabs, Allman braces, `m_` members, `Adagio` namespace, PascalCase methods. Most analysis stages are header-only; services are `.h`/`.cpp` pairs.
 - JS is 4-space, single quotes, arrow-function components, `.jsx` extension for *every* source file including slices, hooks, and utils.
 - The WebSocket client lives in `app/ui/src/engine-client/`: `WebSocketEngine.jsx` (the socket, with reconnect backoff, a `CONNECTION_STATE` and the pending-reply map behind `request()`), `WebSocketContext.jsx` (the context alone), `WebSocketProvider.jsx` (the component, which fetches the token before opening) and `EngineCommands.jsx` (one method per command). The context and the provider are separate files because fast refresh wants a module to export components *or* values, not both.

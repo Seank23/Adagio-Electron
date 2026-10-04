@@ -175,7 +175,7 @@ const ChordKeyboard = () => {
         return () => observer.disconnect();
     }, [paint]);
 
-    return <Canvas ref={canvasRef} />;
+    return <Canvas ref={canvasRef} role="img" aria-label="Piano heatmap" />;
 };
 export default ChordKeyboard;
 

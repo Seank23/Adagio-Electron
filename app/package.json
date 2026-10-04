@@ -9,13 +9,16 @@
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "build:ui": "cd ui && npm run build",
     "build": "npm run build:ui && electron-builder",
-    "start": "electron ."
+    "start": "electron .",
+    "test": "cd ui && npm test",
+    "test:e2e": "playwright test -c e2e/playwright.config.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^9.2.1",
     "electron": "^39.8.10",
     "electron-builder": "^26.0.12",

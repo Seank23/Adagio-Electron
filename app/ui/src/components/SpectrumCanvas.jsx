@@ -279,7 +279,7 @@ const SpectrumCanvas = () => {
         return () => cancelAnimationFrame(animationFrame);
     }, [showLogScale, palette]);
 
-    return <Canvas ref={canvasRef} />;
+    return <Canvas ref={canvasRef} role="img" aria-label="Spectrum" />;
 };
 export default SpectrumCanvas;
 

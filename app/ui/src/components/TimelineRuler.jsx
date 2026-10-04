@@ -94,7 +94,7 @@ const TimelineRuler = ({ viewRef, drawRef }) => {
 
     useStoreListener(selectCurrentTime, () => drawRef.current?.());
 
-    return <Canvas ref={canvasRef} />;
+    return <Canvas ref={canvasRef} role="img" aria-label="Time ruler" />;
 };
 export default TimelineRuler;
 

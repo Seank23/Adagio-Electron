@@ -71,13 +71,18 @@ namespace Adagio
 				noteClassAccumulator[note.Midi % 12] += weight;
 			}
 
+			context->KeyFrequencyHistogram = frequencyAccumulator;
+
 			std::array<double, 12> notesHistogram = noteClassAccumulator;
 			double sum = std::reduce(notesHistogram.begin(), notesHistogram.end(), 0.0);
-			if (sum > 0)
+			// No notes means no key
+			if (sum <= 0.0)
 			{
-				for (auto& val : notesHistogram)
-					val /= sum;
+				context->PredictedKey = KeySignature{};
+				return;
 			}
+			for (auto& val : notesHistogram)
+				val /= sum;
 
 			std::array<double, 12> similarity{};
 			FindTotalScaleSimilarity(notesHistogram, similarity);
@@ -113,7 +118,6 @@ namespace Adagio
 			keySig.Name = keySig.Tonic + " " + keySig.ModeName;
 			keySig.Scale = keyScale;
 
-			context->KeyFrequencyHistogram = frequencyAccumulator;
 			context->PredictedKey = std::move(keySig);
 		}
 

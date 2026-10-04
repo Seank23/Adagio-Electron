@@ -247,7 +247,7 @@ const AudioTimeline = ({ apiRef, onView }) => {
 
     useStoreListener(selectCurrentTime, time => timelineRef.current?.showTime(time));
 
-    return <Host ref={hostRef} />;
+    return <Host ref={hostRef} role="group" aria-label="Waveform" />;
 };
 export default AudioTimeline;
 
