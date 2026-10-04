@@ -16,10 +16,11 @@ const ChordSection = () => {
         if (!probabilities) return;
         const widths = barWidths(probabilities);
         probabilities.forEach((probability, index) => {
+            const probPercent = probability * 100;
             const bar = barRefs.current[index];
             const label = percentRefs.current[index];
             if (bar) bar.style.width = widths[index];
-            if (label) label.textContent = formatPercent(probability);
+            if (label) label.textContent = formatPercent(probPercent);
         });
     };
     const latest = useStoreFrameListener(selectChordProbabilities, paint);

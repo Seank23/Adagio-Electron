@@ -39,7 +39,7 @@ const TimelinePanel = () => {
                 <Actions>
                     <IconButton label="Zoom in" icon={<ZoomIn size={16} />} onClick={() => apiRef.current?.zoomBy(BUTTON_ZOOM)} />
                     <IconButton label="Zoom out" icon={<ZoomOut size={16} />} onClick={() => apiRef.current?.zoomBy(1 / BUTTON_ZOOM)} />
-                    <IconButton label="Fit the whole track" icon={<Maximize2 size={16} />} onClick={() => apiRef.current?.fit()} />
+                    <IconButton label="Fit the whole track" icon={<Maximize2 size={16} />} onClick={() => apiRef.current?.fit()} tooltipProps={{ placement: "left" }} />
                 </Actions>
             </PanelHeader>
             <Body>

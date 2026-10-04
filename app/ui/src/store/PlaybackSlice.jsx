@@ -8,8 +8,8 @@ const playbackSlice = createSlice({
         duration: 0.0,
         state: TRANSPORT_STATE.EMPTY,
         speed: 1.0,
-        volume: 1.0,
-        // { path, sampleRate, channels, duration }, or null with no file.
+        volume: 0.2,
+        // { path, sampleRate, channels, duration, analysisSampleRate }, or null with no file.
         track: null,
     },
     reducers: {

@@ -221,9 +221,8 @@ namespace Adagio
 				outcome = Failed("At the end of the track.");
 				break;
 			}
-			const bool resetTrackers = m_AnalysisService->HasUnseenSeek();
 			m_PlaybackService->SeekToSample(currentSample + hop);
-			m_AnalysisService->RequestCurrentFrameAnalysis(resetTrackers);
+			m_AnalysisService->RequestCurrentFrameAnalysis();
 			break;
 		}
 		case CommandType::ResetAnalysis:
@@ -379,7 +378,8 @@ namespace Adagio
 		return {
 			{"state", ToString(state)},
 			{"track", HasFile(state)
-				? nlohmann::json{ {"path", m_TrackPath}, {"sampleRate", m_AudioData->SampleRate}, {"channels", m_AudioData->Channels}, {"duration", m_Duration.load(std::memory_order_acquire)} }
+				? nlohmann::json{ {"path", m_TrackPath}, {"sampleRate", m_AudioData->SampleRate}, {"channels", m_AudioData->Channels}, {"duration", m_Duration.load(std::memory_order_acquire)},
+					{"analysisSampleRate", m_AnalysisService->GetParams().SampleRate} }
 				: nlohmann::json(nullptr)},
 			{"position", m_PlaybackService->GetPositionSeconds()},
 			{"speed", m_PlaybackService->GetSpeed()},

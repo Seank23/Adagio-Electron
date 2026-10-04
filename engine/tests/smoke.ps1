@@ -477,6 +477,8 @@ try {
             throw "expected a 2 s duration, got $($status.track.duration)"
         } elseif ($status.track.path -ne $tonePath) {
             throw "expected the track path $tonePath, got $($status.track.path)"
+        } elseif (-not ($status.track.analysisSampleRate -gt 0)) {
+            throw "expected the track's analysis rate, got $($status.track.analysisSampleRate)"
         }
     }
 
@@ -684,16 +686,16 @@ try {
             if ($second -lt 1.5 * $first) { throw ("the step reset the trackers: key weight {0:G4} after one step, {1:G4} after two" -f $first, $second) }
         }
 
-        Test-Case 'a step after a paused seek starts the trackers afresh' {
+        Test-Case 'a seek keeps the trackers' {
+            $script:Events = @()
+            Invoke-EngineCommand -Cmd 'stepFrame' | Out-Null
+            $beforeSeek = Get-KeyWeight
             Invoke-Commands @(, @('seek', 2.0)) | Out-Null
             $script:Events = @()
             Invoke-EngineCommand -Cmd 'stepFrame' | Out-Null
             $afterSeek = Get-KeyWeight
-            $script:Events = @()
-            Invoke-EngineCommand -Cmd 'stepFrame' | Out-Null
-            $afterTwo = Get-KeyWeight
-            if ($afterTwo -lt 1.5 * $afterSeek) { throw 'the steps after the seek did not accumulate' }
-            if ($afterSeek -gt 0.6 * $afterTwo) { throw ("the seek kept the trackers: {0:G4} after the first step" -f $afterSeek) }
+            # Kept, the step after the seek adds to several frames' weight; cleared, it would be one frame's.
+            if ($afterSeek -lt $beforeSeek) { throw ("the seek reset the trackers: key weight {0:G4} before, {1:G4} after" -f $beforeSeek, $afterSeek) }
         }
 
         Test-Case 'a step from Ready leaves the transport Ready' {

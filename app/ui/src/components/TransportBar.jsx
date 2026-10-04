@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import Styled from '@emotion/styled';
 import { useDispatch, useSelector } from 'react-redux';
 import { Gauge, Locate, Repeat, Volume2 } from 'lucide-react';
@@ -17,7 +16,6 @@ import { useEngineSlider } from '../hooks/useEngineSlider';
 import { useReport } from '../hooks/useReport';
 import { formatClock } from '../utils/format';
 
-const INITIAL_VOLUME = 0.2;
 const SPEED_PRESETS = [50, 75, 100];
 const HINTS = ['Space  play / pause', '←/→  seek 5 s', '.  step'];
 const EMPTY_HINTS = ['Ctrl O  open a file'];
@@ -33,18 +31,11 @@ const TransportBar = () => {
     const engineSpeed = useSelector(state => state.playback.speed);
     const engineVolume = useSelector(state => state.playback.volume);
     const duration = useSelector(state => state.playback.duration);
-    const connectionState = useSelector(state => state.app.connectionState);
     const repeat = useSelector(state => state.settings.repeat);
     const follow = useSelector(state => state.settings.follow);
 
     const speed = useEngineSlider(engineSpeed, commands.setSpeed, false);
     const volume = useEngineSlider(engineVolume, commands.setVolume);
-
-    useEffect(() => {
-        if (connectionState !== 'connected')
-            return;
-        commands.setVolume(INITIAL_VOLUME).then(report);
-    }, [connectionState, commands, report]);
 
     return (
         <Bar>

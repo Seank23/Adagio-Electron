@@ -5,6 +5,7 @@ import { useEngineCommands } from './useEngineCommands';
 import { useReport } from './useReport';
 import { useOpenFile } from './useOpenFile';
 import { useFrameStep } from './useStepRepeat';
+import { clamp } from '../utils/math';
 
 const SEEK_STEP_SECONDS = 5;
 
@@ -55,7 +56,7 @@ export const useKeyboardShortcuts = () => {
                 event.preventDefault();
                 const { currentTime, duration } = state.playback;
                 const step = event.key === 'ArrowLeft' ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS;
-                commands.seek(Math.min(Math.max(currentTime + step, 0), duration)).then(report);
+                commands.seek(clamp(currentTime + step, 0, duration)).then(report);
                 break;
             }
             case '.':

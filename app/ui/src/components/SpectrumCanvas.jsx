@@ -10,9 +10,9 @@ import { fitToElement, withAlpha } from '../utils/canvas';
 import { formatHz, makeAxis, spectrumMaxHz } from '../utils/frequencyAxis';
 import { formatCents, tuningBand } from '../utils/music';
 import { FONTS } from '../theme/tokens';
+import { selectAnalysisRate } from '../store/analysisSlice';
 
 const selectNotes = state => state.analysis.notes;
-const selectSpectrumRate = state => state.analysis.spectrumSR;
 
 // The band under the plot for the frequency labels, and the headroom above the tallest peak.
 const AXIS_HEIGHT = 22;
@@ -43,7 +43,7 @@ const SpectrumCanvas = () => {
         notesRef.current = notes ?? [];
     });
     const spectrumRateRef = useRef(0);
-    useStoreListener(selectSpectrumRate, rate => {
+    useStoreListener(selectAnalysisRate, rate => {
         spectrumRateRef.current = rate || 0;
     });
 
@@ -58,6 +58,7 @@ const SpectrumCanvas = () => {
         let drawnNotes;
         let drawnWidth = 0;
         let drawnHeight = 0;
+        let drawnRate = 0;
         let labelsSettling = false;
         let lastDrawTime = performance.now();
         const labelY = new Map();
@@ -72,9 +73,10 @@ const SpectrumCanvas = () => {
             const notes = notesRef.current;
             const width = canvas.clientWidth;
             const height = canvas.clientHeight;
+            const rate = spectrumRateRef.current;
             // A reset publishes a null frame, which counts as a change: it draws the empty grid.
             if (spectrum === drawnSpectrum && notes === drawnNotes && width === drawnWidth
-                && height === drawnHeight && !labelsSettling) {
+                && height === drawnHeight && rate === drawnRate && !labelsSettling) {
                 lastDrawTime = now;
                 return;
             }
@@ -82,6 +84,7 @@ const SpectrumCanvas = () => {
             drawnNotes = notes;
             drawnWidth = width;
             drawnHeight = height;
+            drawnRate = rate;
             const elapsedMs = now - lastDrawTime;
             lastDrawTime = now;
 
@@ -89,7 +92,7 @@ const SpectrumCanvas = () => {
             context.setTransform(ratio, 0, 0, ratio, 0, 0);
             context.clearRect(0, 0, width, height);
 
-            const axis = makeAxis({ maxHz: spectrumMaxHz(spectrum, spectrumRateRef.current), width, log: showLogScale });
+            const axis = makeAxis({ maxHz: spectrumMaxHz(spectrum, rate), width, log: showLogScale });
             if (!axis) {
                 labelY.clear();
                 labelsSettling = false;

@@ -242,7 +242,7 @@ TEST_CASE("A3: a fixed C major histogram detects C Major")
 	DirtyStack();
 	detector.Execute(&context);
 
-	CHECK(context.DetectedKey == "C Major");
+	CHECK(context.PredictedKey.Name == "C Major");
 }
 
 TEST_CASE("A3: key detection is deterministic for identical input")
@@ -269,9 +269,9 @@ TEST_CASE("A3: key detection is deterministic for identical input")
 		detector.Execute(&context);
 
 		if (run == 0)
-			first = context.DetectedKey;
+			first = context.PredictedKey.Name;
 		else
-			CHECK(context.DetectedKey == first);
+			CHECK(context.PredictedKey.Name == first);
 	}
 }
 
@@ -587,7 +587,7 @@ namespace
 			const auto& chords = result->Context->PredictedChords;
 			// Added notes are left out: they come from classes at SCORE_THRESHOLD, where a
 			// finer hop averages over a different set of beat phases and can tip either way.
-			readings[position] = { result->Context->DetectedKey, chords.empty() ? std::string() : chords[0].Name.substr(0, chords[0].Name.find(" (")) };
+			readings[position] = { result->Context->PredictedKey.Name, chords.empty() ? std::string() : chords[0].Name.substr(0, chords[0].Name.find(" (")) };
 		}
 		return readings;
 	}

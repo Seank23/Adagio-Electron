@@ -6,6 +6,7 @@ import Caption from './controls/Caption';
 import SpectrumCanvas from './SpectrumCanvas';
 import TuningControl from './TuningControl';
 import { setShowLogScale } from '../store/settingsSlice';
+import { selectAnalysisRate } from '../store/analysisSlice';
 import { MIN_FREQ } from '../constants';
 
 const SCALES = [
@@ -20,7 +21,7 @@ const formatRange = (minHz, maxHz) => `${formatFrequency(minHz)} – ${formatFre
 const SpectrumPanel = () => {
     const dispatch = useDispatch();
     const showLogScale = useSelector(state => state.settings.showLogScale);
-    const spectrumRate = useSelector(state => state.analysis.spectrumSR);
+    const spectrumRate = useSelector(selectAnalysisRate);
 
     return (
         <Panel>

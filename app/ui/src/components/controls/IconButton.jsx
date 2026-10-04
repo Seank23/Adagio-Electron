@@ -3,7 +3,7 @@ import { Tooltip } from 'antd';
 
 // variant: 'ghost' | 'default' | 'active' | 'primary'.
 // The label is the tooltip and the accessible name, since the button shows only an icon.
-const IconButton = ({ icon, label, variant = 'ghost', disabled = false, onClick, ...rest }) => {
+const IconButton = ({ icon, label, variant = 'ghost', disabled = false, onClick, tooltipProps = {}, ...rest }) => {
     const button = (
         <Button
             type="button"
@@ -18,7 +18,7 @@ const IconButton = ({ icon, label, variant = 'ghost', disabled = false, onClick,
         </Button>
     );
     return label
-        ? <Tooltip title={label} mouseEnterDelay={0.5}>{disabled ? <span>{button}</span> : button}</Tooltip>
+        ? <Tooltip title={label} mouseEnterDelay={0.5} {...tooltipProps}>{disabled ? <span>{button}</span> : button}</Tooltip>
         : button;
 };
 export default IconButton;

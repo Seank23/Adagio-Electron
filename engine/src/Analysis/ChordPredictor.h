@@ -454,7 +454,7 @@ namespace Adagio
 			for (int i = 1; i < chords.size(); i++)
 				probSum += overallProb[i] + 1;
 			for (int i = 0; i < chords.size(); i++)
-				chords[i].Probability = (overallProb[i] + 1) / probSum * 100;
+				chords[i].Probability = (overallProb[i] + 1) / probSum;
 		}
 	};
 }

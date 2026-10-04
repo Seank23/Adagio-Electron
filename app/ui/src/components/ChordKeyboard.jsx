@@ -9,6 +9,7 @@ import { fitToElement } from '../utils/canvas';
 import { makeAxis, spectrumMaxHz } from '../utils/frequencyAxis';
 import { NOTE_NAMES, midiOf } from '../utils/music';
 import { clamp } from '../utils/math';
+import { selectAnalysisRate } from '../store/analysisSlice';
 import { measure } from '../utils/devPerf';
 import { FONTS } from '../theme/tokens';
 
@@ -30,7 +31,7 @@ const selectKeyboardInputs = createSelector(
     [
         state => state.analysis.chordHistogram,
         state => state.analysis.notes,
-        state => state.analysis.spectrumSR,
+        selectAnalysisRate,
         selectTuningHz,
     ],
     (histogram, notes, spectrumRate, a4) => ({ histogram, notes, spectrumRate, a4 }),

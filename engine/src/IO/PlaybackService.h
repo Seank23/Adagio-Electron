@@ -50,7 +50,7 @@ namespace Adagio
 		bool m_DeviceInitialised = false;
 
 		std::shared_ptr<AudioData> m_AudioSource;
-		std::atomic<float> m_Volume{ 1.0f };
+		std::atomic<float> m_Volume{ 0.2f };
 		std::atomic<uint64_t> m_CurrentPlaybackFrame{ 0 };
 		std::atomic<int> m_PlaybackUpdateCounter{ 0 };
 		std::atomic<bool> m_EndReported{ false };

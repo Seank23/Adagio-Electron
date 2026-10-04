@@ -174,13 +174,13 @@ namespace Adagio
 			m_AnalysisThread.join();
 	}
 
-	void AnalysisService::RequestCurrentFrameAnalysis(bool shouldReset)
+	void AnalysisService::RequestCurrentFrameAnalysis()
 	{
 		// Ensure that the analysis thread is not running before making an adhoc request
 		if (m_Running.load(std::memory_order_acquire) || !m_Pipeline || !m_AnalysisBuffer)
 			return;
 
-		SyncSeekGeneration(shouldReset);
+		SyncSeekGeneration();
 		PublishCurrentFrame();
 	}
 
@@ -195,11 +195,6 @@ namespace Adagio
 			m_Pipeline->ResetPersistentData();
 			MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
 		}
-	}
-
-	bool AnalysisService::HasUnseenSeek() const
-	{
-		return m_Feeder && m_Feeder->GetSeekGeneration() != m_SeekGenerationSeen;
 	}
 
 	void AnalysisService::PublishCurrentFrame()
@@ -218,14 +213,15 @@ namespace Adagio
 			context.BinHz, result.Timestamp, m_SeekGenerationSeen));
 	}
 
-	bool AnalysisService::SyncSeekGeneration(bool shouldReset)
+	bool AnalysisService::SyncSeekGeneration()
 	{
 		const uint32_t generation = m_Feeder->GetSeekGeneration();
 		if (generation == m_SeekGenerationSeen)
 			return false;
 
+		// A seek keeps the trackers: only resetAnalysis clears them. The key decays by source time and the
+		// chord window drops frames by their distance from the playhead, so both settle after a jump.
 		m_SeekGenerationSeen = generation;
-		if (shouldReset) m_Pipeline->ResetPersistentData();
 		return true;
 	}
 

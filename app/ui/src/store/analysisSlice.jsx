@@ -37,6 +37,9 @@ export const { setAnalysisData, resetAnalysis } = analysisSlice.actions;
 
 export const CHORD_ROWS = 4;
 
+export const selectAnalysisRate = state =>
+    state.analysis.spectrumSR || state.playback.track?.analysisSampleRate || 0;
+
 export const selectPitchClassPercents = createSelector(
     [state => state.analysis.keyHistogram, selectTuningHz],
     (histogram, a4) => {

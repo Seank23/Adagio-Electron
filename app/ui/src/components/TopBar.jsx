@@ -81,6 +81,7 @@ const TopBar = () => {
                         label="Close file"
                         icon={<X size={16} />}
                         onClick={async () => report(await commands.clear())}
+                        tooltipProps={{ placement: "left" }}
                     />
                 )}
             </Right>

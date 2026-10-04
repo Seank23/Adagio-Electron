@@ -35,9 +35,8 @@ namespace Adagio
 		void Reset();
 		void StartAnalysis();
 		void StopAnalysis();
-		void RequestCurrentFrameAnalysis(bool shouldReset = false);
+		void RequestCurrentFrameAnalysis();
 		void ResetAnalysis();
-		bool HasUnseenSeek() const;
 
 		nlohmann::json GetSchemaJson() const;
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
@@ -57,7 +56,7 @@ namespace Adagio
 		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);
 		void PublishCurrentFrame();
 		void PublishSpectrum(const AnalysisResult& result);
-		bool SyncSeekGeneration(bool shouldReset = true);
+		bool SyncSeekGeneration();
 		void PreprocessStream(kfr::univector<float>& outStream);
 
 		std::thread m_AnalysisThread;
