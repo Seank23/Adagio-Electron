@@ -6,9 +6,9 @@ import TransportBar from './components/TransportBar';
 import StatusBar from './components/StatusBar';
 import TimelinePanel from './components/TimelinePanel';
 import SpectrumPanel from './components/SpectrumPanel';
-import AnalysisSection from './components/AnalysisSection';
+import NoteActivityPanel from './components/NoteActivityPanel';
+import Sidebar from './components/sidebar/Sidebar';
 import EmptyState from './components/EmptyState';
-import { Panel } from './components/Panel';
 import { selectIsFileOpen } from './store/playbackSlice';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLoadFile } from './hooks/useOpenFile';
@@ -34,11 +34,9 @@ const App = () => {
                         <Body>
                             <Main>
                                 <SpectrumPanel />
-                                <NoteActivitySlot>
-                                    <AnalysisSection />
-                                </NoteActivitySlot>
+                                <NoteActivityPanel />
                             </Main>
-                            <Panel />
+                            <Sidebar />
                         </Body>
                     )
                     : <EmptyState isDragging={isDragging} />}
@@ -87,9 +85,4 @@ const Main = Styled.div`
     gap: 1px;
     min-width: 0;
     min-height: 0;
-`;
-
-const NoteActivitySlot = Styled(Panel)`
-    padding: 0 12px 12px;
-    overflow-y: auto;
 `;

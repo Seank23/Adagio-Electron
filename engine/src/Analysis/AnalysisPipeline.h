@@ -39,6 +39,15 @@ namespace Adagio
 		double Probability = 0.0;
 	};
 
+	struct KeySignature
+	{
+		std::string Name;
+		std::string Tonic;
+		int TonicClass = -1;
+		std::string ModeName;
+		std::array<int, 7> Scale{};
+	};
+
 	struct NoteFrame
 	{
 		double Timestamp = 0.0;
@@ -71,7 +80,7 @@ namespace Adagio
 		std::map<int, float> KeyFrequencyHistogram;
 		std::map<int, float> ChordFrequencyHistogram;
 		std::vector<Chord> PredictedChords;
-		std::string DetectedKey;
+		KeySignature PredictedKey;
 	};
 
 	struct AnalysisResult

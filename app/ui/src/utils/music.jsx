@@ -12,3 +12,10 @@ export const formatCents = (cents, decimals = 0) => {
     const sign = rounded > 0 ? '+' : rounded < 0 ? '−' : '';
     return `${sign}${Math.abs(rounded).toFixed(decimals)}¢`;
 };
+
+// The engine's NoteNames: flats only, indexed by pitch class starting on C.
+export const NOTE_NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+// Folded against the reference the engine names notes with, never a fixed 440.
+export const midiOf = (hz, a4) => Math.round(69 + 12 * Math.log2(hz / a4));
+

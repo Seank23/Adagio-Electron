@@ -23,5 +23,10 @@ export const makeAxis = ({ minHz = MIN_FREQ, maxHz, width, log }) => {
     return { minHz, maxHz, width, log, toX, ticks };
 };
 
+// The top of the spectrum's axis: the frame's own when there is one, otherwise half the
+// analysis rate. The spectrum and the keyboard both take it from here, so they agree.
+export const spectrumMaxHz = (spectrum, sampleRate) =>
+    spectrum?.count > 0 ? spectrum.resolution * spectrum.data.length : sampleRate / 2;
+
 // 50 → '50', 1000 → '1k', 1500 → '1.5k'
 export const formatHz = hz => hz >= 1000 ? `${Number((hz / 1000).toFixed(1))}k` : `${Math.round(hz)}`;

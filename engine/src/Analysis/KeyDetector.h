@@ -93,16 +93,28 @@ namespace Adagio
 				}
 			}
 
-			std::string keyName;
+			KeySignature keySig;
 			std::array<int, 7> keyScale = Scales.at(bestKey);
+
 			int relativeMinorIndex = keyScale[5]; // The 6th note in the major scale is the root of the relative minor
 			if (notesHistogram[relativeMinorIndex] > notesHistogram[bestKey])
-				keyName = NoteNames.at(relativeMinorIndex) + " Minor";
+			{
+				keySig.Tonic = NoteNames.at(relativeMinorIndex);
+				keySig.TonicClass = relativeMinorIndex;
+				keySig.ModeName = "Minor";
+			}
 			else
-				keyName = NoteNames.at(bestKey) + " Major";
+			{
+				keySig.Tonic = NoteNames.at(bestKey);
+				keySig.TonicClass = bestKey;
+				keySig.ModeName = "Major";
+			}
+
+			keySig.Name = keySig.Tonic + " " + keySig.ModeName;
+			keySig.Scale = keyScale;
 
 			context->KeyFrequencyHistogram = frequencyAccumulator;
-			context->DetectedKey = keyName;
+			context->PredictedKey = std::move(keySig);
 		}
 
 		virtual AnalysisStageType GetType() const override

@@ -8,6 +8,7 @@ const settingsSlice = createSlice({
         themeMode: 'system',
         repeat: false,
         follow: true,
+        sidebarTab: 'analysis',
     },
     reducers: {
         setShowLogScale: (state, action) => {
@@ -22,8 +23,11 @@ const settingsSlice = createSlice({
         toggleFollow: state => {
             state.follow = !state.follow;
         },
+        setSidebarTab: (state, action) => {
+            state.sidebarTab = action.payload;
+        },
     },
 });
 
-export const { setShowLogScale, setThemeMode, toggleRepeat, toggleFollow } = settingsSlice.actions;
+export const { setShowLogScale, setThemeMode, toggleRepeat, toggleFollow, setSidebarTab } = settingsSlice.actions;
 export default settingsSlice.reducer;

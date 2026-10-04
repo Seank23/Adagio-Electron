@@ -7,7 +7,7 @@ import { measure } from '../utils/devPerf';
 import { useStoreListener } from '../hooks/useStoreListener';
 import { usePalette } from '../hooks/usePalette';
 import { fitToElement, withAlpha } from '../utils/canvas';
-import { formatHz, makeAxis } from '../utils/frequencyAxis';
+import { formatHz, makeAxis, spectrumMaxHz } from '../utils/frequencyAxis';
 import { formatCents, tuningBand } from '../utils/music';
 import { FONTS } from '../theme/tokens';
 
@@ -89,10 +89,7 @@ const SpectrumCanvas = () => {
             context.setTransform(ratio, 0, 0, ratio, 0, 0);
             context.clearRect(0, 0, width, height);
 
-            const maxHz = spectrum?.count > 0
-                ? spectrum.resolution * spectrum.data.length
-                : spectrumRateRef.current / 2;
-            const axis = makeAxis({ maxHz, width, log: showLogScale });
+            const axis = makeAxis({ maxHz: spectrumMaxHz(spectrum, spectrumRateRef.current), width, log: showLogScale });
             if (!axis) {
                 labelY.clear();
                 labelsSettling = false;

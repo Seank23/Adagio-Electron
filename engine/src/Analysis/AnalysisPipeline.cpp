@@ -184,6 +184,9 @@ namespace Adagio
 		nlohmann::json chordsJson;
 		for (const auto& chord : result.Context->PredictedChords)
 			chordsJson.push_back({ {"name", chord.Name}, {"probability", chord.Probability} });
+		auto& keySig = result.Context->PredictedKey;
+		nlohmann::json keyJson = { {"name", keySig.Name}, {"tonic", keySig.Tonic}, {"tonicClass", keySig.TonicClass}, {"mode", keySig.ModeName}, {"scaleClasses", keySig.Scale}};
+
 
 		// The spectrum itself, its maximum and binHz travel in the binary spectrum frame.
 		return
@@ -195,7 +198,7 @@ namespace Adagio
 					{"notes", notesJson},
 					{"keyHistogram", keyHistogramJson},
 					{"chordHistogram", chordHistogramJson},
-					{"detectedKey", result.Context->DetectedKey},
+					{"detectedKey", keyJson},
 					{"predictedChords", chordsJson},
 				}
 			}
