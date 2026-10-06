@@ -26,7 +26,6 @@ const App = () => {
     return (
         <>
             <EngineEventRouter />
-            {/* Beside the grid, so the empty screen can open it too. */}
             <PreferencesModal />
             <Shell fileOpen={isFileOpen}>
                 <TopBar />

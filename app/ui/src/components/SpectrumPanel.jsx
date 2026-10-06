@@ -7,6 +7,8 @@ import SpectrumCanvas from './SpectrumCanvas';
 import TuningControl from './TuningControl';
 import { setShowLogScale } from '../store/settingsSlice';
 import { selectAnalysisRate } from '../store/analysisSlice';
+import { selectFrameSmoothing, selectHopSize, selectSampleRate } from '../store/pipelineSlice';
+import { formatSmoothingSummary } from '../utils/format';
 import { MIN_FREQ } from '../constants';
 
 const SCALES = [
@@ -22,6 +24,10 @@ const SpectrumPanel = () => {
     const dispatch = useDispatch();
     const showLogScale = useSelector(state => state.settings.showLogScale);
     const spectrumRate = useSelector(selectAnalysisRate);
+    const frameSmoothing = useSelector(selectFrameSmoothing);
+    const hopSize = useSelector(selectHopSize);
+    const sampleRate = useSelector(selectSampleRate);
+    const smoothingKnown = frameSmoothing !== null && hopSize !== null && sampleRate !== null;
 
     return (
         <Panel>
@@ -33,6 +39,11 @@ const SpectrumPanel = () => {
                     onChange={log => dispatch(setShowLogScale(log))}
                 />
                 {spectrumRate > 0 && <Range>{formatRange(MIN_FREQ, spectrumRate / 2)}</Range>}
+                {spectrumRate > 0 && smoothingKnown && (
+                    <Smoothing title="Frames the spectrum is averaged over, and the time they span (Preferences, Ctrl+,)">
+                        {formatSmoothingSummary(frameSmoothing, hopSize, sampleRate)}
+                    </Smoothing>
+                )}
                 <Spacer />
                 <TuningControl />
             </PanelHeader>
@@ -63,6 +74,13 @@ const Range = Styled.span`
     white-space: nowrap;
     font: 400 10px/1 var(--font-mono);
     color: var(--text-muted);
+`;
+
+// Gives way first when the header is narrow.
+const Smoothing = Styled(Range)`
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 `;
 
 const Body = Styled.div`

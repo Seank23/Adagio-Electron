@@ -20,8 +20,9 @@ Every launch gets its own `userData` directory through `ADAGIO_USER_DATA`, so on
 test passes the first launch's directory back in.
 
 The fixtures are WAV files generated at 48 kHz in a temp directory: a C major chord (40 s
-and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is exactly 384 samples, so
-125 steps come to exactly one second.
+and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is a whole number of samples at
+every rate and hop `protocol.json` allows, so the step test reads the default hop from there
+and each step moves the readout by exactly one hop (16 ms at 8 kHz and 128).
 
 ## What §7 item each test covers
 
@@ -32,7 +33,7 @@ and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is exactly 384 sample
 | Reload mid-play | a reload mid-play brings back… (and the waveform comes back) |
 | Speed | speed presets follow the engine… |
 | Repeat | repeat restarts the track… |
-| Step and reset | step: 125 steps are one second… |
+| Step and reset | step: each step is one hop… |
 | Timeline | timeline: the overview zooms and pans… |
 | Spectrum and keyboard | switching to Linear… · the piano and the spectrum grid draw… · sidebar: the chord badge matches… |
 | Sidebar | sidebar: … the tonic is marked, and the top bar fills 90% |
@@ -51,8 +52,8 @@ These need eyes, a second client, or a real drag from Explorer:
   test that switches to Light. The palette and the "no colour literals" rule are unit tested,
   but how each theme looks isn't, and nor is the window frame or System following Windows.
 - **A hand-started engine ignores the saved analysis values.** Only an engine main spawns
-  gets `--sample-rate`, `--frame-length` and `--hop-size`; the modal then shows the
-  engine's own values.
+  gets `--sample-rate`, `--frame-length`, `--hop-size` and `--frame-smoothing`;
+  the modal then shows the engine's own values.
 - **A reset seen by two clients.** The engine broadcasts `analysisReset` to every client,
   which `smoke.ps1` checks. A second UI on the same spawned engine needs the token, so
   isn't automated here.

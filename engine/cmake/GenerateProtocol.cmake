@@ -66,6 +66,9 @@ function(adagio_generate_protocol_header json_path header_path)
 	string(JSON sample_rate_default GET "${limits}" sampleRateDefault)
 	string(JSON frame_length_default GET "${limits}" frameLengthDefault)
 	string(JSON hop_size_default GET "${limits}" hopSizeDefault)
+	string(JSON frame_smoothing_min GET "${limits}" frameSmoothingMin)
+	string(JSON frame_smoothing_max GET "${limits}" frameSmoothingMax)
+	string(JSON frame_smoothing_default GET "${limits}" frameSmoothingDefault)
 
 	set(commands "")
 	string(JSON command_count LENGTH "${protocol}" commands)
@@ -177,6 +180,11 @@ namespace Adagio
 		constexpr int FrameLengthDefault = ${frame_length_default};
 		constexpr std::array<int, ${hop_size_count}> HopSizes = { ${hop_sizes} };
 		constexpr int HopSizeDefault = ${hop_size_default};
+
+		// How many analysis frames the spectrum is averaged over: any count in the range, 1 for none.
+		constexpr int FrameSmoothingMin = ${frame_smoothing_min};
+		constexpr int FrameSmoothingMax = ${frame_smoothing_max};
+		constexpr int FrameSmoothingDefault = ${frame_smoothing_default};
 
 		// A browser page always sends an Origin; anything not on this list is not the
 		// renderer and is refused before it can queue a command.

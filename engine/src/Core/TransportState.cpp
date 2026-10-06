@@ -33,7 +33,6 @@ namespace Adagio
 			return true;
 
 		case CommandType::Load:
-		// With no file it only stores the values for the next load.
 		case CommandType::SetEngineParams:
 			return state != TransportState::Loading;
 

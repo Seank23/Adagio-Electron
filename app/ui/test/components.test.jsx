@@ -6,6 +6,7 @@ import TransportBar from '../src/components/TransportBar';
 import StatusBar from '../src/components/StatusBar';
 import EmptyState from '../src/components/EmptyState';
 import TuningControl from '../src/components/TuningControl';
+import SpectrumPanel from '../src/components/SpectrumPanel';
 import Sidebar from '../src/components/sidebar/Sidebar';
 import { setAnalysisData } from '../src/store/analysisSlice';
 import { setConnectionState, setEngineStatus, setLoadingFile } from '../src/store/appSlice';
@@ -312,5 +313,27 @@ describe('TransportBar with no file', () => {
         const volume = screen.getByText('Volume').parentElement;
         expect(volume.hasAttribute('inert')).toBe(false);
         expect(screen.getByText('Speed').parentElement.hasAttribute('inert')).toBe(true);
+    });
+});
+
+describe('SpectrumPanel', () => {
+    const ANALYSIS = { sampleRate: 8000, frameLength: 4096, hopSize: 128, frameSmoothing: 4 };
+
+    it('shows the smoothing in force next to the frequency range, and follows the engine', () => {
+        const { store } = renderWithEngine(<SpectrumPanel />);
+        openTrack(store);
+        act(() => store.dispatch(setTransport({ analysis: ANALYSIS })));
+        expect(screen.getByText('50 Hz – 4 kHz')).toBeTruthy();
+        expect(screen.getByText('4-frame smoothing · 64 ms')).toBeTruthy();
+        act(() => store.dispatch(setTransport({ analysis: { ...ANALYSIS, hopSize: 32, frameSmoothing: 10 } })));
+        expect(screen.getByText('10-frame smoothing · 40 ms')).toBeTruthy();
+        act(() => store.dispatch(setTransport({ analysis: { ...ANALYSIS, frameSmoothing: 1 } })));
+        expect(screen.getByText('no smoothing')).toBeTruthy();
+    });
+
+    it('shows neither with no file open', () => {
+        const { store } = renderWithEngine(<SpectrumPanel />);
+        act(() => store.dispatch(setTransport({ state: 'empty', track: null, analysis: ANALYSIS })));
+        expect(screen.queryByText(/smoothing/)).toBeNull();
     });
 });

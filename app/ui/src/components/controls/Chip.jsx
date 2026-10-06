@@ -1,6 +1,6 @@
 import Styled from '@emotion/styled';
 
-const Button = Styled('button', { shouldForwardProp: prop => prop !== 'selected' && prop !== 'mono' })`
+const Button = Styled('button', { shouldForwardProp: prop => prop !== 'selected' && prop !== 'font' })`
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -10,7 +10,7 @@ const Button = Styled('button', { shouldForwardProp: prop => prop !== 'selected'
     border-radius: 5px;
     background: ${({ selected }) => selected ? 'var(--bg-raised)' : 'var(--bg-surface)'};
     color: ${({ selected }) => selected ? 'var(--accent-primary-text)' : 'var(--text-secondary)'};
-    font: 500 11px/1.2 ${({ mono }) => mono ? 'var(--font-mono)' : 'var(--font-ui)'};
+    font: 500 11px/1.2 ${({ font }) => `var(${font})`};
     white-space: nowrap;
     cursor: pointer;
     &:hover:not(:disabled) {
@@ -25,6 +25,5 @@ const Button = Styled('button', { shouldForwardProp: prop => prop !== 'selected'
     }
 `;
 
-// mono: number labels in JetBrains Mono, as the Preferences chips have.
-const Chip = ({ selected = false, mono = false, ...rest }) => <Button selected={selected} mono={mono} aria-pressed={selected} {...rest} />;
+const Chip = ({ selected = false, font = '--font-ui', ...rest }) => <Button selected={selected} font={font} aria-pressed={selected} {...rest} />;
 export default Chip;

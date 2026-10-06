@@ -1,5 +1,5 @@
 #pragma once
-#include "AnalysisParams.h"
+#include "../Core/EngineParams.h"
 
 #include <kfr/base/univector.hpp>
 
@@ -43,8 +43,9 @@ namespace Adagio
 
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
 		static std::unique_ptr<AnalysisPipeline> CreatePipeline();
-		// The source mixed to mono and resampled to sampleRate, low-passed first when that downsamples.
 		static kfr::univector<float> Preprocess(const AudioData& source, float sampleRate);
+
+		static nlohmann::json ParamsJson(const AnalysisParams& params);
 
 	private:
 		// A stall longer than this is a hiccup, not audio heard; it shouldn't outweigh the history.
@@ -66,8 +67,9 @@ namespace Adagio
 		std::unique_ptr<AnalysisPipeline> m_Pipeline;
 		std::shared_ptr<AudioData> m_AudioSource;
 		std::unique_ptr<RingBuffer<float>> m_AnalysisBuffer;
+
 		AnalysisParams m_Params;
-		int m_RollingAvgCount;
+
 		std::atomic<bool> m_Running{ false };
 		std::atomic<bool> m_ResetRequested{ false };
 

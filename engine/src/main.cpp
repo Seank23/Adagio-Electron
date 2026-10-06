@@ -1,4 +1,4 @@
-#include "Analysis/AnalysisParams.h"
+#include "Core/EngineParams.h"
 #include "Core/Application.h"
 #include "Core/CommandParser.h"
 #include "Core/CommandQueue.h"
@@ -24,17 +24,17 @@ namespace
 		return {};
 	}
 
-	// The saved preferences main passes at spawn. A bad value is a warning, never a reason not to start:
-	// that one keeps its default and the others still apply.
-	Adagio::AnalysisParams AnalysisParamsFromArgs(int argc, char** argv)
+	// The saved preferences main passes at spawn.
+	Adagio::EngineParams EngineParamsFromArgs(int argc, char** argv)
 	{
 		const std::pair<const char*, const char*> options[] = {
 			{ "--sample-rate=", "sampleRate" },
 			{ "--frame-length=", "frameLength" },
-			{ "--hop-size=", "hopSize" }
+			{ "--hop-size=", "hopSize" },
+			{ "--frame-smoothing=", "frameSmoothing" }
 		};
 
-		Adagio::AnalysisParams params;
+		Adagio::EngineParams params;
 		for (const auto& [prefix, key] : options)
 		{
 			const std::string text = ValueFromArgs(argc, argv, prefix);
@@ -43,7 +43,7 @@ namespace
 
 			const nlohmann::json value = nlohmann::json::parse(text, nullptr, false);
 			std::string error;
-			if (!Adagio::UpdateAnalysisParams(params, { { key, value } }, error))
+			if (!Adagio::UpdateEngineParams(params, { { key, value } }, error))
 				std::cerr << "Ignoring " << prefix << text << ": " << error << "\n" << std::flush;
 		}
 		return params;
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 {
 	Adagio::SetTracing(HasFlag(argc, argv, "--trace"));
 
-	Adagio::Application app(AnalysisParamsFromArgs(argc, argv));
+	Adagio::Application app(EngineParamsFromArgs(argc, argv));
 	Adagio::WSServer wsServer(Adagio::Protocol::Port, ValueFromArgs(argc, argv, "--token="));
 	wsServer.SetCommandHandler(OnClientMessage);
 

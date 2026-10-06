@@ -67,8 +67,8 @@ namespace Adagio
 		}
 	}
 
-	Application::Application(const AnalysisParams& analysisParams)
-		: m_AnalysisParams(analysisParams)
+	Application::Application(const EngineParams& engineParams)
+		: m_EngineParams(engineParams)
 	{
 		ADAGIO_PROFILE_BEGIN_SESSION("Application", "Application_Profile.json");
 		m_AudioData = std::make_shared<AudioData>();
@@ -215,7 +215,7 @@ namespace Adagio
 		}
 		case CommandType::StepFrame:
 		{
-			const uint64_t hop = (uint64_t)std::llround((double)m_AnalysisParams.HopSize / m_AnalysisParams.SampleRate * m_AudioData->SampleRate);
+			const uint64_t hop = (uint64_t)std::llround((double)m_EngineParams.Analysis.HopSize / m_EngineParams.Analysis.SampleRate * m_AudioData->SampleRate);
 			const uint64_t currentSample = (uint64_t)std::llround(m_PlaybackService->GetPositionSeconds() * m_AudioData->SampleRate);
 			if (currentSample + hop > (uint64_t)m_AudioData->SamplesPerChannel)
 			{
@@ -263,18 +263,18 @@ namespace Adagio
 		}
 		case CommandType::SetEngineParams:
 		{
-			AnalysisParams next = m_AnalysisParams;
+			EngineParams next = m_EngineParams;
 			std::string error;
-			if (!UpdateAnalysisParams(next, cmd.Args, error))
+			if (!UpdateEngineParams(next, cmd.Args, error))
 			{
 				outcome = Failed(error);
 				break;
 			}
-			m_AnalysisParams = next;
+			m_EngineParams = next;
 			// A new sample rate preprocesses the whole track again, here on the command thread, as a load does.
 			if (HasFile(state))
-				m_AnalysisService->SetParams(next);
-			outcome.Value = AnalysisParamsJson(m_AnalysisParams);
+				m_AnalysisService->SetParams(next.Analysis);
+			outcome.Value = EngineParamsJson(m_EngineParams);
 			break;
 		}
 		case CommandType::Status:
@@ -363,7 +363,7 @@ namespace Adagio
 			outError = "Could not open an audio output device.";
 			return false;
 		}
-		m_AnalysisService->Init(m_PcmFeeder, m_AnalysisParams, m_PlaybackService.get());
+		m_AnalysisService->Init(m_PcmFeeder, m_EngineParams.Analysis, m_PlaybackService.get());
 
 		waveformThread.join();
 		m_WaveformFrames = std::move(waveformFrames);
@@ -396,9 +396,9 @@ namespace Adagio
 			{"state", ToString(state)},
 			{"track", HasFile(state)
 				? nlohmann::json{ {"path", m_TrackPath}, {"sampleRate", m_AudioData->SampleRate}, {"channels", m_AudioData->Channels}, {"duration", m_Duration.load(std::memory_order_acquire)},
-					{"analysisSampleRate", m_AnalysisParams.SampleRate} }
+					{"analysisSampleRate", m_EngineParams.Analysis.SampleRate} }
 				: nlohmann::json(nullptr)},
-			{"analysis", AnalysisParamsJson(m_AnalysisParams)},
+			{"analysis", AnalysisService::ParamsJson(m_EngineParams.Analysis)},
 			{"position", m_PlaybackService->GetPositionSeconds()},
 			{"speed", m_PlaybackService->GetSpeed()},
 			{"volume", m_PlaybackService->GetVolume()},

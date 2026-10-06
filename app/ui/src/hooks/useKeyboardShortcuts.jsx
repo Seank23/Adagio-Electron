@@ -28,7 +28,6 @@ export const useKeyboardShortcuts = () => {
     useEffect(() => {
         let stepFailed = false;
 
-        // The Preferences modal owns the keyboard while it's open; antd handles its Esc.
         const preferencesOpen = () => store.getState().app.preferencesOpen;
 
         const onKeyDown = event => {

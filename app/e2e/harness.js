@@ -10,9 +10,11 @@ const APP_DIR = path.resolve(__dirname, '..');
 const ENGINE_PATH = process.env.ADAGIO_ENGINE_PATH
     || path.resolve(APP_DIR, '../engine/build/Release/AdagioEngine.exe');
 
-// 48 kHz, so one analysis hop (64 samples at 8 kHz) is exactly 384 source samples and
-// 125 steps are exactly one second.
+// 48 kHz, so one analysis hop at any of protocol.json's rates and hops is a whole number of
+// source samples: 768 at the default 128 at 8 kHz, a step of exactly 16 ms.
 const SAMPLE_RATE = 48000;
+const { limits } = require('../../protocol/protocol.json');
+const HOP_MS = limits.hopSizeDefault / limits.sampleRateDefault * 1000;
 
 const writeWav = (file, seconds, partials) => {
     const frames = Math.round(seconds * SAMPLE_RATE);
@@ -100,7 +102,8 @@ const resize = async (app, page, [width, height]) => {
     await app.evaluate(({ BrowserWindow }, [w, h]) => {
         BrowserWindow.getAllWindows()[0].setContentSize(w, h);
     }, [width, height]);
-    await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([width, height]);
+    // At a fractional display scale the content can land a pixel over what was asked for.
+    await expect.poll(() => page.evaluate(([w, h]) => Math.abs(innerWidth - w) <= 1 && Math.abs(innerHeight - h) <= 1, [width, height])).toBe(true);
 };
 
 // An engine started by hand, with no token, as in dev.
@@ -191,6 +194,6 @@ const pitchClassRows = page => page.getByRole('tabpanel').evaluate(panel => {
 });
 
 module.exports = {
-    SAMPLE_RATE, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows,
+    HOP_MS, SAMPLE_RATE, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows,
     readout, removeUserData, resize, snapshot, startEngine, stepFrames, stubOpenDialog, tap,
 };

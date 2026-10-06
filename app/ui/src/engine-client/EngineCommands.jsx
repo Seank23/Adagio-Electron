@@ -15,7 +15,7 @@ export const createEngineCommands = engine => ({
     resetAnalysis: () => engine.request(COMMAND.RESET_ANALYSIS),
     getAnalysisSchema: () => engine.request(COMMAND.GET_ANALYSIS_SCHEMA),
     setAnalysisSetting: (stage, key, value) => engine.request(COMMAND.SET_ANALYSIS_SETTING, { stage, key, value }),
-    // Any of { sampleRate, frameLength, hopSize }; answers all three as the engine now has them.
+    // Any of { sampleRate, frameLength, hopSize, frameSmoothing }; answers them all as the engine now has them.
     setEngineParams: params => engine.request(COMMAND.SET_ENGINE_PARAMS, params),
     status: () => engine.request(COMMAND.STATUS),
     getWaveform: () => engine.request(COMMAND.GET_WAVEFORM),

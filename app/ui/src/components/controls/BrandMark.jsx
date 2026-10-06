@@ -1,6 +1,5 @@
 import Styled from '@emotion/styled';
 
-// The one logo: the top bar's at 20 px, About's at 36.
 const BrandMark = ({ size = 20 }) => (
     <Mark aria-hidden="true" style={{ width: size, height: size, borderRadius: size / 4, fontSize: size * 0.6 }}>A</Mark>
 );

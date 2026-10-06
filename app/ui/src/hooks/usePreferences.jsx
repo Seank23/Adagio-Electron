@@ -31,7 +31,6 @@ export const usePreferenceActions = () => {
     const commands = useEngineCommands();
     const report = useReport();
 
-    // Main switches nativeTheme before it answers.
     const setTheme = useCallback(async mode => {
         const result = await savePreferences({ theme: mode });
         if (result.ok)
@@ -43,18 +42,15 @@ export const usePreferenceActions = () => {
         return result;
     }, [dispatch, report]);
 
-    // Saved only once the engine has accepted them, and as it answered, not as clicked. The chip moves
-    // on the transport event that follows.
-    const setAnalysisParams = useCallback(async params => {
+    const setEngineParams = useCallback(async params => {
         const result = await commands.setEngineParams(params);
         if (!result.ok) {
             report(result);
             return result;
         }
-        const saved = await savePreferences({ analysis: result.value });
+        const saved = await savePreferences({ engine: result.value });
         if (!saved.ok && !saved.unsaved)
             report(saved);
-        // Nothing runs while paused, so the new values show nothing until a frame is asked for.
         if (selectIsPaused(store.getState()))
             commands.analyseFrame().then(report);
         return result;
@@ -62,12 +58,13 @@ export const usePreferenceActions = () => {
 
     const restoreDefaults = useCallback(() => Promise.all([
         setTheme('system'),
-        setAnalysisParams({
+        setEngineParams({
             sampleRate: LIMITS.sampleRateDefault,
             frameLength: LIMITS.frameLengthDefault,
             hopSize: LIMITS.hopSizeDefault,
+            frameSmoothing: LIMITS.frameSmoothingDefault,
         }),
-    ]), [setTheme, setAnalysisParams]);
+    ]), [setTheme, setEngineParams]);
 
-    return { setTheme, setAnalysisParams, restoreDefaults };
+    return { setTheme, setEngineParams, restoreDefaults };
 };

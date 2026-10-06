@@ -1,6 +1,5 @@
 import { MIN_FREQ } from '../constants';
 
-// 5000 is for the 16 kHz analysis rate, whose axis runs to 8 kHz.
 const LOG_TICKS = [100, 200, 300, 500, 1000, 2000, 3000, 5000];
 const LINEAR_TICK_STEP = 500;
 

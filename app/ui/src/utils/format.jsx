@@ -25,7 +25,6 @@ export const formatOf = name => {
 // 44100 → '44.1 kHz', 48000 → '48 kHz'
 export const formatSampleRate = hz => hz ? `${Number((hz / 1000).toFixed(1))} kHz` : '';
 
-// The Preferences readouts, from the engine's values. Hop and frame follow the sample rate too.
 const oneDecimal = value => Number(value.toFixed(1));
 
 // 8000 → 'up to 4 kHz'
@@ -38,6 +37,14 @@ export const formatHop = (hopSize, sampleRate) =>
 // 4096 at 8000 → '1.95 Hz per bin · 512 ms'
 export const formatFrame = (frameLength, sampleRate) =>
     `${(sampleRate / frameLength).toFixed(2)} Hz per bin · ${oneDecimal(frameLength / sampleRate * 1000)} ms`;
+
+// 4 of 128 at 8000 → 'last 64 ms'; 1 → 'off'
+export const formatSmoothing = (count, hopSize, sampleRate) =>
+    count > 1 ? `last ${oneDecimal(count * hopSize / sampleRate * 1000)} ms` : 'off';
+
+// 4 of 128 at 8000 → '4-frame smoothing · 64 ms'; 1 → 'no smoothing'
+export const formatSmoothingSummary = (count, hopSize, sampleRate) =>
+    count > 1 ? `${count}-frame smoothing · ${oneDecimal(count * hopSize / sampleRate * 1000)} ms` : 'no smoothing';
 
 export const formatChannels = channels =>
     channels === 1 ? 'mono' : channels === 2 ? 'stereo' : channels ? `${channels} ch` : '';

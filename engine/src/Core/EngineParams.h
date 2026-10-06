@@ -12,9 +12,16 @@ namespace Adagio
 		float SampleRate = (float)Protocol::SampleRateDefault;
 		int FrameLength = Protocol::FrameLengthDefault;
 		int HopSize = Protocol::HopSizeDefault;
+		int FrameSmoothing = Protocol::FrameSmoothingDefault;
 	};
 
-	bool UpdateAnalysisParams(AnalysisParams& params, const nlohmann::json& args, std::string& outError);
+	struct EngineParams
+	{
+		AnalysisParams Analysis;
+		bool Debug = false;
+	};
 
-	nlohmann::json AnalysisParamsJson(const AnalysisParams& params);
+	bool UpdateEngineParams(EngineParams& params, const nlohmann::json& args, std::string& outError);
+
+	nlohmann::json EngineParamsJson(const EngineParams& params);
 }

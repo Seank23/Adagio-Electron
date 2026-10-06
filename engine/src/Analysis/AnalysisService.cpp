@@ -23,7 +23,7 @@
 namespace Adagio
 {
 	AnalysisService::AnalysisService()
-		: m_Running(false), m_RollingAvgCount(4), m_AnalysisBuffer(nullptr)
+		: m_Running(false), m_AnalysisBuffer(nullptr)
 	{
 		BuildPipeline();
 	}
@@ -156,10 +156,10 @@ namespace Adagio
 					const double deltaTime = std::min(advanceSamples / m_Params.SampleRate, MaxDeltaSeconds);
 					std::unique_ptr<AnalysisResult> result = ProcessFrameAt(playhead, deltaTime);
 					auto data = result->Context->Magnitudes;
-					if (m_RollingAvgCount > 1)
+					if (m_Params.FrameSmoothing > 1)
 					{
 						rollingAvg.push_back(data);
-						if (rollingAvg.size() > m_RollingAvgCount)
+						if (rollingAvg.size() > (size_t)m_Params.FrameSmoothing)
 							rollingAvg.erase(rollingAvg.begin());
 						for (size_t i = 0; i < data.size(); i++)
 						{
@@ -317,5 +317,15 @@ namespace Adagio
 		kfr::univector<float> resampled(resampler.output_size_for_input(sourceSamples));
 		resampler.process(resampled, mono);
 		return resampled;
+	}
+
+	nlohmann::json AnalysisService::ParamsJson(const AnalysisParams& params)
+	{
+		return {
+			{"sampleRate", (int)params.SampleRate},
+			{"frameLength", params.FrameLength},
+			{"hopSize", params.HopSize},
+			{"frameSmoothing", params.FrameSmoothing},
+		};
 	}
 }

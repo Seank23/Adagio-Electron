@@ -1,6 +1,5 @@
 import Styled from '@emotion/styled';
 
-// A section of the Preferences modal: its title, then its rows.
 export const PreferenceSection = ({ title, children }) => (
     <section aria-label={title}>
         <SectionTitle>{title}</SectionTitle>
@@ -8,7 +7,6 @@ export const PreferenceSection = ({ title, children }) => (
     </section>
 );
 
-// The label and its description on the left; the control on the right, with an optional readout under it.
 export const PreferenceRow = ({ label, description, readout, children }) => (
     <Row>
         <Text>

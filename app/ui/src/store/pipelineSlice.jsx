@@ -12,7 +12,7 @@ const pipelineSlice = createSlice({
     name: 'pipeline',
     initialState: {
         stages: [],
-        // { sampleRate, frameLength, hopSize }: the engine's, from every transport event and status reply.
+        // { sampleRate, frameLength, hopSize, frameSmoothing }
         params: null,
     },
     reducers: {
@@ -50,5 +50,6 @@ export const selectHasSchema = state => state.pipeline.stages.length > 0;
 export const selectSampleRate = state => state.pipeline.params?.sampleRate ?? null;
 export const selectFrameLength = state => state.pipeline.params?.frameLength ?? null;
 export const selectHopSize = state => state.pipeline.params?.hopSize ?? null;
+export const selectFrameSmoothing = state => state.pipeline.params?.frameSmoothing ?? null;
 
 export default pipelineSlice.reducer;

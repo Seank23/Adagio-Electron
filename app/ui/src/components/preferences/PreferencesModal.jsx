@@ -9,7 +9,6 @@ import { Spacer } from '../Panel';
 import { setPreferencesOpen } from '../../store/appSlice';
 import { usePreferenceActions } from '../../hooks/usePreferences';
 
-// antd's shell gives the focus trap, Esc, focus back on the cog and aria-modal; the rest is ours.
 const MODAL_STYLES = {
     mask: { background: 'var(--bg-scrim)' },
     container: {
@@ -40,8 +39,6 @@ const MODAL_STYLES = {
     footer: { margin: 0, padding: '12px 16px 12px 12px', borderTop: '1px solid var(--border-subtle)' },
 };
 
-// Every change applies at once, so there's no Cancel: Done, Esc, the close button and the scrim
-// all just close it. destroyOnHidden unmounts the sections, and their selectors, while closed.
 const PreferencesModal = () => {
     const dispatch = useDispatch();
     const open = useSelector(state => state.app.preferencesOpen);
@@ -82,7 +79,6 @@ const Footer = ({ onDone }) => {
     );
 };
 
-// The className lands on .ant-modal; the extra class outranks antd's own close button rules.
 const StyledModal = Styled(Modal)`
     &.ant-modal .ant-modal-close {
         top: 12px;

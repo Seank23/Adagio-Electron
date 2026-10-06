@@ -8,13 +8,14 @@ import { useKeyboardShortcuts } from '../src/hooks/useKeyboardShortcuts';
 import { usePreferences } from '../src/hooks/usePreferences';
 import { setPreferencesOpen } from '../src/store/appSlice';
 import { setTransport } from '../src/store/playbackSlice';
-import { selectFrameLength, selectHopSize, selectSampleRate } from '../src/store/pipelineSlice';
+import { selectFrameLength, selectFrameSmoothing, selectHopSize, selectSampleRate } from '../src/store/pipelineSlice';
 import { APP_VERSION, BUILD_DATE, REPO_URL, formatBuildDate } from '../src/utils/appInfo';
-import { formatAnalysisRange, formatFrame, formatHop } from '../src/utils/format';
+import { formatAnalysisRange, formatFrame, formatHop, formatSmoothing } from '../src/utils/format';
 import { makeAxis } from '../src/utils/frequencyAxis';
+import { LIMITS } from '../src/utils/protocol';
 import { FakeEngine, flush, makeStore, openTrack, renderWithEngine } from './helpers';
 
-const DEFAULTS = { sampleRate: 8000, frameLength: 4096, hopSize: 64 };
+const DEFAULTS = { sampleRate: 8000, frameLength: 4096, hopSize: 64, frameSmoothing: 4 };
 
 // What App mounts that matters here: the top bar, the modal, the shortcuts and the preferences hook.
 const Shell = () => {
@@ -126,6 +127,159 @@ describe('the Preferences modal', () => {
         expect(screen.getByText('16 ms · 62.5 frames/s')).toBeTruthy();
     });
 
+    describe('spectrum smoothing', () => {
+        const count = () => screen.getByRole('spinbutton', { name: 'Spectrum smoothing' });
+        const more = () => screen.getByRole('button', { name: 'Increase Spectrum smoothing' });
+        const fewer = () => screen.getByRole('button', { name: 'Decrease Spectrum smoothing' });
+
+        it('sends a count, saves the engine\'s answer, and moves only when the transport event says so', async () => {
+            const setPreferences = vi.fn(async patch => ({ ok: true, value: { theme: 'system', ...patch } }));
+            window.api = { setPreferences };
+            const { engine, store } = setup();
+            openModal();
+            expect(count().getAttribute('aria-valuenow')).toBe('4');
+            expect(screen.getByText('last 32 ms')).toBeTruthy();
+            fireEvent.click(more());
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{ frameSmoothing: 5 }]);
+            expect(setPreferences).toHaveBeenCalledWith({ engine: { ...DEFAULTS, frameSmoothing: 5 } });
+            expect(count().getAttribute('aria-valuenow')).toBe('4');
+            act(() => store.dispatch(setTransport({ analysis: { ...DEFAULTS, frameSmoothing: 5 } })));
+            expect(count().getAttribute('aria-valuenow')).toBe('5');
+            expect(screen.getByText('last 40 ms')).toBeTruthy();
+        });
+
+        it('steps from the value in flight when pressed quickly', async () => {
+            const { engine } = setup();
+            openModal();
+            fireEvent.click(fewer());
+            fireEvent.click(fewer());
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args))
+                .toEqual([{ frameSmoothing: 3 }, { frameSmoothing: 2 }]);
+        });
+
+        it('stops at protocol.json\'s limits, and reads 1 as off', async () => {
+            const { engine, store } = setup({ analysis: { ...DEFAULTS, frameSmoothing: LIMITS.frameSmoothingMax } });
+            openModal();
+            expect(more().disabled).toBe(true);
+            expect(fewer().disabled).toBe(false);
+            fireEvent.keyDown(count(), { key: 'ArrowUp' });
+            await flush();
+            expect(engine.sent('setEngineParams')).toEqual([]);
+
+            act(() => store.dispatch(setTransport({ analysis: { ...DEFAULTS, frameSmoothing: LIMITS.frameSmoothingMin } })));
+            expect(fewer().disabled).toBe(true);
+            expect(screen.getByText('off')).toBeTruthy();
+        });
+
+        it('takes the arrow keys, Home and End', async () => {
+            const { engine } = setup();
+            openModal();
+            for (const key of ['ArrowUp', 'ArrowDown', 'Home', 'End'])
+                expect(fireEvent.keyDown(count(), { key })).toBe(false);
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args.frameSmoothing))
+                .toEqual([5, 4, LIMITS.frameSmoothingMin, LIMITS.frameSmoothingMax]);
+        });
+
+        it('keeps its value when the engine refuses, and says why', async () => {
+            const engine = engineWithParams({ setEngineParams: () => ({ ok: false, error: 'frameSmoothing is an integer from 1 to 10.' }) });
+            const { store } = setup({ engine });
+            openModal();
+            fireEvent.click(more());
+            await flush();
+            expect(count().getAttribute('aria-valuenow')).toBe('4');
+            expect(store.getState().app.statusMessage).toEqual({ type: 'error', message: 'frameSmoothing is an integer from 1 to 10.' });
+        });
+
+        const type = text => fireEvent.change(count(), { target: { value: text } });
+
+        it('sends a typed value on Enter, and shows it only once the engine answers', async () => {
+            const { engine, store } = setup();
+            openModal();
+            type('7');
+            expect(count().value).toBe('7');
+            expect(engine.sent('setEngineParams')).toEqual([]);
+            fireEvent.keyDown(count(), { key: 'Enter' });
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{ frameSmoothing: 7 }]);
+            expect(count().getAttribute('aria-valuenow')).toBe('4');
+            act(() => store.dispatch(setTransport({ analysis: { ...DEFAULTS, frameSmoothing: 7 } })));
+            expect(count().value).toBe('7');
+            expect(count().getAttribute('aria-valuenow')).toBe('7');
+        });
+
+        it('clamps a typed value into the range', async () => {
+            const { engine } = setup();
+            openModal();
+            for (const text of ['0', '99']) {
+                type(text);
+                fireEvent.keyDown(count(), { key: 'Enter' });
+            }
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args.frameSmoothing))
+                .toEqual([LIMITS.frameSmoothingMin, LIMITS.frameSmoothingMax]);
+        });
+
+        it('takes digits only, no more than the maximum has, and sends on leaving the field', async () => {
+            const { engine } = setup();
+            openModal();
+            type('a-3.x');
+            expect(count().value).toBe('3');
+            type('1234');
+            expect(count().value).toBe('1234'.slice(0, String(LIMITS.frameSmoothingMax).length));
+            type('6');
+            fireEvent.blur(count());
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{ frameSmoothing: 6 }]);
+        });
+
+        it('sends nothing for an empty field or the value already in force, and puts the value back', async () => {
+            const { engine } = setup();
+            openModal();
+            type('');
+            fireEvent.keyDown(count(), { key: 'Enter' });
+            expect(count().value).toBe('4');
+            type('4');
+            fireEvent.blur(count());
+            await flush();
+            expect(engine.sent('setEngineParams')).toEqual([]);
+        });
+
+        it('steps from the typed value with the arrows', async () => {
+            const { engine } = setup();
+            openModal();
+            type('8');
+            fireEvent.keyDown(count(), { key: 'ArrowUp' });
+            await flush();
+            expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{ frameSmoothing: 9 }]);
+        });
+
+        it('cancels an edit on Esc without closing the dialog, and closes it on the next', async () => {
+            const { engine, store } = setup();
+            openModal();
+            await waitFor(() => expect(dialog().contains(document.activeElement)).toBe(true));
+            count().focus();
+            type('9');
+            fireEvent.keyDown(count(), { key: 'Escape', keyCode: 27 });
+            expect(count().value).toBe('4');
+            expect(store.getState().app.preferencesOpen).toBe(true);
+            fireEvent.blur(count());
+            await flush();
+            expect(engine.sent('setEngineParams')).toEqual([]);
+            fireEvent.keyDown(count(), { key: 'Escape', keyCode: 27 });
+            expect(store.getState().app.preferencesOpen).toBe(false);
+        });
+
+        it('is disabled until the engine has sent its values', () => {
+            renderWithEngine(<Harness />);
+            openModal();
+            expect(count().disabled).toBe(true);
+            expect(more().disabled).toBe(true);
+        });
+    });
+
     it('saves the engine\'s answer, not the click, and only after an ok reply', async () => {
         const setPreferences = vi.fn(async patch => ({ ok: true, value: { theme: 'system', ...patch } }));
         window.api = { setPreferences };
@@ -138,7 +292,7 @@ describe('the Preferences modal', () => {
         openModal();
         fireEvent.click(chip('Frame size', '8192'));
         await flush();
-        expect(setPreferences).toHaveBeenCalledWith({ analysis: { ...DEFAULTS, frameLength: 8192 } });
+        expect(setPreferences).toHaveBeenCalledWith({ engine: { ...DEFAULTS, frameLength: 8192 } });
 
         fireEvent.click(chip('Frame size', '2048'));
         await flush();
@@ -177,7 +331,7 @@ describe('the Preferences modal', () => {
     });
 
     it('changes the theme only on main\'s ok', async () => {
-        const answers = [{ ok: false, error: 'Couldn\'t save preferences: disk full' }, { ok: true, value: { theme: 'light', analysis: {} } }];
+        const answers = [{ ok: false, error: 'Couldn\'t save preferences: disk full' }, { ok: true, value: { theme: 'light', engine: {} } }];
         const setPreferences = vi.fn(async () => answers.shift());
         window.api = { setPreferences };
         const { store } = setup();
@@ -202,21 +356,26 @@ describe('the Preferences modal', () => {
     });
 
     it('takes the saved theme from main on mount', async () => {
-        window.api = { getPreferences: vi.fn(async () => ({ ok: true, value: { theme: 'light', analysis: {} } })) };
+        window.api = { getPreferences: vi.fn(async () => ({ ok: true, value: { theme: 'light', engine: {} } })) };
         const { store } = renderWithEngine(<Harness />);
         await flush();
         expect(store.getState().settings.themeMode).toBe('light');
     });
 
-    it('restores the defaults: System, 8 kHz, 4096 and 64', async () => {
-        const setPreferences = vi.fn(async patch => ({ ok: true, value: { theme: 'system', analysis: {}, ...patch } }));
+    it('restores the defaults: System and protocol.json\'s analysis values', async () => {
+        const setPreferences = vi.fn(async patch => ({ ok: true, value: { theme: 'system', engine: {}, ...patch } }));
         window.api = { setPreferences };
-        const { engine } = setup({ analysis: { sampleRate: 16000, frameLength: 8192, hopSize: 128 } });
+        const { engine } = setup({ analysis: { sampleRate: 16000, frameLength: 8192, hopSize: 256 } });
         openModal();
         fireEvent.click(screen.getByRole('button', { name: 'Restore defaults' }));
         await flush();
         expect(setPreferences).toHaveBeenCalledWith({ theme: 'system' });
-        expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([DEFAULTS]);
+        expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{
+            sampleRate: LIMITS.sampleRateDefault,
+            frameLength: LIMITS.frameLengthDefault,
+            hopSize: LIMITS.hopSizeDefault,
+            frameSmoothing: LIMITS.frameSmoothingDefault,
+        }]);
     });
 
     it('shows the version, the build date and the repo link, opened outside the app', () => {
@@ -233,12 +392,13 @@ describe('the Preferences modal', () => {
 describe('preferences state and readouts', () => {
     it('takes the engine\'s analysis parameters from a transport event, and keeps them when one has none', () => {
         const store = makeStore();
-        const params = () => [selectSampleRate, selectFrameLength, selectHopSize].map(select => select(store.getState()));
-        expect(params()).toEqual([null, null, null]);
-        store.dispatch(setTransport({ state: 'empty', track: null, analysis: { sampleRate: 16000, frameLength: 8192, hopSize: 32 } }));
-        expect(params()).toEqual([16000, 8192, 32]);
+        const params = () => [selectSampleRate, selectFrameLength, selectHopSize, selectFrameSmoothing]
+            .map(select => select(store.getState()));
+        expect(params()).toEqual([null, null, null, null]);
+        store.dispatch(setTransport({ state: 'empty', track: null, analysis: { sampleRate: 16000, frameLength: 8192, hopSize: 32, frameSmoothing: 6 } }));
+        expect(params()).toEqual([16000, 8192, 32, 6]);
         store.dispatch(setTransport({ state: 'ready' }));
-        expect(params()).toEqual([16000, 8192, 32]);
+        expect(params()).toEqual([16000, 8192, 32, 6]);
     });
 
     it('formats the readouts from the rate as well as their own value', () => {
@@ -249,6 +409,10 @@ describe('preferences state and readouts', () => {
         expect(formatHop(256, 4000)).toBe('64 ms · 15.6 frames/s');
         expect(formatFrame(4096, 8000)).toBe('1.95 Hz per bin · 512 ms');
         expect(formatFrame(4096, 16000)).toBe('3.91 Hz per bin · 256 ms');
+        expect(formatSmoothing(4, 128, 8000)).toBe('last 64 ms');
+        expect(formatSmoothing(10, 256, 4000)).toBe('last 640 ms');
+        expect(formatSmoothing(3, 32, 16000)).toBe('last 6 ms');
+        expect(formatSmoothing(1, 128, 8000)).toBe('off');
     });
 
     it('formats the build date as a day, in any time zone', () => {

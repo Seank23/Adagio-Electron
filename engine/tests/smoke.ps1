@@ -29,6 +29,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# The engine's defaults, from the file it was built from.
+$limits = (Get-Content -Raw (Join-Path $PSScriptRoot '../../protocol/protocol.json') | ConvertFrom-Json).limits
+$defaults = @{
+    sampleRate = $limits.sampleRateDefault; frameLength = $limits.frameLengthDefault; hopSize = $limits.hopSizeDefault
+    frameSmoothing = $limits.frameSmoothingDefault
+}
+# Any hop but the default, so setting it is a change.
+$otherHop = $limits.hopSizes | Where-Object { $_ -ne $defaults.hopSize } | Select-Object -Last 1
+# Likewise any frame smoothing count but the default.
+$otherCount = if ($defaults.frameSmoothing -lt $limits.frameSmoothingMax) { $limits.frameSmoothingMax } else { $limits.frameSmoothingMin }
+
 $script:Failures = @()
 $script:Skipped = @()
 $script:NextId = 0
@@ -468,19 +480,20 @@ try {
     Write-Host "`nEngine parameters with no file"
     Test-Case 'status reports the analysis parameters' {
         $analysis = (Get-Status).analysis
-        if ($analysis.sampleRate -ne 8000 -or $analysis.frameLength -ne 4096 -or $analysis.hopSize -ne 64) {
-            throw "expected 8000, 4096, 64, got $($analysis | ConvertTo-Json -Compress)"
+        if ($analysis.sampleRate -ne $defaults.sampleRate -or $analysis.frameLength -ne $defaults.frameLength -or $analysis.hopSize -ne $defaults.hopSize -or
+            $analysis.frameSmoothing -ne $defaults.frameSmoothing) {
+            throw "expected $($defaults | ConvertTo-Json -Compress), got $($analysis | ConvertTo-Json -Compress)"
         }
     }
 
     Test-Case 'a hop size is answered with the values and broadcast with the transport' {
         $script:Events = @()
-        $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = 128 }
+        $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = $otherHop }
         if (-not $reply.ok) { throw "refused: $($reply.error)" }
-        if ($reply.value.hopSize -ne 128 -or $reply.value.sampleRate -ne 8000) { throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)" }
+        if ($reply.value.hopSize -ne $otherHop -or $reply.value.sampleRate -ne $defaults.sampleRate) { throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)" }
         $transport = $script:Events | Where-Object { $_.type -eq 'transport' } | Select-Object -Last 1
         if ($null -eq $transport) { throw 'no transport event followed' }
-        if ($transport.value.analysis.hopSize -ne 128) { throw "the transport event carries $($transport.value.analysis.hopSize)" }
+        if ($transport.value.analysis.hopSize -ne $otherHop) { throw "the transport event carries $($transport.value.analysis.hopSize)" }
     }
 
     Test-Case 'a value off its list is refused with the list, and changes nothing' {
@@ -488,11 +501,28 @@ try {
         if ($reply.ok) { throw 'the engine accepted a hop of 100' }
         if ($reply.error -ne 'hopSize is one of 32, 64, 128 or 256.') { throw "unexpected refusal: $($reply.error)" }
         $analysis = (Get-Status).analysis
-        if ($analysis.hopSize -ne 128 -or $analysis.frameLength -ne 4096) { throw "the refusal changed $($analysis | ConvertTo-Json -Compress)" }
+        if ($analysis.hopSize -ne $otherHop -or $analysis.frameLength -ne $defaults.frameLength) { throw "the refusal changed $($analysis | ConvertTo-Json -Compress)" }
         $empty = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{}
         if ($empty.ok) { throw 'the engine accepted an empty request' }
     }
-    Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = 64 } | Out-Null
+    Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = $defaults.hopSize } | Out-Null
+
+    Test-Case 'a frame smoothing count on its own is answered and broadcast, and one out of range refused' {
+        $script:Events = @()
+        $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ frameSmoothing = $otherCount }
+        if (-not $reply.ok) { throw "refused: $($reply.error)" }
+        if ($reply.value.frameSmoothing -ne $otherCount -or $reply.value.hopSize -ne $defaults.hopSize) { throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)" }
+        $transport = $script:Events | Where-Object { $_.type -eq 'transport' } | Select-Object -Last 1
+        if ($null -eq $transport) { throw 'no transport event followed' }
+        if ($transport.value.analysis.frameSmoothing -ne $otherCount) { throw "the transport event carries $($transport.value.analysis.frameSmoothing)" }
+
+        $refused = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ frameSmoothing = $limits.frameSmoothingMax + 1 }
+        if ($refused.ok) { throw "the engine accepted a count of $($limits.frameSmoothingMax + 1)" }
+        $expected = "frameSmoothing is an integer from $($limits.frameSmoothingMin) to $($limits.frameSmoothingMax)."
+        if ($refused.error -ne $expected) { throw "unexpected refusal: $($refused.error)" }
+        if ((Get-Status).analysis.frameSmoothing -ne $otherCount) { throw 'the refusal changed the count' }
+    }
+    Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ frameSmoothing = $defaults.frameSmoothing } | Out-Null
 
     Write-Host "`nCommands with no file loaded (X5)"
     Test-Case 'play, pause, stop, clear, seek, speed, analysis on an empty engine' {
@@ -619,9 +649,10 @@ try {
             Invoke-Commands @(@('setSpeed', 1.0), 'play') | Out-Null
             Start-Sleep -Milliseconds 2000
             Get-Status | Out-Null
-            # One frame per 64-sample hop of the 8 kHz analysis stream: 125 a second at 100%.
+            # One frame per hop of the analysis stream: sampleRate / hopSize a second at 100%.
+            $expected = 2 * $defaults.sampleRate / $defaults.hopSize
             $spectrum = $script:Socket.SpectrumFrames
-            if ($spectrum -lt 175 -or $spectrum -gt 275) { throw "expected about 250 spectrum frames in 2 s, got $spectrum" }
+            if ($spectrum -lt 0.7 * $expected -or $spectrum -gt 1.1 * $expected) { throw "expected about $expected spectrum frames in 2 s, got $spectrum" }
             # One every 32 ms of wall time, whatever the frame rate: 31.25 Hz.
             $analysis = $script:Socket.AnalysisEvents
             if ($analysis -lt 55 -or $analysis -gt 70) { throw "expected about 62 analysis events in 2 s, got $analysis" }
@@ -668,8 +699,6 @@ try {
         }
 
         Write-Host "`nEngine parameters with a file open"
-        $defaults = @{ sampleRate = 8000; frameLength = 4096; hopSize = 64 }
-
         # Waits for spectrum frames sent after the last reply, so the header read is a new one.
         function Wait-NewSpectrum {
             $script:Socket.ResetCounts()
@@ -725,12 +754,12 @@ try {
         Test-Case 'the defaults come back in one request' {
             $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments $defaults
             if (-not $reply.ok) { throw "refused: $($reply.error)" }
-            if ($reply.value.sampleRate -ne 8000 -or $reply.value.frameLength -ne 4096 -or $reply.value.hopSize -ne 64) {
+            if ($reply.value.sampleRate -ne $defaults.sampleRate -or $reply.value.frameLength -ne $defaults.frameLength -or $reply.value.hopSize -ne $defaults.hopSize) {
                 throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)"
             }
         }
-        # The step cases count in 64-sample hops at 8 kHz, whatever happened above.
-        Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments $defaults | Out-Null
+        # The step cases count in 64-sample hops at 8 kHz, whatever the defaults and whatever happened above.
+        Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ sampleRate = 8000; frameLength = 4096; hopSize = 64 } | Out-Null
 
         Write-Host "`nFrame step and analysis reset"
         # One 64-sample hop of the 8 kHz analysis stream, in the fixture's 44.1 kHz samples.

@@ -82,6 +82,9 @@
         "frameLengths": [2048, 4096, 8192],
         "frameLengthDefault": 4096,
         "hopSizes": [32, 64, 128, 256],
-        "hopSizeDefault": 128
+        "hopSizeDefault": 128,
+        "frameSmoothingMin": 1,
+        "frameSmoothingMax": 10,
+        "frameSmoothingDefault": 4
     }
 }

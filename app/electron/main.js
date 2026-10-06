@@ -13,7 +13,7 @@ const WINDOW_BACKGROUND = { dark: '#121212', light: '#E8E8E8' };
 
 const isDev = !app.isPackaged;
 
-// Before ready, so every path under userData moves with it: the e2e tests give each launch its own.
+// Before ready, so every path under userData moves with it.
 if (process.env.ADAGIO_USER_DATA)
     app.setPath('userData', process.env.ADAGIO_USER_DATA);
 
@@ -25,22 +25,24 @@ let quitting = false;
 // --- Preferences: app-wide, owned here because the window and the engine need them before any page exists.
 
 const THEMES = ['system', 'dark', 'light'];
-const ANALYSIS_KEYS = ['sampleRate', 'frameLength', 'hopSize'];
+const ENGINE_KEYS = ['sampleRate', 'frameLength', 'hopSize', 'frameSmoothing'];
 const preferencesFile = () => path.join(app.getPath('userData'), 'preferences.json');
 
-// Field by field, so one bad value costs only itself. The analysis lists live in protocol.json, which
+// Field by field, so one bad value costs only itself. The engine's lists live in protocol.json, which
 // isn't packaged, so only positive integers are kept here; the engine refuses anything else at startup.
 const sanitisePreferences = raw => {
     const source = raw && typeof raw === 'object' ? raw : {};
-    const analysisSource = source.analysis && typeof source.analysis === 'object' ? source.analysis : {};
-    const analysis = {};
-    for (const key of ANALYSIS_KEYS) {
-        if (Number.isInteger(analysisSource[key]) && analysisSource[key] > 0)
-            analysis[key] = analysisSource[key];
+    // A file saved before the key was renamed keeps its values under analysis.
+    const saved = source.engine ?? source.analysis;
+    const engineSource = saved && typeof saved === 'object' ? saved : {};
+    const engine = {};
+    for (const key of ENGINE_KEYS) {
+        if (Number.isInteger(engineSource[key]) && engineSource[key] > 0)
+            engine[key] = engineSource[key];
     }
     return {
         theme: THEMES.includes(source.theme) ? source.theme : 'system',
-        analysis,
+        engine,
     };
 };
 
@@ -64,10 +66,15 @@ let preferences = sanitisePreferences(null);
 
 const windowBackground = () => WINDOW_BACKGROUND[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'];
 
-const ENGINE_ARGUMENTS = { sampleRate: '--sample-rate', frameLength: '--frame-length', hopSize: '--hop-size' };
-const analysisArguments = analysis => Object.entries(ENGINE_ARGUMENTS)
-    .filter(([key]) => analysis?.[key] !== undefined)
-    .map(([key, flag]) => `${flag}=${analysis[key]}`);
+const ENGINE_ARGUMENTS = {
+    sampleRate: '--sample-rate',
+    frameLength: '--frame-length',
+    hopSize: '--hop-size',
+    frameSmoothing: '--frame-smoothing',
+};
+const engineArguments = params => Object.entries(ENGINE_ARGUMENTS)
+    .filter(([key]) => params?.[key] !== undefined)
+    .map(([key, flag]) => `${flag}=${params[key]}`);
 
 // One secret per launch, handed to the engine on its command line and to the renderer through preload.
 const engineToken = randomBytes(32).toString('hex');
@@ -91,7 +98,7 @@ const resolveEnginePath = () => {
 
 // Resolves once the engine prints its ready line, or with a failure the window can
 // show. It never rejects: a missing engine must not stop the app from opening.
-const spawnEngine = (enginePath, analysis) => new Promise(resolve => {
+const spawnEngine = (enginePath, params) => new Promise(resolve => {
     let settled = false;
     let ready = false;
     let readyTimer = null;
@@ -107,7 +114,7 @@ const spawnEngine = (enginePath, analysis) => new Promise(resolve => {
 
     let child = null;
     try {
-        child = spawn(enginePath, [`--token=${engineToken}`, ...analysisArguments(analysis)], {
+        child = spawn(enginePath, [`--token=${engineToken}`, ...engineArguments(params)], {
             cwd: path.dirname(enginePath),
             detached: false,
             // stdin is a pipe on purpose: the engine shuts down when it reads EOF,
@@ -243,7 +250,7 @@ app.whenReady().then(async () => {
     // No window yet, so this only records the status; createWindow replays it once the
     // renderer has loaded.
     setEngineStatus(enginePath
-        ? await spawnEngine(enginePath, preferences.analysis)
+        ? await spawnEngine(enginePath, preferences.engine)
         : { state: 'external' });
     createWindow();
 });
@@ -275,13 +282,13 @@ ipcMain.handle('engine-token', () => engineTokenInUse);
 
 ipcMain.handle('get-preferences', () => ({ ok: true, value: preferences }));
 
-// A patch: { theme } or { analysis: { ... } }, merged over what is saved. The analysis values are
+// A patch: { theme } or { engine: { ... } }, merged over what is saved. The engine values are
 // the engine's answer, sent only after it accepted them; a hand-started engine never reads them.
 ipcMain.handle('set-preferences', (_, patch) => {
     const next = sanitisePreferences({
         ...preferences,
         ...patch,
-        analysis: { ...preferences.analysis, ...patch?.analysis },
+        engine: { ...preferences.engine, ...patch?.engine },
     });
     try {
         savePreferences(next);

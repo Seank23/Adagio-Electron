@@ -1,15 +1,14 @@
 import Styled from '@emotion/styled';
 import Chip from './Chip';
 
-// A row of chips with one selected: the spectrum's Log/Linear switch and the Preferences choices.
-// options: [{ value, label, icon? }]. Clicking the selected chip sends nothing.
-const Segmented = ({ label, options, value, onChange, mono = false, disabled = false }) => (
+// A row of chips with one selected. options: [{ value, label, icon? }]. Clicking the selected chip sends nothing.
+const Segmented = ({ label, options, value, onChange, font = '--font-ui', disabled = false }) => (
     <Track role="group" aria-label={label} aria-disabled={disabled || undefined}>
         {options.map(option => (
             <Chip
                 key={option.value}
                 type="button"
-                mono={mono}
+                font={font}
                 selected={option.value === value}
                 disabled={disabled}
                 onClick={() => option.value !== value && onChange(option.value)}

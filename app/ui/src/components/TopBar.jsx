@@ -76,7 +76,6 @@ const TopBar = () => {
                 <OpenButton type="button" onClick={openFile} disabled={isLoading}>
                     <FolderOpen size={16} />
                     <span>Open…</span>
-                    <Shortcut>Ctrl O</Shortcut>
                 </OpenButton>
                 {isFileOpen && (
                     <IconButton
@@ -94,8 +93,6 @@ const TopBar = () => {
 };
 export default TopBar;
 
-// It opens a dialog rather than toggling anything, so it shows the active look without aria-pressed.
-// Its tooltip would sit above the scrim, so it's held shut while the modal is open.
 const PreferencesButton = () => {
     const dispatch = useDispatch();
     const open = useSelector(state => state.app.preferencesOpen);

@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const {
-    button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows, readout, removeUserData,
+    HOP_MS, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows, readout, removeUserData,
     resize, snapshot, startEngine, stepFrames, tap,
 } = require('./harness');
 
@@ -153,7 +153,10 @@ test('repeat restarts the track at its end; without it the transport returns to 
     await expect(position(page)).toHaveText('00:00.000');
 });
 
-test('step: 125 steps are one second and build the key up; reset empties the sidebar', async () => {
+// The transport's readout of a time in ms: 2016 → '00:02.016'.
+const clock = ms => `00:${String(Math.floor(ms / 1000)).padStart(2, '0')}.${String(Math.round(ms % 1000)).padStart(3, '0')}`;
+
+test('step: each step is one hop, and 125 build the key up; reset empties the sidebar', async () => {
     session = await launch();
     const { app, page } = session;
     await openFile(app, page, fixtures.chord);
@@ -161,13 +164,13 @@ test('step: 125 steps are one second and build the key up; reset empties the sid
 
     await page.locator('body').click({ position: { x: 5, y: 300 } });
     for (let i = 0; i < 125; i++) {
-        const expected = `00:00.${String((i + 1) * 8).padStart(3, '0')}`.replace('00:00.1000', '00:01.000');
+        const expected = clock((i + 1) * HOP_MS);
         // The step gate sends at most one step every 33 ms and drops a press sooner than that.
         await page.waitForTimeout(35);
         await page.keyboard.press('.');
         await expect(position(page)).toHaveText(expected);
     }
-    await expect(position(page)).toHaveText('00:01.000');
+    await expect(position(page)).toHaveText(clock(125 * HOP_MS));
     await expect(page.getByText('—', { exact: true })).toHaveCount(0);
     await expect(button(page, 'Play')).toBeVisible();
 
@@ -177,7 +180,7 @@ test('step: 125 steps are one second and build the key up; reset empties the sid
 
     await page.waitForTimeout(35);
     await page.keyboard.press('.');
-    await expect(position(page)).toHaveText('00:01.008');
+    await expect(position(page)).toHaveText(clock(126 * HOP_MS));
 
     // While playing at 75%, a reset empties the sidebar and it fills again.
     await button(page, '75').click();
@@ -397,6 +400,7 @@ test('window size: nothing scrolls or overlaps at 1100×700, and a taller window
 });
 
 const preferencesDialog = page => page.getByRole('dialog', { name: 'Preferences' });
+const smoothing = page => preferencesDialog(page).getByRole('spinbutton', { name: 'Spectrum smoothing' });
 const preferenceChip = (page, group, name) =>
     preferencesDialog(page).getByRole('group', { name: group }).getByRole('button', { name, exact: true });
 const focusInDialog = page => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null);
@@ -446,7 +450,7 @@ test('preferences: Ctrl+, and the cog open them on any screen, Esc returns to th
     await expect(page).toHaveURL('http://localhost:5173/');
 });
 
-test('preferences survive a restart: Light, 16 kHz, frame 8192 and hop 128 reach the window and the engine', async () => {
+test('preferences survive a restart: Light, 16 kHz, frame 8192, hop 256 and smoothing 6 reach the window and the engine', async () => {
     session = await launch();
     let { app, page } = session;
     const { userData } = session;
@@ -456,11 +460,17 @@ test('preferences survive a restart: Light, 16 kHz, frame 8192 and hop 128 reach
     await preferenceChip(page, 'Theme', 'Light').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('light');
-    for (const [group, name] of [['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '128']]) {
+    for (const [group, name] of [['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '256']]) {
         await preferenceChip(page, group, name).click();
         await expect(preferenceChip(page, group, name)).toHaveAttribute('aria-pressed', 'true');
     }
-    await expect(preferencesDialog(page).getByText('8 ms · 125 frames/s')).toBeVisible();
+    // Two steps up from the default of 4, each answered before the next.
+    for (const count of ['5', '6']) {
+        await preferencesDialog(page).getByRole('button', { name: 'Increase Spectrum smoothing' }).click();
+        await expect(smoothing(page)).toHaveAttribute('aria-valuenow', count);
+    }
+    await expect(preferencesDialog(page).getByText('16 ms · 62.5 frames/s')).toBeVisible();
+    await expect(preferencesDialog(page).getByText('last 96 ms')).toBeVisible();
     await expect(preferencesDialog(page).getByText('up to 8 kHz')).toBeVisible();
     await close(app);
 
@@ -472,16 +482,19 @@ test('preferences survive a restart: Light, 16 kHz, frame 8192 and hop 128 reach
     await expect(engineIndicator(page)).toHaveText('Engine connected');
 
     await button(page, 'Preferences (Ctrl+,)').click();
-    for (const [group, name] of [['Theme', 'Light'], ['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '128']])
+    for (const [group, name] of [['Theme', 'Light'], ['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '256']])
         await expect(preferenceChip(page, group, name)).toHaveAttribute('aria-pressed', 'true');
+    await expect(smoothing(page)).toHaveAttribute('aria-valuenow', '6');
     // antd moves focus in, and so starts listening for Esc, once its zoom has ended.
     await expect.poll(() => focusInDialog(page)).toBe(true);
     await page.keyboard.press('Escape');
     await expect(preferencesDialog(page)).toBeHidden();
 
-    // 16000 / 128 is 125 frames a second.
+    // 16000 / 256 is 62.5 frames a second.
     await openFile(app, page, fixtures.chord);
     await button(page, 'Play').click();
-    await expect(page.getByText(/^Analysis 1[12]\d frames\/s · 16 kHz · 8192 pt$/)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/^Analysis (5[5-9]|6\d) frames\/s · 16 kHz · 8192 pt$/)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('50 Hz – 8 kHz')).toBeVisible();
+    // Six frames 256 samples apart at 16 kHz.
+    await expect(page.getByText('6-frame smoothing · 96 ms')).toBeVisible();
 });
