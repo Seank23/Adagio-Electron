@@ -1,4 +1,5 @@
 import { createSlice } from '@reduxjs/toolkit';
+import { setTransport } from './playbackSlice';
 import { A4_DEFAULT_HZ } from '../utils/music';
 
 export const TUNING_STAGE = 'NoteDetector';
@@ -11,6 +12,8 @@ const pipelineSlice = createSlice({
     name: 'pipeline',
     initialState: {
         stages: [],
+        // { sampleRate, frameLength, hopSize }: the engine's, from every transport event and status reply.
+        params: null,
     },
     reducers: {
         setSchema(state, action) {
@@ -22,6 +25,12 @@ const pipelineSlice = createSlice({
             if (setting)
                 setting.value = value;
         },
+    },
+    extraReducers: builder => {
+        builder.addCase(setTransport, (state, action) => {
+            if (action.payload?.analysis)
+                state.params = action.payload.analysis;
+        });
     },
 });
 
@@ -37,5 +46,9 @@ export const selectTuningHz = state => {
 export const selectTuningMin = state => selectTuningSetting(state)?.min ?? 415;
 export const selectTuningMax = state => selectTuningSetting(state)?.max ?? 466;
 export const selectHasSchema = state => state.pipeline.stages.length > 0;
+
+export const selectSampleRate = state => state.pipeline.params?.sampleRate ?? null;
+export const selectFrameLength = state => state.pipeline.params?.frameLength ?? null;
+export const selectHopSize = state => state.pipeline.params?.hopSize ?? null;
 
 export default pipelineSlice.reducer;

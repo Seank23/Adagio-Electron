@@ -25,5 +25,19 @@ export const formatOf = name => {
 // 44100 → '44.1 kHz', 48000 → '48 kHz'
 export const formatSampleRate = hz => hz ? `${Number((hz / 1000).toFixed(1))} kHz` : '';
 
+// The Preferences readouts, from the engine's values. Hop and frame follow the sample rate too.
+const oneDecimal = value => Number(value.toFixed(1));
+
+// 8000 → 'up to 4 kHz'
+export const formatAnalysisRange = sampleRate => `up to ${oneDecimal(sampleRate / 2000)} kHz`;
+
+// 64 at 8000 → '8 ms · 125 frames/s'
+export const formatHop = (hopSize, sampleRate) =>
+    `${oneDecimal(hopSize / sampleRate * 1000)} ms · ${oneDecimal(sampleRate / hopSize)} frames/s`;
+
+// 4096 at 8000 → '1.95 Hz per bin · 512 ms'
+export const formatFrame = (frameLength, sampleRate) =>
+    `${(sampleRate / frameLength).toFixed(2)} Hz per bin · ${oneDecimal(frameLength / sampleRate * 1000)} ms`;
+
 export const formatChannels = channels =>
     channels === 1 ? 'mono' : channels === 2 ? 'stereo' : channels ? `${channels} ch` : '';

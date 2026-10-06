@@ -1,20 +1,17 @@
 #pragma once
+#include "AnalysisParams.h"
+
 #include <kfr/base/univector.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <thread>
 
 namespace Adagio
 {
-	struct AnalysisParams
-	{
-		float SampleRate = 8000.0f;
-		int FrameLength = 8192;
-		int HopSize = 256;
-	};
 	struct AnalysisResult;
 
 	class PcmFeeder;
@@ -32,6 +29,7 @@ namespace Adagio
 		~AnalysisService();
 
 		void Init(std::shared_ptr<PcmFeeder> feeder, AnalysisParams params, const PlaybackService* playback);
+		void SetParams(const AnalysisParams& params);
 		void Reset();
 		void StartAnalysis();
 		void StopAnalysis();
@@ -45,19 +43,22 @@ namespace Adagio
 
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
 		static std::unique_ptr<AnalysisPipeline> CreatePipeline();
+		// The source mixed to mono and resampled to sampleRate, low-passed first when that downsamples.
+		static kfr::univector<float> Preprocess(const AudioData& source, float sampleRate);
 
 	private:
 		// A stall longer than this is a hiccup, not audio heard; it shouldn't outweigh the history.
 		static constexpr double MaxDeltaSeconds = 0.25;
-		static constexpr int FramesPerAnalysisEvent = 4;
+		// Frames arrive at sampleRate / hopSize a second, so the analysis event goes by wall time: 31.25 Hz at any setting.
+		static constexpr std::chrono::microseconds AnalysisEventInterval{ 32000 };
 
 		void BuildPipeline();
+		void LoadAnalysisBuffer();
 		double EstimatePlayhead() const;
 		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);
 		void PublishCurrentFrame();
 		void PublishSpectrum(const AnalysisResult& result);
 		bool SyncSeekGeneration();
-		void PreprocessStream(kfr::univector<float>& outStream);
 
 		std::thread m_AnalysisThread;
 		std::shared_ptr<PcmFeeder> m_Feeder;

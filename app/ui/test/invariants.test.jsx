@@ -100,6 +100,21 @@ describe('source invariants', () => {
         expect(code(readers[0].text)).toMatch(/const PositionReadout = \(\) => \{\s*const currentTime = useSelector/);
     });
 
+    it('saves no preference in browser storage: main owns them, and only devPerf\'s switch is local', () => {
+        const storage = /\b(localStorage|sessionStorage|indexedDB)\b/;
+        expect(offenders(file => storage.test(code(file.text)))).toEqual(['utils/devPerf.jsx']);
+        // The renderer reaches the preferences file only through window.api.
+        const writers = offenders(file => /\bsetPreferences\b/.test(code(file.text)));
+        expect(writers).toEqual(['utils/preferences.jsx']);
+    });
+
+    it('opens every link in a new window, which main hands to the browser, so none navigates the app', () => {
+        const anchors = sources.flatMap(file => [...code(file.text).matchAll(/<(?:a|Link)\s[^>]*href=[^>]*>/g)]
+            .map(([tag]) => ({ rel: file.rel, tag })));
+        expect(anchors.length).toBeGreaterThan(0);
+        expect(anchors.filter(({ tag }) => !tag.includes('target="_blank"')).map(({ rel }) => rel)).toEqual([]);
+    });
+
     it('sets no volume from the UI on its own: the engine owns the initial volume', () => {
         // setVolume reaches the engine only from the volume slider.
         const callers = offenders(file => file.rel !== 'engine-client/EngineCommands.jsx' && /\bsetVolume\b/.test(code(file.text)));

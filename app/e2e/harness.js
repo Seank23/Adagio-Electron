@@ -60,10 +60,19 @@ const makeFixtures = () => {
     };
 };
 
+// Every launch gets its own userData, so one test's preferences.json can't reach the next.
+// A test that relaunches passes the first launch's directory back in.
+const USER_DATA_ROOT = path.join(os.tmpdir(), `adagio-e2e-user-data-${process.pid}`);
+const makeUserData = () => {
+    fs.mkdirSync(USER_DATA_ROOT, { recursive: true });
+    return fs.mkdtempSync(path.join(USER_DATA_ROOT, 'launch-'));
+};
+const removeUserData = () => fs.rmSync(USER_DATA_ROOT, { recursive: true, force: true });
+
 // Launches the app. With engine: true, main spawns the engine (with a token), as a
 // packaged build does; otherwise main expects one started by hand.
-const launch = async ({ engine = true, size } = {}) => {
-    const env = { ...process.env, ADAGIO_E2E: '1' };
+const launch = async ({ engine = true, size, userData = makeUserData() } = {}) => {
+    const env = { ...process.env, ADAGIO_E2E: '1', ADAGIO_USER_DATA: userData };
     if (engine)
         env.ADAGIO_ENGINE_PATH = ENGINE_PATH;
     else
@@ -79,7 +88,7 @@ const launch = async ({ engine = true, size } = {}) => {
     await page.waitForLoadState('domcontentloaded');
     if (size)
         await resize(app, page, size);
-    return { app, page };
+    return { app, page, userData };
 };
 
 const close = async app => {
@@ -183,5 +192,5 @@ const pitchClassRows = page => page.getByRole('tabpanel').evaluate(panel => {
 
 module.exports = {
     SAMPLE_RATE, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows,
-    readout, resize, snapshot, startEngine, stepFrames, stubOpenDialog, tap,
+    readout, removeUserData, resize, snapshot, startEngine, stepFrames, stubOpenDialog, tap,
 };

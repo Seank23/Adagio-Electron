@@ -218,7 +218,9 @@ describe('preload', () => {
 
     it('exposes only what main can do', () => {
         const api = loadPreload({ getPathForFile: () => '' });
-        expect(Object.keys(api).sort()).toEqual(['getEngineToken', 'getPathForFile', 'onEngineStatus', 'selectAudioFile']);
+        expect(Object.keys(api).sort()).toEqual([
+            'getEngineToken', 'getPathForFile', 'getPreferences', 'onEngineStatus', 'selectAudioFile', 'setPreferences',
+        ]);
     });
 
     it('answers \'\' instead of throwing when a file has no path', () => {

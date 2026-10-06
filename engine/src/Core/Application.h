@@ -1,5 +1,6 @@
 #pragma once
 #include "TransportState.h"
+#include "../Analysis/AnalysisParams.h"
 
 #include <nlohmann/json.hpp>
 
@@ -26,7 +27,7 @@ namespace Adagio
 	class Application
 	{
 	public:
-		Application();
+		explicit Application(const AnalysisParams& analysisParams = {});
 		virtual ~Application();
 
 		void Run();
@@ -51,6 +52,8 @@ namespace Adagio
 		std::string m_TrackPath;
 		std::shared_ptr<AudioData> m_AudioData;
 		std::vector<std::string> m_WaveformFrames;
+		// What the next load uses and the loaded file runs with; the service only has a copy while a file is open.
+		AnalysisParams m_AnalysisParams;
 
 		std::atomic<TransportState> m_State{ TransportState::Empty };
 		std::atomic<bool> m_Running{ false };

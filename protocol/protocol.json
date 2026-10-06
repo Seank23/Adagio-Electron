@@ -24,6 +24,7 @@
         { "name": "analyseFrame", "cpp": "AnalyseFrame", "js": "ANALYSE_FRAME", "arg": "none" },
         { "name": "getAnalysisSchema", "cpp": "GetAnalysisSchema", "js": "GET_ANALYSIS_SCHEMA", "arg": "none" },
         { "name": "setAnalysisSetting", "cpp": "SetAnalysisSetting", "js": "SET_ANALYSIS_SETTING", "arg": "object" },
+        { "name": "setEngineParams", "cpp": "SetEngineParams", "js": "SET_ENGINE_PARAMS", "arg": "object" },
         { "name": "status", "cpp": "Status", "js": "STATUS", "arg": "none" },
         { "name": "getWaveform", "cpp": "GetWaveform", "js": "GET_WAVEFORM", "arg": "none" },
         { "name": "shutdown", "cpp": "Shutdown", "js": "SHUTDOWN", "arg": "none" }
@@ -71,10 +72,16 @@
         ]
     },
     "limits": {
-        "comment": "Volume and speed travel as normalised floats, not percentages. The sliders are the only place percentages exist.",
+        "comment": "Volume and speed travel as normalised floats, not percentages. The sliders are the only place percentages exist. The analysis sample rate, frame length and hop size are each one of their list.",
         "volumeMin": 0.0,
         "volumeMax": 1.0,
         "speedMin": 0.2,
-        "speedMax": 1.0
+        "speedMax": 1.0,
+        "sampleRates": [4000, 8000, 16000],
+        "sampleRateDefault": 8000,
+        "frameLengths": [2048, 4096, 8192],
+        "frameLengthDefault": 4096,
+        "hopSizes": [32, 64, 128, 256],
+        "hopSizeDefault": 128
     }
 }

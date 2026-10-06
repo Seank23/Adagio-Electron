@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('api', {
         }
     },
     getEngineToken: () => ipcRenderer.invoke('engine-token'),
+    // Both answer { ok, value } with the saved preferences, or { ok: false, error }.
+    getPreferences: () => ipcRenderer.invoke('get-preferences'),
+    setPreferences: patch => ipcRenderer.invoke('set-preferences', patch),
     onEngineStatus: callback => {
         const listener = (_, status) => callback(status);
         ipcRenderer.on('engine-status', listener);

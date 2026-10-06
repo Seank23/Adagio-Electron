@@ -36,6 +36,7 @@ namespace
 		CommandType::ResetAnalysis,
 		CommandType::GetAnalysisSchema,
 		CommandType::SetAnalysisSetting,
+		CommandType::SetEngineParams,
 		CommandType::Status,
 		CommandType::GetWaveform,
 		CommandType::Shutdown
@@ -43,7 +44,7 @@ namespace
 
 	// Rows are commands in AllCommands order, columns are states in AllStates order:
 	//                          Empty  Loading  Ready  Playing  Paused
-	const bool Legal[16][5] = {
+	const bool Legal[17][5] = {
 		/* Play              */ { false, false,  true,  true,    true  },
 		/* Pause             */ { false, false,  false, true,    true  },
 		/* Stop              */ { false, false,  true,  true,    true  },
@@ -59,6 +60,8 @@ namespace
 		// The analysis settings belong to the pipeline, which outlives the file.
 		/* GetAnalysisSchema */ { true,  true,   true,  true,    true  },
 		/* SetAnalysisSetting*/ { true,  true,   true,  true,    true  },
+		// With no file it stores the values for the next load; mid-load the analysis is being built.
+		/* SetEngineParams   */ { true,  false,  true,  true,    true  },
 		/* Status            */ { true,  true,   true,  true,    true  },
 		// Resends the loaded file's waveform, so there has to be one.
 		/* GetWaveform       */ { false, false,  true,  true,    true  },
@@ -133,8 +136,8 @@ TEST_CASE("Only the transport commands move the transport")
 		for (CommandType command : { CommandType::Seek, CommandType::SetVolume, CommandType::SetSpeed,
 									 CommandType::AnalyseFrame, CommandType::StepFrame, CommandType::ResetAnalysis,
 									 CommandType::GetAnalysisSchema,
-									 CommandType::SetAnalysisSetting, CommandType::Status, CommandType::GetWaveform,
-										 CommandType::Shutdown })
+									 CommandType::SetAnalysisSetting, CommandType::SetEngineParams, CommandType::Status,
+									 CommandType::GetWaveform, CommandType::Shutdown })
 		{
 			CAPTURE(Adagio::ToString(state));
 			CAPTURE(Adagio::ToString(command));

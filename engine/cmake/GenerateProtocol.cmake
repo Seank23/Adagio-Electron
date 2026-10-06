@@ -27,6 +27,20 @@ function(adagio_format_float input output)
 	set(${output} "${value}" PARENT_SCOPE)
 endfunction()
 
+# [4000, 8000, 16000] -> "4000, 8000, 16000", and its length.
+function(adagio_int_list json key output count_output)
+	string(JSON count LENGTH "${json}" ${key})
+	set(values "")
+	math(EXPR last "${count} - 1")
+	foreach(index RANGE ${last})
+		string(JSON value GET "${json}" ${key} ${index})
+		list(APPEND values "${value}")
+	endforeach()
+	list(JOIN values ", " values)
+	set(${output} "${values}" PARENT_SCOPE)
+	set(${count_output} "${count}" PARENT_SCOPE)
+endfunction()
+
 function(adagio_generate_protocol_header json_path header_path)
 	file(READ "${json_path}" protocol)
 
@@ -46,6 +60,12 @@ function(adagio_generate_protocol_header json_path header_path)
 	adagio_format_float("${volume_max}" volume_max)
 	adagio_format_float("${speed_min}" speed_min)
 	adagio_format_float("${speed_max}" speed_max)
+	adagio_int_list("${limits}" sampleRates sample_rates sample_rate_count)
+	adagio_int_list("${limits}" frameLengths frame_lengths frame_length_count)
+	adagio_int_list("${limits}" hopSizes hop_sizes hop_size_count)
+	string(JSON sample_rate_default GET "${limits}" sampleRateDefault)
+	string(JSON frame_length_default GET "${limits}" frameLengthDefault)
+	string(JSON hop_size_default GET "${limits}" hopSizeDefault)
 
 	set(commands "")
 	string(JSON command_count LENGTH "${protocol}" commands)
@@ -149,6 +169,14 @@ namespace Adagio
 		constexpr float VolumeMax = ${volume_max}f;
 		constexpr float SpeedMin = ${speed_min}f;
 		constexpr float SpeedMax = ${speed_max}f;
+
+		// The analysis parameters a client may choose, each from its own list.
+		constexpr std::array<int, ${sample_rate_count}> SampleRates = { ${sample_rates} };
+		constexpr int SampleRateDefault = ${sample_rate_default};
+		constexpr std::array<int, ${frame_length_count}> FrameLengths = { ${frame_lengths} };
+		constexpr int FrameLengthDefault = ${frame_length_default};
+		constexpr std::array<int, ${hop_size_count}> HopSizes = { ${hop_sizes} };
+		constexpr int HopSizeDefault = ${hop_size_default};
 
 		// A browser page always sends an Origin; anything not on this list is not the
 		// renderer and is refused before it can queue a command.

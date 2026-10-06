@@ -4,8 +4,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const {
-    button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows, readout, resize,
-    snapshot, startEngine, stepFrames, tap,
+    button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows, readout, removeUserData,
+    resize, snapshot, startEngine, stepFrames, tap,
 } = require('./harness');
 
 let fixtures;
@@ -14,6 +14,7 @@ test.beforeAll(() => {
 });
 test.afterAll(() => {
     fs.rmSync(fixtures.dir, { recursive: true, force: true });
+    removeUserData();
 });
 
 let session;
@@ -393,4 +394,94 @@ test('window size: nothing scrolls or overlaps at 1100×700, and a taller window
         const tall = await heights();
         return tall.timeline > small.timeline && tall.spectrum > small.spectrum && tall.keyboard > small.keyboard;
     }).toBe(true);
+});
+
+const preferencesDialog = page => page.getByRole('dialog', { name: 'Preferences' });
+const preferenceChip = (page, group, name) =>
+    preferencesDialog(page).getByRole('group', { name: group }).getByRole('button', { name, exact: true });
+const focusInDialog = page => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null);
+
+test('preferences: Ctrl+, and the cog open them on any screen, Esc returns to the cog, the repo link opens the browser', async () => {
+    session = await launch();
+    const { app, page } = session;
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    const dialog = preferencesDialog(page);
+    const cog = button(page, 'Preferences (Ctrl+,)');
+
+    // The empty screen.
+    await page.locator('body').click({ position: { x: 5, y: 300 } });
+    await page.keyboard.press('Control+,');
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => focusInDialog(page)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+
+    // While playing: the modal owns the keyboard, so Space doesn't pause behind it.
+    await openFile(app, page, fixtures.chord);
+    await button(page, 'Play').click();
+    await expect(button(page, 'Pause')).toBeVisible();
+    await cog.click();
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => focusInDialog(page)).toBe(true);
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(300);
+    await expect(button(page, 'Pause')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(cog).toBeFocused();
+
+    // Main hands github.com to the default browser and opens no window of its own.
+    await app.evaluate(({ shell }) => {
+        globalThis.openedExternally = [];
+        shell.openExternal = async url => {
+            globalThis.openedExternally.push(url);
+        };
+    });
+    await cog.click();
+    await expect(dialog.getByText(/^Version 0\.1\.0 · Updated \d{1,2} \w+ \d{4}$/)).toBeVisible();
+    await dialog.getByRole('link', { name: /github\.com\/Seank23\/Adagio-Electron/ }).click();
+    await expect.poll(() => app.evaluate(() => globalThis.openedExternally)).toEqual(['https://github.com/Seank23/Adagio-Electron']);
+    expect(app.windows()).toHaveLength(1);
+    await expect(page).toHaveURL('http://localhost:5173/');
+});
+
+test('preferences survive a restart: Light, 16 kHz, frame 8192 and hop 128 reach the window and the engine', async () => {
+    session = await launch();
+    let { app, page } = session;
+    const { userData } = session;
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    await button(page, 'Preferences (Ctrl+,)').click();
+
+    await preferenceChip(page, 'Theme', 'Light').click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('light');
+    for (const [group, name] of [['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '128']]) {
+        await preferenceChip(page, group, name).click();
+        await expect(preferenceChip(page, group, name)).toHaveAttribute('aria-pressed', 'true');
+    }
+    await expect(preferencesDialog(page).getByText('8 ms · 125 frames/s')).toBeVisible();
+    await expect(preferencesDialog(page).getByText('up to 8 kHz')).toBeVisible();
+    await close(app);
+
+    session = await launch({ userData });
+    ({ app, page } = session);
+    // Main set the theme before the window existed, so the page starts light.
+    expect(await page.evaluate(() => matchMedia('(prefers-color-scheme: light)').matches)).toBe(true);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+
+    await button(page, 'Preferences (Ctrl+,)').click();
+    for (const [group, name] of [['Theme', 'Light'], ['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '128']])
+        await expect(preferenceChip(page, group, name)).toHaveAttribute('aria-pressed', 'true');
+    // antd moves focus in, and so starts listening for Esc, once its zoom has ended.
+    await expect.poll(() => focusInDialog(page)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(preferencesDialog(page)).toBeHidden();
+
+    // 16000 / 128 is 125 frames a second.
+    await openFile(app, page, fixtures.chord);
+    await button(page, 'Play').click();
+    await expect(page.getByText(/^Analysis 1[12]\d frames\/s · 16 kHz · 8192 pt$/)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('50 Hz – 8 kHz')).toBeVisible();
 });

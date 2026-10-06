@@ -41,9 +41,28 @@ namespace Adagio
 		m_Playback = playback;
 		m_Params = params;
 		m_AudioSource = m_Feeder->GetAudioSource();
+		LoadAnalysisBuffer();
+	}
 
-		kfr::univector<float> preprocessed;
-		PreprocessStream(preprocessed);
+	void AnalysisService::SetParams(const AnalysisParams& params)
+	{
+		// The thread reads m_Params and the buffer on every pass, and its spectrum average holds vectors of the old bin
+		// count, so it never sees a change: it stops, and a new one starts clean. PersistentData is kept.
+		const bool wasRunning = m_Running.load(std::memory_order_acquire);
+		StopAnalysis();
+
+		const bool rateChanged = params.SampleRate != m_Params.SampleRate;
+		m_Params = params;
+		if (rateChanged && m_AudioSource)
+			LoadAnalysisBuffer();
+
+		if (wasRunning)
+			StartAnalysis();
+	}
+
+	void AnalysisService::LoadAnalysisBuffer()
+	{
+		const kfr::univector<float> preprocessed = Preprocess(*m_AudioSource, m_Params.SampleRate);
 		m_AnalysisBuffer = std::make_unique<RingBuffer<float>>(preprocessed.size());
 		m_AnalysisBuffer->Write(preprocessed.data(), preprocessed.size());
 	}
@@ -101,7 +120,7 @@ namespace Adagio
 		m_AnalysisThread = std::thread([this]()
 		{
 			std::vector<kfr::univector<float>> rollingAvg;
-			int framesSinceJson = 0;
+			auto lastAnalysisEvent = std::chrono::steady_clock::now() - AnalysisEventInterval;
 			HighResolutionTimer timer;
 			bool anchored = false;
 			while (m_Running)
@@ -153,10 +172,15 @@ namespace Adagio
 					}
 					PublishSpectrum(*result);
 
-					// Analysis follow the spectrum at a display rate. Frames come at a fixed wall-clock rate at any speed, so counting them keeps that rate too.
-					if (framesSinceJson == 0)
+					// The interval is added rather than reset to now, so frames that land just past it don't stretch every
+					// period. Frames further apart than two intervals send one each.
+					const auto now = std::chrono::steady_clock::now();
+					const auto sinceEvent = now - lastAnalysisEvent;
+					if (sinceEvent >= AnalysisEventInterval)
+					{
 						MessageQueue::GetInstance().Push(AnalysisPipeline::GetResultJson(*result).dump());
-					framesSinceJson = (framesSinceJson + 1) % FramesPerAnalysisEvent;
+						lastAnalysisEvent = sinceEvent >= 2 * AnalysisEventInterval ? now : lastAnalysisEvent + AnalysisEventInterval;
+					}
 					m_LastAnalysisStreamPos = stalled ? analysisStreamPos : m_LastAnalysisStreamPos + hopSamples;
 				}
 				else
@@ -256,11 +280,11 @@ namespace Adagio
 		return m_Pipeline->ProcessFrame(frame);
 	}
 
-	void AnalysisService::PreprocessStream(kfr::univector<float>& outStream)
+	kfr::univector<float> AnalysisService::Preprocess(const AudioData& source, float sampleRate)
 	{
-		auto& sourcePcm = m_AudioSource->PCMData;
-		size_t sourceSamples = m_AudioSource->SamplesPerChannel;
-		int channels = m_AudioSource->Channels;
+		const auto& sourcePcm = source.PCMData;
+		const size_t sourceSamples = source.SamplesPerChannel;
+		const int channels = source.Channels;
 
 		// Mix down to mono. If multichannel, average channels.
 		kfr::univector<float> mono(sourceSamples);
@@ -276,22 +300,22 @@ namespace Adagio
 				float sum = 0.0f;
 				for (int c = 0; c < channels; ++c)
 					sum += sourcePcm[c][i];
-				mono[i] = sum / static_cast<float>(channels);
+				mono[i] = sum / (float)channels;
 			}
 		}
-		if (m_Params.SampleRate == m_AudioSource->SampleRate)
-		{
-			outStream = std::move(mono);
-			return;
-		}
-		// Filter to prevent aliasing before resampling
-		auto filterParams = kfr::to_sos<float>(kfr::iir_lowpass(kfr::butterworth<float>(12), m_Params.SampleRate / 2.0f, m_AudioSource->SampleRate));
-		kfr::univector<float> filtered = kfr::iir(mono, filterParams);
+		if (sampleRate == source.SampleRate)
+			return mono;
 
-		// Resample to target sample rate
-		kfr::samplerate_converter<float> resampler = kfr::resampler<float>(kfr::resample_quality::high, m_Params.SampleRate, m_AudioSource->SampleRate);
-		size_t outputSamples = resampler.output_size_for_input(sourceSamples);
-		outStream.resize(outputSamples);
-		resampler.process(outStream, filtered);
+		// The anti-alias filter only when downsampling: upsampling would put its cutoff above the source's own Nyquist.
+		if (sampleRate < source.SampleRate)
+		{
+			auto filterParams = kfr::to_sos<float>(kfr::iir_lowpass(kfr::butterworth<float>(12), sampleRate / 2.0f, source.SampleRate));
+			mono = kfr::iir(mono, filterParams);
+		}
+
+		kfr::samplerate_converter<float> resampler = kfr::resampler<float>(kfr::resample_quality::high, (size_t)sampleRate, (size_t)source.SampleRate);
+		kfr::univector<float> resampled(resampler.output_size_for_input(sourceSamples));
+		resampler.process(resampled, mono);
+		return resampled;
 	}
 }

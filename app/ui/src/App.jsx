@@ -9,20 +9,25 @@ import SpectrumPanel from './components/SpectrumPanel';
 import NoteActivityPanel from './components/NoteActivityPanel';
 import Sidebar from './components/sidebar/Sidebar';
 import EmptyState from './components/EmptyState';
+import PreferencesModal from './components/preferences/PreferencesModal';
 import { selectIsFileOpen } from './store/playbackSlice';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useLoadFile } from './hooks/useOpenFile';
 import { useFileDrop } from './hooks/useFileDrop';
+import { usePreferences } from './hooks/usePreferences';
 
 const App = () => {
     const isFileOpen = useSelector(selectIsFileOpen);
     const loadFile = useLoadFile();
     const isDragging = useFileDrop({ onFile: loadFile });
     useKeyboardShortcuts();
+    usePreferences();
 
     return (
         <>
             <EngineEventRouter />
+            {/* Beside the grid, so the empty screen can open it too. */}
+            <PreferencesModal />
             <Shell fileOpen={isFileOpen}>
                 <TopBar />
                 <TimelineGroup fileOpen={isFileOpen}>

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from 'react-redux';
 import { selectIsFileOpen, selectIsPlaying } from '../store/playbackSlice';
+import { setPreferencesOpen } from '../store/appSlice';
 import { useEngineCommands } from './useEngineCommands';
 import { useReport } from './useReport';
 import { useOpenFile } from './useOpenFile';
@@ -27,11 +28,19 @@ export const useKeyboardShortcuts = () => {
     useEffect(() => {
         let stepFailed = false;
 
+        // The Preferences modal owns the keyboard while it's open; antd handles its Esc.
+        const preferencesOpen = () => store.getState().app.preferencesOpen;
+
         const onKeyDown = event => {
-            if (ownsKeys(event.target))
+            if (preferencesOpen() || ownsKeys(event.target))
                 return;
 
             const command = event.ctrlKey || event.metaKey;
+            if (command && !event.altKey && !event.shiftKey && event.key === ',') {
+                event.preventDefault();
+                store.dispatch(setPreferencesOpen(true));
+                return;
+            }
             if (command && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'o') {
                 event.preventDefault();
                 if (!event.repeat)
@@ -75,9 +84,10 @@ export const useKeyboardShortcuts = () => {
             }
         };
 
-        // A button activates on Space's keyup, so that is cancelled too.
+        // A button activates on Space's keyup, so that is cancelled too, except in the modal,
+        // where Space has to press the focused chip.
         const onKeyUp = event => {
-            if (event.key === ' ' && !ownsKeys(event.target))
+            if (event.key === ' ' && !preferencesOpen() && !ownsKeys(event.target))
                 event.preventDefault();
         };
 

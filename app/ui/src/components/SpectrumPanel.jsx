@@ -1,7 +1,7 @@
 import Styled from '@emotion/styled';
 import { useDispatch, useSelector } from 'react-redux';
 import { Panel, PanelHeader, Spacer } from './Panel';
-import Chip from './controls/Chip';
+import Segmented from './controls/Segmented';
 import Caption from './controls/Caption';
 import SpectrumCanvas from './SpectrumCanvas';
 import TuningControl from './TuningControl';
@@ -10,8 +10,8 @@ import { selectAnalysisRate } from '../store/analysisSlice';
 import { MIN_FREQ } from '../constants';
 
 const SCALES = [
-    { label: 'Log', log: true },
-    { label: 'Linear', log: false },
+    { label: 'Log', value: true },
+    { label: 'Linear', value: false },
 ];
 
 // 50, 4000 → '50 Hz – 4 kHz'
@@ -26,18 +26,12 @@ const SpectrumPanel = () => {
     return (
         <Panel>
             <PanelHeader title="Spectrum">
-                <Segmented role="group" aria-label="Frequency scale">
-                    {SCALES.map(({ label, log }) => (
-                        <Chip
-                            key={label}
-                            type="button"
-                            selected={showLogScale === log}
-                            onClick={() => dispatch(setShowLogScale(log))}
-                        >
-                            {label}
-                        </Chip>
-                    ))}
-                </Segmented>
+                <Segmented
+                    label="Frequency scale"
+                    options={SCALES}
+                    value={showLogScale}
+                    onChange={log => dispatch(setShowLogScale(log))}
+                />
                 {spectrumRate > 0 && <Range>{formatRange(MIN_FREQ, spectrumRate / 2)}</Range>}
                 <Spacer />
                 <TuningControl />
@@ -64,14 +58,6 @@ const ChordBadge = () => {
         </Badge>
     );
 };
-
-const Segmented = Styled.div`
-    display: flex;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 6px;
-    background: var(--bg-surface);
-`;
 
 const Range = Styled.span`
     white-space: nowrap;

@@ -7,6 +7,8 @@ const appSlice = createSlice({
         connectionState: 'connecting',
         engineStatus: {state: 'starting', error: ''},
         loadingFile: '',
+        // Transient UI, not a preference: never saved.
+        preferencesOpen: false,
     },
     reducers: {
         setStatusMessage: (state, action) => {
@@ -24,6 +26,9 @@ const appSlice = createSlice({
         setLoadingFile: (state, action) => {
             state.loadingFile = action.payload;
         },
+        setPreferencesOpen: (state, action) => {
+            state.preferencesOpen = action.payload;
+        },
     },
 });
 
@@ -33,5 +38,6 @@ export const {
     setConnectionState,
     setEngineStatus,
     setLoadingFile,
+    setPreferencesOpen,
 } = appSlice.actions;
 export default appSlice.reducer;

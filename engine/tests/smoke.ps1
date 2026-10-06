@@ -24,7 +24,7 @@
 param(
     [string]$EnginePath = (Join-Path $PSScriptRoot '../build/Release/AdagioEngine.exe'),
     [int]$Port = 9001,
-    # A Uint16 spectrum every 64-sample hop (125 Hz) plus the 30 Hz analysis event.
+    # A Uint16 spectrum every 64-sample hop (125 Hz) plus the 31.25 Hz analysis event, at the default parameters.
     [double]$ThroughputBudgetKBps = 768
 )
 
@@ -64,12 +64,17 @@ public class AdagioSocket
     private int _analysisEvents;
     private int _endOfPlayEvents;
     private int _positionEvents;
+    private int _lastSpectrumCount;
+    private float _lastSpectrumResolution;
 
     public int SpectrumFrames { get { return Volatile.Read(ref _spectrumFrames); } }
     public int WaveformFrames { get { return Volatile.Read(ref _waveformFrames); } }
     public int AnalysisEvents { get { return Volatile.Read(ref _analysisEvents); } }
     public int EndOfPlayEvents { get { return Volatile.Read(ref _endOfPlayEvents); } }
     public int PositionEvents { get { return Volatile.Read(ref _positionEvents); } }
+    // The newest spectrum frame's header: its bin count, and its Hz per bin.
+    public int LastSpectrumCount { get { return Volatile.Read(ref _lastSpectrumCount); } }
+    public float LastSpectrumResolution { get { return Volatile.Read(ref _lastSpectrumResolution); } }
     public void ResetCounts()
     {
         Interlocked.Exchange(ref _spectrumFrames, 0);
@@ -117,6 +122,8 @@ public class AdagioSocket
                 WebSocketReceiveResult result;
                 bool binary = false;
                 int kind = -1;
+                int count = 0;
+                float resolution = 0;
                 do
                 {
                     var task = _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancel.Token);
@@ -129,8 +136,13 @@ public class AdagioSocket
                     }
                     if (result.MessageType == WebSocketMessageType.Binary)
                     {
-                        // The kind is the frame's first byte, so only the first fragment matters.
+                        // The header is in the first fragment: kind at 0, resolution at 16, count at 24.
                         if (!binary && result.Count > 0) kind = buffer[0];
+                        if (!binary && result.Count >= 32)
+                        {
+                            resolution = BitConverter.ToSingle(buffer, 16);
+                            count = BitConverter.ToInt32(buffer, 24);
+                        }
                         binary = true;
                         continue;
                     }
@@ -140,7 +152,12 @@ public class AdagioSocket
 
                 if (binary)
                 {
-                    if (kind == 1) Interlocked.Increment(ref _spectrumFrames);
+                    if (kind == 1)
+                    {
+                        Volatile.Write(ref _lastSpectrumCount, count);
+                        Volatile.Write(ref _lastSpectrumResolution, resolution);
+                        Interlocked.Increment(ref _spectrumFrames);
+                    }
                     else if (kind == 2) Interlocked.Increment(ref _waveformFrames);
                     continue;
                 }
@@ -448,6 +465,35 @@ try {
         if ($window.value -ne 'Hann') { throw "the schema still reports $($window.value)" }
     }
 
+    Write-Host "`nEngine parameters with no file"
+    Test-Case 'status reports the analysis parameters' {
+        $analysis = (Get-Status).analysis
+        if ($analysis.sampleRate -ne 8000 -or $analysis.frameLength -ne 4096 -or $analysis.hopSize -ne 64) {
+            throw "expected 8000, 4096, 64, got $($analysis | ConvertTo-Json -Compress)"
+        }
+    }
+
+    Test-Case 'a hop size is answered with the values and broadcast with the transport' {
+        $script:Events = @()
+        $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = 128 }
+        if (-not $reply.ok) { throw "refused: $($reply.error)" }
+        if ($reply.value.hopSize -ne 128 -or $reply.value.sampleRate -ne 8000) { throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)" }
+        $transport = $script:Events | Where-Object { $_.type -eq 'transport' } | Select-Object -Last 1
+        if ($null -eq $transport) { throw 'no transport event followed' }
+        if ($transport.value.analysis.hopSize -ne 128) { throw "the transport event carries $($transport.value.analysis.hopSize)" }
+    }
+
+    Test-Case 'a value off its list is refused with the list, and changes nothing' {
+        $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = 100; frameLength = 8192 }
+        if ($reply.ok) { throw 'the engine accepted a hop of 100' }
+        if ($reply.error -ne 'hopSize is one of 32, 64, 128 or 256.') { throw "unexpected refusal: $($reply.error)" }
+        $analysis = (Get-Status).analysis
+        if ($analysis.hopSize -ne 128 -or $analysis.frameLength -ne 4096) { throw "the refusal changed $($analysis | ConvertTo-Json -Compress)" }
+        $empty = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{}
+        if ($empty.ok) { throw 'the engine accepted an empty request' }
+    }
+    Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ hopSize = 64 } | Out-Null
+
     Write-Host "`nCommands with no file loaded (X5)"
     Test-Case 'play, pause, stop, clear, seek, speed, analysis on an empty engine' {
         $status = Invoke-Commands @('play', 'pause', 'stop', 'clear', 'analyseFrame', 'stepFrame', 'resetAnalysis', 'getWaveform',
@@ -567,7 +613,7 @@ try {
             if ($script:Socket.WaveformFrames -ne 6) { throw "expected 6 waveform frames before the reply, got $($script:Socket.WaveformFrames)" }
         }
 
-        Test-Case 'playback streams spectrum frames and a 30 Hz analysis event without a spectrum' {
+        Test-Case 'playback streams spectrum frames and a 31 Hz analysis event without a spectrum' {
             $script:Events = @()
             $script:Socket.ResetCounts()
             Invoke-Commands @(@('setSpeed', 1.0), 'play') | Out-Null
@@ -576,11 +622,9 @@ try {
             # One frame per 64-sample hop of the 8 kHz analysis stream: 125 a second at 100%.
             $spectrum = $script:Socket.SpectrumFrames
             if ($spectrum -lt 175 -or $spectrum -gt 275) { throw "expected about 250 spectrum frames in 2 s, got $spectrum" }
+            # One every 32 ms of wall time, whatever the frame rate: 31.25 Hz.
             $analysis = $script:Socket.AnalysisEvents
-            # One per 4 spectrum frames: 31.25 Hz.
-            $expected = $spectrum / 4
-            if ($analysis -lt $expected - 3 -or $analysis -gt $expected + 3) { throw "expected one analysis event per 4 spectrum frames ($expected), got $analysis" }
-            if ($analysis -lt 58) { throw "expected at least 58 analysis events in 2 s, got $analysis" }
+            if ($analysis -lt 55 -or $analysis -gt 70) { throw "expected about 62 analysis events in 2 s, got $analysis" }
             $event = $script:Events | Where-Object { $_.type -eq 'analysis' } | Select-Object -First 1
             if ($null -eq $event) { throw 'no analysis event reached the reader' }
             if ($null -ne $event.value.magnitudes) { throw 'the analysis event still carries the spectrum' }
@@ -622,6 +666,71 @@ try {
             if ($underruns -ne 0) { throw "expected no underruns in 3 s, got $underruns" }
             Invoke-Commands @(, @('setSpeed', 1.0)) | Out-Null
         }
+
+        Write-Host "`nEngine parameters with a file open"
+        $defaults = @{ sampleRate = 8000; frameLength = 4096; hopSize = 64 }
+
+        # Waits for spectrum frames sent after the last reply, so the header read is a new one.
+        function Wait-NewSpectrum {
+            $script:Socket.ResetCounts()
+            $deadline = (Get-Date).AddMilliseconds(2000)
+            while ((Get-Date) -lt $deadline -and $script:Socket.SpectrumFrames -lt 3) { Start-Sleep -Milliseconds 10 }
+            if ($script:Socket.SpectrumFrames -lt 3) { throw 'no spectrum frames followed' }
+            return @{ count = $script:Socket.LastSpectrumCount; resolution = $script:Socket.LastSpectrumResolution }
+        }
+
+        Test-Case 'values set with no file apply to the next load' {
+            Invoke-Commands @('clear', @('setEngineParams', @{ sampleRate = 16000 })) | Out-Null
+            $status = Invoke-Commands @(, @('load', $longTonePath))
+            if ($status.state -ne 'ready') { throw "expected ready, got $($status.state)" }
+            if ($status.track.analysisSampleRate -ne 16000) { throw "the load analysed at $($status.track.analysisSampleRate)" }
+            Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ sampleRate = 8000 } | Out-Null
+        }
+
+        Test-Case 'a longer frame while playing doubles the spectrum, and the engine keeps answering' {
+            Invoke-Commands @(@('seek', 0.0), 'play') | Out-Null
+            $before = Wait-NewSpectrum
+            $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ frameLength = 8192 }
+            if (-not $reply.ok) { throw "refused: $($reply.error)" }
+            $after = Wait-NewSpectrum
+            if ($after.count -ne 2 * $before.count) { throw "expected $(2 * $before.count) bins, got $($after.count)" }
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "expected playing, got $($status.state)" }
+        }
+
+        Test-Case 'a new sample rate while playing keeps the bins and doubles their width' {
+            $before = Wait-NewSpectrum
+            $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ sampleRate = 16000 }
+            if (-not $reply.ok) { throw "refused: $($reply.error)" }
+            $after = Wait-NewSpectrum
+            if ($after.count -ne $before.count) { throw "expected $($before.count) bins, got $($after.count)" }
+            if ([Math]::Abs($after.resolution - 2 * $before.resolution) -gt 1e-3) { throw "expected $(2 * $before.resolution) Hz per bin, got $($after.resolution)" }
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "expected playing, got $($status.state)" }
+            if ($status.track.analysisSampleRate -ne 16000) { throw "the track reports $($status.track.analysisSampleRate)" }
+        }
+
+        Test-Case 'at 16 kHz and hop 32, about 500 frames a second and still about 31 analysis events' {
+            Invoke-Commands @(@('setEngineParams', @{ hopSize = 32; frameLength = 4096 }), @('seek', 0.0)) | Out-Null
+            Start-Sleep -Milliseconds 300
+            $script:Socket.ResetCounts()
+            Start-Sleep -Milliseconds 2000
+            $spectrum = $script:Socket.SpectrumFrames
+            $analysis = $script:Socket.AnalysisEvents
+            Write-Host "$spectrum frames, $analysis events " -NoNewline
+            if ($spectrum -lt 800 -or $spectrum -gt 1100) { throw "expected about 1000 spectrum frames in 2 s, got $spectrum" }
+            if ($analysis -lt 55 -or $analysis -gt 70) { throw "expected about 62 analysis events in 2 s, got $analysis" }
+        }
+
+        Test-Case 'the defaults come back in one request' {
+            $reply = Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments $defaults
+            if (-not $reply.ok) { throw "refused: $($reply.error)" }
+            if ($reply.value.sampleRate -ne 8000 -or $reply.value.frameLength -ne 4096 -or $reply.value.hopSize -ne 64) {
+                throw "unexpected reply: $($reply.value | ConvertTo-Json -Compress)"
+            }
+        }
+        # The step cases count in 64-sample hops at 8 kHz, whatever happened above.
+        Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments $defaults | Out-Null
 
         Write-Host "`nFrame step and analysis reset"
         # One 64-sample hop of the 8 kHz analysis stream, in the fixture's 44.1 kHz samples.

@@ -15,6 +15,10 @@ Requirements:
 - Nothing already on port 5173 other than this repo's Vite: the config reuses a running dev
   server.
 
+Every launch gets its own `userData` directory through `ADAGIO_USER_DATA`, so one test's
+`preferences.json` (a Light theme, a 16 kHz analysis) never reaches the next. The restart
+test passes the first launch's directory back in.
+
 The fixtures are WAV files generated at 48 kHz in a temp directory: a C major chord (40 s
 and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is exactly 384 samples, so
 125 steps come to exactly one second.
@@ -35,6 +39,7 @@ and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is exactly 384 sample
 | Tuning | tuning: a tone at 452.9 Hz… |
 | Empty and drop | empty state: Close brings the drop card back… |
 | Window size | window size: nothing scrolls or overlaps… |
+| Preferences | preferences: Ctrl+, and the cog open them… · preferences survive a restart… |
 
 Also covered beyond §7: the engine starts at 20% volume, and a seek keeps the analysis.
 
@@ -42,8 +47,12 @@ Also covered beyond §7: the engine starts at 20% volume, and a seek keeps the a
 
 These need eyes, a second client, or a real drag from Explorer:
 
-- **Both themes.** The suite runs in whatever theme the OS has. The palette and the
-  "no colour literals" rule are unit tested, but how each theme looks isn't.
+- **Both themes.** The suite runs in whatever theme the OS has, apart from the Preferences
+  test that switches to Light. The palette and the "no colour literals" rule are unit tested,
+  but how each theme looks isn't, and nor is the window frame or System following Windows.
+- **A hand-started engine ignores the saved analysis values.** Only an engine main spawns
+  gets `--sample-rate`, `--frame-length` and `--hop-size`; the modal then shows the
+  engine's own values.
 - **A reset seen by two clients.** The engine broadcasts `analysisReset` to every client,
   which `smoke.ps1` checks. A second UI on the same spawned engine needs the token, so
   isn't automated here.

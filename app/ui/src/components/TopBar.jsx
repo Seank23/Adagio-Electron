@@ -1,10 +1,12 @@
 import Styled from '@emotion/styled';
-import { useSelector } from 'react-redux';
-import { Eraser, FolderOpen, Music, Pause, Play, SkipBack, Square, StepForward, X } from 'lucide-react';
+import { useDispatch, useSelector } from 'react-redux';
+import { Eraser, FolderOpen, Music, Pause, Play, Settings, SkipBack, Square, StepForward, X } from 'lucide-react';
 import { Panel } from './Panel';
 import IconButton from './controls/IconButton';
 import Divider from './controls/Divider';
+import BrandMark from './controls/BrandMark';
 import { selectIsFileOpen, selectIsPlaying } from '../store/playbackSlice';
+import { setPreferencesOpen } from '../store/appSlice';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { useReport } from '../hooks/useReport';
 import { useOpenFile } from '../hooks/useOpenFile';
@@ -30,7 +32,7 @@ const TopBar = () => {
         <Bar>
             <Left>
                 <Brand>
-                    <Logo>A</Logo>
+                    <BrandMark />
                     <BrandName>Adagio</BrandName>
                 </Brand>
                 <Divider height={20} />
@@ -84,11 +86,31 @@ const TopBar = () => {
                         tooltipProps={{ placement: "left" }}
                     />
                 )}
+                <Divider height={20} />
+                <PreferencesButton />
             </Right>
         </Bar>
     );
 };
 export default TopBar;
+
+// It opens a dialog rather than toggling anything, so it shows the active look without aria-pressed.
+// Its tooltip would sit above the scrim, so it's held shut while the modal is open.
+const PreferencesButton = () => {
+    const dispatch = useDispatch();
+    const open = useSelector(state => state.app.preferencesOpen);
+    return (
+        <IconButton
+            label="Preferences (Ctrl+,)"
+            icon={<Settings size={16} />}
+            variant={open ? 'active' : 'ghost'}
+            aria-pressed={undefined}
+            aria-haspopup="dialog"
+            onClick={() => dispatch(setPreferencesOpen(true))}
+            tooltipProps={{ placement: 'left', ...(open && { open: false }) }}
+        />
+    );
+};
 
 const TrackInfo = () => {
     const path = useSelector(state => state.playback.track?.path);
@@ -133,18 +155,6 @@ const Brand = Styled.div`
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
-`;
-
-const Logo = Styled.span`
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 5px;
-    background: var(--accent-primary);
-    color: var(--text-on-accent);
-    font: 700 12px/1 var(--font-ui);
 `;
 
 const BrandName = Styled.span`

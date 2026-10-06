@@ -2,8 +2,9 @@
 export const PALETTES = {
     dark: {
         mode: 'dark',
-        bg: { app: '#121212', panel: '#1B1B1B', surface: '#242424', raised: '#2F2F2F', inset: '#0B0B0B' },
+        bg: { app: '#121212', panel: '#1B1B1B', surface: '#242424', raised: '#2F2F2F', inset: '#0B0B0B', scrim: '#00000099' },
         border: { subtle: '#2A2A2A', strong: '#3A3A3A' },
+        shadow: { modal: '#00000080' },
         text: { primary: '#E8E8E8', secondary: '#9B9B9B', muted: '#5F5F5F', onAccent: '#121212' },
         accent: {
             primary: '#1D96E6', primaryFg: '#1D96E6', primaryText: '#2C9DE8', soft: '#1D96E62E',
@@ -15,8 +16,9 @@ export const PALETTES = {
     },
     light: {
         mode: 'light',
-        bg: { app: '#E8E8E8', panel: '#FFFFFF', surface: '#F2F2F2', raised: '#E6E6E6', inset: '#F5F5F5' },
+        bg: { app: '#E8E8E8', panel: '#FFFFFF', surface: '#F2F2F2', raised: '#E6E6E6', inset: '#F5F5F5', scrim: '#0000004D' },
         border: { subtle: '#E3E3E3', strong: '#CFCFCF' },
+        shadow: { modal: '#0000002E' },
         text: { primary: '#1C1C1C', secondary: '#555555', muted: '#767676', onAccent: '#121212' },
         accent: {
             primary: '#1D96E6', primaryFg: '#1789D4', primaryText: '#126CA7', soft: '#1D96E640',

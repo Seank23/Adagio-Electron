@@ -1,3 +1,4 @@
+#include "Analysis/AnalysisParams.h"
 #include "Core/Application.h"
 #include "Core/CommandParser.h"
 #include "Core/CommandQueue.h"
@@ -12,9 +13,8 @@
 
 namespace
 {
-	std::string TokenFromArgs(int argc, char** argv)
+	std::string ValueFromArgs(int argc, char** argv, const std::string& prefix)
 	{
-		const std::string prefix = "--token=";
 		for (int i = 1; i < argc; ++i)
 		{
 			const std::string arg = argv[i];
@@ -22,6 +22,31 @@ namespace
 				return arg.substr(prefix.size());
 		}
 		return {};
+	}
+
+	// The saved preferences main passes at spawn. A bad value is a warning, never a reason not to start:
+	// that one keeps its default and the others still apply.
+	Adagio::AnalysisParams AnalysisParamsFromArgs(int argc, char** argv)
+	{
+		const std::pair<const char*, const char*> options[] = {
+			{ "--sample-rate=", "sampleRate" },
+			{ "--frame-length=", "frameLength" },
+			{ "--hop-size=", "hopSize" }
+		};
+
+		Adagio::AnalysisParams params;
+		for (const auto& [prefix, key] : options)
+		{
+			const std::string text = ValueFromArgs(argc, argv, prefix);
+			if (text.empty())
+				continue;
+
+			const nlohmann::json value = nlohmann::json::parse(text, nullptr, false);
+			std::string error;
+			if (!Adagio::UpdateAnalysisParams(params, { { key, value } }, error))
+				std::cerr << "Ignoring " << prefix << text << ": " << error << "\n" << std::flush;
+		}
+		return params;
 	}
 
 	bool HasFlag(int argc, char** argv, const std::string& flag)
@@ -63,8 +88,8 @@ int main(int argc, char** argv)
 {
 	Adagio::SetTracing(HasFlag(argc, argv, "--trace"));
 
-	Adagio::Application app;
-	Adagio::WSServer wsServer(Adagio::Protocol::Port, TokenFromArgs(argc, argv));
+	Adagio::Application app(AnalysisParamsFromArgs(argc, argv));
+	Adagio::WSServer wsServer(Adagio::Protocol::Port, ValueFromArgs(argc, argv, "--token="));
 	wsServer.SetCommandHandler(OnClientMessage);
 
 	if (!wsServer.Start())
