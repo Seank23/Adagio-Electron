@@ -1,13 +1,15 @@
 # Adagio
 
-Adagio is a Windows desktop app for listening to music closely. It slows an audio file down to as little as 20% of its speed without changing its pitch, and while it plays it shows the spectrum, the notes it hears, the key and the chords.
+Adagio is a Windows desktop app for performing musical analysis and information retrieval. It allows the track to be slowed down to 20% of its speed without changing its pitch, and as it plays it shows the spectrum, the notes it detects, and a prediction of the key signature and chords currently played.
+
+<img width="2377" height="1332" alt="image" src="https://github.com/user-attachments/assets/ddb111f9-f2f3-494f-b2fb-788b0b017e0d" />
 
 ## Features
 
 - **Open** a WAV, MP3 or FLAC file from the top bar or with Ctrl+O, or drop one on the window.
 - **Play** at any speed from 20% to 100%, with presets at 50%, 75% and 100%, at the original pitch. The transport bar also holds the volume, repeat and follow; play, back to start, stop and close are in the top bar.
 - **Timeline**: the track's waveform, a time ruler and an overview of the whole track. Click the waveform to seek. On the overview, press and drag up or down to zoom around that point and sideways to pan, or use the zoom and fit buttons. Follow keeps the playhead in view.
-- **Spectrum**: the live spectrum on a log frequency axis, gridded by piano key and dotted where the engine detects a note. Show it linear or in decibels, and average it over 1 to 10 frames.
+- **Spectrum**: the live spectrum on a log frequency axis, with detected notes annotated on top and a badge showing the most likely chord anchored in the top right. Show it linear or in decibels, and average it over 1 to 10 frames.
 - **Note activity**: a piano keyboard lined up under the spectrum, lit by the notes heard over the last half second.
 - **Key and chords**: the sidebar shows the detected key with how strongly each pitch class has sounded, weighted towards the last 20 seconds, and the most likely chords with their probabilities.
 - **Tuning**: set the A4 reference from 415 to 466 Hz for a recording that isn't at 440. Drag the readout up or down, or use its − and + buttons (Shift for finer steps); double-click puts it back to 440. Beside it is the average tuning error of the notes heard, in cents. Each track opens at 440.
