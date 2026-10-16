@@ -1,6 +1,6 @@
 appId: com.sksoftware.adagio
 productName: Adagio
-copyright: Copyright © 2026 SK Software
+copyright: Copyright © 2026 Sean King
 directories:
   # Not "dist": electron-builder excludes its own output directory from the packaged
   # files, and Vite builds the UI into dist/ui.
@@ -14,10 +14,13 @@ extraResources:
     to: engine/
     filter:
       - "**/*"
-# The GPL goes beside Adagio.exe, next to Electron's own LICENSE.electron.txt.
+# The GPL and the third-party notices go beside Adagio.exe, next to Electron's own
+# LICENSE.electron.txt. The UI build writes the notices (ui/scripts/thirdPartyNotices.js).
 extraFiles:
   - from: ../LICENSE
     to: LICENSE.txt
+  - from: dist/THIRD-PARTY-NOTICES.txt
+    to: THIRD-PARTY-NOTICES.txt
 win:
   # Built from asset/Adagio_Logo.png at 16 to 256 px; the installer uses it too.
   icon: ../asset/Adagio_Icon.ico

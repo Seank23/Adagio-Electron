@@ -1,7 +1,7 @@
 {
   "name": "adagio",
   "version": "0.1.0",
-  "description": "Slow music down without changing its pitch, and see its spectrum, notes, key and chords as it plays.",
+  "description": "Slow music down without changing its pitch, performs pitch detection and predicts musical elements.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm:dev:ui\" \"npm:dev:electron\"",
@@ -15,7 +15,7 @@
     "test:e2e": "playwright test -c e2e/playwright.config.js"
   },
   "keywords": [],
-  "author": "SK Software",
+  "author": "Sean King",
   "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "devDependencies": {

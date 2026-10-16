@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { thirdPartyNotices } from './scripts/thirdPartyNotices.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 // The wire protocol is described once, at the repo root, and read by both sides: the
@@ -15,7 +16,14 @@ const appPackage = JSON.parse(readFileSync(path.resolve(dirname, '../package.jso
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Beside the bundle, not in it: electron-builder puts it beside Adagio.exe.
+    thirdPartyNotices({
+      engineNotices: path.resolve(dirname, '../../engine/THIRD-PARTY-NOTICES.txt'),
+      output: path.resolve(dirname, '../dist/THIRD-PARTY-NOTICES.txt'),
+    }),
+  ],
   base: "./",
   // Preferences' About section. The local date, not toISOString's UTC one, which is the day
   // before for a build just after midnight in summer time. A dev session shows the day it started.
