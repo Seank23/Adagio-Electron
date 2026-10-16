@@ -194,6 +194,6 @@ const pitchClassRows = page => page.getByRole('tabpanel').evaluate(panel => {
 });
 
 module.exports = {
-    HOP_MS, SAMPLE_RATE, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows,
-    readout, removeUserData, resize, snapshot, startEngine, stepFrames, stubOpenDialog, tap,
+    HOP_MS, SAMPLE_RATE, button, close, engineIndicator, inkOf, launch, makeFixtures, makeUserData, openFile,
+    pitchClassRows, readout, removeUserData, resize, snapshot, startEngine, stepFrames, stubOpenDialog, tap,
 };

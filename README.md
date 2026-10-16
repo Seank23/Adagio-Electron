@@ -45,14 +45,15 @@ This starts Vite on port 5173 and then Electron, with DevTools open. Without an 
 
 ## Package
 
-Copy the engine into `app/engine-bin/`, then build from `app/`:
+With the engine configured as above, build from `app/`:
 
 ```bash
-cp engine/build/Release/AdagioEngine.exe app/engine-bin/
 cd app && npm run build
 ```
 
-The installer and an unpacked build land in `app/release/`. The packaged app starts the engine it carries and waits for it before opening its window. `app/engine-bin/` is copied into the package whole, so keep anything but the engine out of it.
+That rebuilds the Release engine and copies it into `app/engine-bin/` (`npm run build:engine` does that step alone), builds the UI, then packages both. The installer, `Adagio Setup <version>.exe`, and an unpacked build land in `app/release/`; the version is `app/package.json`'s. The packaged app starts the engine it carries and waits for it before opening its window. `app/engine-bin/` is copied into the package whole, so keep anything but the engine out of it.
+
+The engine links the C++ runtime statically, so the installed app needs no Visual C++ Redistributable, only a CPU with AVX2. The installer is not code-signed, so SmartScreen warns before it runs. Its icon, `asset/Adagio_Icon.ico`, is `asset/Adagio_Logo.png` redrawn at 16 to 256 px.
 
 ## Test
 
@@ -88,4 +89,4 @@ protocol/          protocol.json, read by both sides
 
 ## Licence
 
-The engine links RubberBand, which is licensed under the GPL (version 2 or later) unless you hold a commercial licence from its authors. A build of Adagio that you distribute is bound by the GPL as a result.
+Adagio is free software under the GNU General Public License, version 3 or (at your option) any later version: see `LICENSE`. The engine links RubberBand (GPL version 2 or later) and kfr (GPL version 2 or 3), so a distributed build is bound by the GPL in any case. The installer puts the licence beside `Adagio.exe` as `LICENSE.txt`, and About in Preferences names it.

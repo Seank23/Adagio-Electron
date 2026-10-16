@@ -54,6 +54,7 @@ namespace Adagio
 		static constexpr std::chrono::microseconds AnalysisEventInterval{ 32000 };
 
 		void BuildPipeline();
+		void ClearTrackers();
 		void LoadAnalysisBuffer();
 		double EstimatePlayhead() const;
 		std::unique_ptr<AnalysisResult> ProcessFrameAt(double sourceSeconds, double deltaTime);

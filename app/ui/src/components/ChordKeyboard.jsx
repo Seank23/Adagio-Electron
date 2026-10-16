@@ -73,9 +73,8 @@ const drawKeyboard = (canvas, { histogram, notes, spectrumRate, a4 }, palette, g
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
 
-    // The spectrum's log axis whatever its scale, so every key has the same width. It
-    // lines up with the spectrum's peaks only while the spectrum is on Log too.
-    const axis = makeAxis({ maxHz: spectrumMaxHz(getLatestSpectrum(), spectrumRate), width, log: true });
+    // The spectrum's own axis, so every key has the same width and sits under its peaks.
+    const axis = makeAxis({ maxHz: spectrumMaxHz(getLatestSpectrum(), spectrumRate), width });
     if (!axis)
         return;
     const id = `${axis.maxHz}|${width}|${height}|${a4}`;

@@ -11,8 +11,9 @@ namespace Adagio
 	{
 		float ERROR_THRESHOLD = 25.0f;
 		float A440_TUNING = 440.0f;
+		float TUNING_WINDOW = 1.0f;
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteDetectorSettings, ERROR_THRESHOLD, A440_TUNING)
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteDetectorSettings, ERROR_THRESHOLD, A440_TUNING, TUNING_WINDOW)
 	};
 
 	class NoteDetector : public ConfigurableStage<NoteDetectorSettings>
@@ -30,6 +31,7 @@ namespace Adagio
 			const double timestamp = context->Frame.Timestamp;
 
 			std::vector<Note> notes;
+			double errorSum = 0.0;
 			for (size_t i = 0; i < data.size(); i++)
 			{
 				float freq = data[i].Frequency;
@@ -45,8 +47,10 @@ namespace Adagio
 
 				std::string noteName = NoteNames.at(note) + std::to_string(octave);
 				notes.push_back({ noteName, midi, data[i], cents, timestamp });
+				errorSum += cents;
 			}
 
+			context->AvgTuningError = AccumulateTuningError(*context->PersistentData, errorSum, notes.size(), context->Frame.DeltaTime);
 			context->Notes = std::move(notes);
 		}
 
@@ -67,14 +71,38 @@ namespace Adagio
 				},
 				"A440_TUNING": {
 					"name": "A440 Reference",
-					"type": "float",	
+					"type": "float",
 					"min": 415.0,
 					"max": 466.0
+				},
+				"TUNING_WINDOW": {
+					"name": "Tuning Error Window",
+					"type": "float",
+					"min": 0.5,
+					"max": 5.0
 				}
 			})");
 		}
 
 	private:
+		static constexpr double MinTuningWeight = 0.05;
+
+		std::optional<float> AccumulateTuningError(PersistentData& persistent, double errorSum, size_t noteCount, double dt)
+		{
+			const float reference = m_Settings.A440_TUNING;
+			if (persistent.TuningReference > 0.0f && persistent.TuningReference != reference)
+				persistent.TuningErrorSum -= 1200.0 * std::log2((double)reference / persistent.TuningReference) * persistent.TuningErrorWeight;
+			persistent.TuningReference = reference;
+
+			const double decay = std::exp(-dt / (m_Settings.TUNING_WINDOW / 3.0));
+			persistent.TuningErrorSum = persistent.TuningErrorSum * decay + errorSum * dt;
+			persistent.TuningErrorWeight = persistent.TuningErrorWeight * decay + (double)noteCount * dt;
+
+			if (persistent.TuningErrorWeight < MinTuningWeight)
+				return std::nullopt;
+			return (float)(persistent.TuningErrorSum / persistent.TuningErrorWeight);
+		}
+
 		float MidiToFrequency(int midi, float tuningReference = 440.0f) const
 		{
 			return tuningReference * std::pow(2.0f, (midi - 69) / 12.0f);

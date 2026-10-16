@@ -24,13 +24,12 @@ const EmptyState = ({ isDragging }) => {
                     )
                     : <Title>Drop an audio file to analyse</Title>}
                 <Subline>
-                    Adagio follows the notes, chords and key as the track plays, and can slow it
+                    Adagio follows the notes, chords and key as the track plays, and can slow playback down
                     to 20% without changing its pitch.
                 </Subline>
                 <OpenButton type="button" onClick={openFile} disabled={loadingFile !== ''}>
                     <FolderOpen size={16} />
                     <span>Open file…</span>
-                    <Shortcut>Ctrl O</Shortcut>
                 </OpenButton>
                 <Formats>WAV · MP3 · FLAC</Formats>
             </Card>
@@ -132,11 +131,6 @@ const OpenButton = Styled.button`
         outline: 2px solid var(--accent-primary);
         outline-offset: 2px;
     }
-`;
-
-const Shortcut = Styled.span`
-    font: 400 10px/1 var(--font-mono);
-    opacity: .6;
 `;
 
 const Formats = Styled.span`

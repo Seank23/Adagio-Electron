@@ -103,11 +103,13 @@ export const analysisEvent = ({
     keyHistogram = [{ frequency: 369.99, score: 4 }, { frequency: 466.16, score: 2 }],
     chords = [{ name: 'Bbm9', probability: 0.404 }, { name: 'Db6', probability: 0.298 }],
     notes = [{ name: 'Bb', frequency: 233.08, errorCents: 2, midi: 58 }],
+    avgTuningError = 2,
     sampleRate = 8000,
 } = {}) => ({
     type: 'analysis',
     value: {
         notes,
+        avgTuningError,
         sampleRate,
         executionTimeMs: 1.5,
         keyHistogram,

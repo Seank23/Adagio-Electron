@@ -25,6 +25,10 @@ const TAG_RISE = 24;
 const TAG_HEIGHT = 24;
 const TAG_PADDING = 5;
 const TAG_GAP = 4;
+// The decibel scale runs from the frame's peak down to DB_RANGE below it, the plot's
+// floor, with a labelled line at each of DB_LINES below the peak.
+const DB_RANGE = 80;
+const DB_LINES = [20, 40, 60];
 
 const NAME_FONT = `700 12px ${FONTS.mono}`;
 const CENTS_FONT = `500 10px ${FONTS.mono}`;
@@ -34,7 +38,7 @@ const AXIS_FONT = `400 9px ${FONTS.mono}`;
 // the frame, the notes or the canvas size have changed, or a tag is still easing.
 const SpectrumCanvas = () => {
     const palette = usePalette();
-    const showLogScale = useSelector(state => state.settings.showLogScale);
+    const showDecibels = useSelector(state => state.settings.showDecibels);
     const canvasRef = useRef(null);
 
     // Read by the draw loop, which notices the change itself; no render needed.
@@ -62,6 +66,10 @@ const SpectrumCanvas = () => {
         let labelsSettling = false;
         let lastDrawTime = performance.now();
         const labelY = new Map();
+
+        const toLevel = showDecibels
+            ? fraction => Math.max(0, 1 + 20 * Math.log10(fraction) / DB_RANGE)
+            : fraction => Math.min(1, fraction);
 
         const loop = now => {
             animationFrame = requestAnimationFrame(loop);
@@ -92,20 +100,21 @@ const SpectrumCanvas = () => {
             context.setTransform(ratio, 0, 0, ratio, 0, 0);
             context.clearRect(0, 0, width, height);
 
-            const axis = makeAxis({ maxHz: spectrumMaxHz(spectrum, rate), width, log: showLogScale });
+            const axis = makeAxis({ maxHz: spectrumMaxHz(spectrum, rate), width });
             if (!axis) {
                 labelY.clear();
                 labelsSettling = false;
                 return;
             }
             const plotHeight = height - AXIS_HEIGHT;
+            const levelToY = level => HEADROOM + (1 - level) * (plotHeight - HEADROOM);
 
-            drawGrid(axis, width, plotHeight);
+            drawGrid(axis, width, plotHeight, levelToY);
             if (spectrum?.count > 0) {
                 const maxMagnitude = spectrum.maxMagnitude || 1;
                 // A Uint16 spectrum is magnitude / max at full scale; a Float32 one is the magnitude itself.
                 const elementScale = spectrum.elementType === BINARY_FRAME.ELEMENT_TYPE.UINT16 ? maxMagnitude / 65535 : 1;
-                const toY = magnitude => HEADROOM + (1 - Math.min(1, magnitude / maxMagnitude)) * (plotHeight - HEADROOM);
+                const toY = magnitude => levelToY(toLevel(magnitude / maxMagnitude));
                 drawSpectrum(spectrum, elementScale, axis, toY, plotHeight);
                 drawNotes(notes, spectrum, elementScale, axis, toY, width, plotHeight, elapsedMs);
             } else {
@@ -115,14 +124,25 @@ const SpectrumCanvas = () => {
             drawAxisLabels(axis, width, plotHeight);
         };
 
-        const drawGrid = (axis, width, plotHeight) => {
+        const drawGrid = (axis, width, plotHeight, levelToY) => {
             context.fillStyle = palette.border.subtle;
             for (const hz of axis.ticks)
                 context.fillRect(Math.round(axis.toX(hz)), 0, 1, plotHeight);
-            for (const fraction of [0.25, 0.5, 0.75])
-                context.fillRect(0, Math.round(plotHeight * fraction), width, 1);
+            const lines = showDecibels
+                ? DB_LINES.map(db => Math.round(levelToY(1 - db / DB_RANGE)))
+                : [0.25, 0.5, 0.75].map(fraction => Math.round(plotHeight * fraction));
+            for (const y of lines)
+                context.fillRect(0, y, width, 1);
             context.fillStyle = palette.border.strong;
             context.fillRect(0, Math.round(plotHeight), width, 1);
+
+            if (showDecibels) {
+                context.font = AXIS_FONT;
+                context.textBaseline = 'bottom';
+                context.textAlign = 'left';
+                context.fillStyle = palette.text.muted;
+                DB_LINES.forEach((db, i) => context.fillText(`−${db} dB`, 4, lines[i] - 2));
+            }
         };
 
         const drawSpectrum = (spectrum, elementScale, axis, toY, plotHeight) => {
@@ -277,7 +297,7 @@ const SpectrumCanvas = () => {
             drawnSpectrum = undefined;
         });
         return () => cancelAnimationFrame(animationFrame);
-    }, [showLogScale, palette]);
+    }, [showDecibels, palette]);
 
     return <Canvas ref={canvasRef} role="img" aria-label="Spectrum" />;
 };

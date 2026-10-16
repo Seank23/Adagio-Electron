@@ -3,6 +3,7 @@
 #include <mutex>
 #include <vector>
 #include <memory>
+#include <optional>
 #include "AudioFrame.h"
 
 #include <nlohmann/json.hpp>
@@ -61,6 +62,10 @@ namespace Adagio
 		std::array<double, 12> NoteClassAccumulator = { 0.0 };
 		std::map<int, float> FreqAccumulator;
 		Chord PreviousChord;
+		
+		double TuningErrorSum = 0.0;
+		double TuningErrorWeight = 0.0;
+		float TuningReference = 0.0f;
 	};
 
 	struct AnalysisContext
@@ -77,6 +82,7 @@ namespace Adagio
 		int Harmonics = 0;
 
 		std::vector<Note> Notes;
+		std::optional<float> AvgTuningError;
 		std::map<int, float> KeyFrequencyHistogram;
 		std::map<int, float> ChordFrequencyHistogram;
 		std::vector<Chord> PredictedChords;
@@ -105,6 +111,7 @@ namespace Adagio
 
 		nlohmann::json GetSchemaJson() const;
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
+		void ResetSetting(const std::string& stage, const std::string& key);
 
 		static nlohmann::json GetResultJson(const AnalysisResult& result);
 

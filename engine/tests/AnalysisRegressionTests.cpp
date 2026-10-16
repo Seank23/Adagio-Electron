@@ -20,6 +20,7 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -683,4 +684,88 @@ TEST_CASE("F1: the production pipeline reads the same key and chords at every sp
 		CHECK(doubleSpeed.at(position).Key == expected.Key);
 		CHECK(doubleSpeed.at(position).TopChord == expected.TopChord);
 	}
+}
+
+namespace
+{
+	// Runs NoteDetector over frames holding a peak at each frequency for the given source
+	// seconds, and returns the tuning error the last frame reported.
+	std::optional<float> HoldTuning(Adagio::NoteDetector& detector, Adagio::PersistentData& persistent, const std::vector<float>& frequencies, double seconds, double hopSeconds = HopSeconds)
+	{
+		std::optional<float> reading;
+		const int frames = (int)std::lround(seconds / hopSeconds);
+		for (int k = 0; k < frames; ++k)
+		{
+			Adagio::AudioFrame frame;
+			frame.DeltaTime = hopSeconds;
+
+			Adagio::AnalysisContext context{ frame, &persistent };
+			for (float hz : frequencies)
+				context.Peaks.push_back({ hz, 1.0f, 1.0f });
+			detector.Execute(&context);
+			reading = context.AvgTuningError;
+		}
+		return reading;
+	}
+
+	// A second of one note 10 cents sharp, then a second of two notes 10 cents flat.
+	float SharpThenFlat(double hopSeconds)
+	{
+		Adagio::NoteDetector detector;
+		Adagio::PersistentData persistent;
+		HoldTuning(detector, persistent, { PitchHz(69, 10.0f) }, 1.0, hopSeconds);
+		return HoldTuning(detector, persistent, { PitchHz(69, -10.0f), PitchHz(76, -10.0f) }, 1.0, hopSeconds).value();
+	}
+}
+
+TEST_CASE("the tuning error is a mean over notes, and a rest holds it rather than pulling it to zero")
+{
+	Adagio::NoteDetector detector;
+	Adagio::PersistentData persistent;
+	CHECK_FALSE(HoldTuning(detector, persistent, {}, 0.5).has_value());
+
+	// Per note, not per frame: one note 12 cents sharp and two in tune are 4 cents sharp.
+	const std::optional<float> chord = HoldTuning(detector, persistent, { PitchHz(60, 12.0f), PitchHz(64), PitchHz(67) }, 2.0);
+	REQUIRE(chord.has_value());
+	CHECK(*chord == doctest::Approx(4.0f).epsilon(0.01));
+
+	const std::optional<float> rest = HoldTuning(detector, persistent, {}, 0.5);
+	REQUIRE(rest.has_value());
+	CHECK(*rest == doctest::Approx(4.0f).epsilon(0.01));
+
+	// Long enough that the window holds next to nothing: no reading, not a stale one.
+	CHECK_FALSE(HoldTuning(detector, persistent, {}, 2.0).has_value());
+}
+
+TEST_CASE("the tuning error weighs source time, not frames")
+{
+	const float production = SharpThenFlat(HopSeconds);
+	CHECK(production < -8.0f);
+	CHECK(production > -10.0f);
+	CHECK(SharpThenFlat(0.016) == doctest::Approx(production).epsilon(0.03));
+	CHECK(SharpThenFlat(0.064) == doctest::Approx(production).epsilon(0.03));
+}
+
+TEST_CASE("a new A4 reference moves the tuning error at once")
+{
+	// The UI analyses a single paused frame after a change, which is one hop of evidence.
+	Adagio::NoteDetector detector;
+	Adagio::PersistentData persistent;
+	HoldTuning(detector, persistent, { PitchHz(69), PitchHz(72) }, 2.0);
+
+	detector.ApplySettings({ { "A440_TUNING", 442.0 } });
+	const std::optional<float> retuned = HoldTuning(detector, persistent, { PitchHz(69), PitchHz(72) }, HopSeconds);
+	REQUIRE(retuned.has_value());
+	CHECK(*retuned == doctest::Approx(-1200.0 * std::log2(442.0 / 440.0)).epsilon(0.01));
+}
+
+TEST_CASE("the analysis event sends the tuning error, or null with none")
+{
+	Adagio::AudioFrame frame;
+	Adagio::AnalysisResult result;
+	result.Context = std::make_unique<Adagio::AnalysisContext>(frame);
+	CHECK(Adagio::AnalysisPipeline::GetResultJson(result).at("value").at("avgTuningError").is_null());
+
+	result.Context->AvgTuningError = -3.5f;
+	CHECK(Adagio::AnalysisPipeline::GetResultJson(result).at("value").at("avgTuningError").get<double>() == doctest::Approx(-3.5));
 }

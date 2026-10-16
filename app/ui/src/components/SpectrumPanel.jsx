@@ -5,15 +5,15 @@ import Segmented from './controls/Segmented';
 import Caption from './controls/Caption';
 import SpectrumCanvas from './SpectrumCanvas';
 import TuningControl from './TuningControl';
-import { setShowLogScale } from '../store/settingsSlice';
+import { setShowDecibels } from '../store/settingsSlice';
 import { selectAnalysisRate } from '../store/analysisSlice';
 import { selectFrameSmoothing, selectHopSize, selectSampleRate } from '../store/pipelineSlice';
 import { formatSmoothingSummary } from '../utils/format';
 import { MIN_FREQ } from '../constants';
 
 const SCALES = [
-    { label: 'Log', value: true },
     { label: 'Linear', value: false },
+    { label: 'dB', value: true },
 ];
 
 // 50, 4000 → '50 Hz – 4 kHz'
@@ -22,7 +22,7 @@ const formatRange = (minHz, maxHz) => `${formatFrequency(minHz)} – ${formatFre
 
 const SpectrumPanel = () => {
     const dispatch = useDispatch();
-    const showLogScale = useSelector(state => state.settings.showLogScale);
+    const showDecibels = useSelector(state => state.settings.showDecibels);
     const spectrumRate = useSelector(selectAnalysisRate);
     const frameSmoothing = useSelector(selectFrameSmoothing);
     const hopSize = useSelector(selectHopSize);
@@ -33,15 +33,15 @@ const SpectrumPanel = () => {
         <Panel>
             <PanelHeader title="Spectrum">
                 <Segmented
-                    label="Frequency scale"
+                    label="Magnitude scale"
                     options={SCALES}
-                    value={showLogScale}
-                    onChange={log => dispatch(setShowLogScale(log))}
+                    value={showDecibels}
+                    onChange={decibels => dispatch(setShowDecibels(decibels))}
                 />
                 {spectrumRate > 0 && <Range>{formatRange(MIN_FREQ, spectrumRate / 2)}</Range>}
                 {spectrumRate > 0 && smoothingKnown && (
-                    <Smoothing title="Frames the spectrum is averaged over, and the time they span (Preferences, Ctrl+,)">
-                        {formatSmoothingSummary(frameSmoothing, hopSize, sampleRate)}
+                    <Smoothing title="Frames the spectrum is averaged over; Preferences (Ctrl+,) shows the time they span">
+                        {formatSmoothingSummary(frameSmoothing)}
                     </Smoothing>
                 )}
                 <Spacer />

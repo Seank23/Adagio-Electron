@@ -162,6 +162,16 @@ namespace Adagio
 		return true;
 	}
 
+	void AnalysisPipeline::ResetSetting(const std::string& stage, const std::string& key)
+	{
+		// m_Settings holds only what was changed, so dropping the key restores the stage's default.
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		if (!m_Settings.contains(stage) || !m_Settings[stage].contains(key))
+			return;
+		m_Settings[stage].erase(key);
+		m_SettingsVersion++;
+	}
+
 	nlohmann::json AnalysisPipeline::GetResultJson(const AnalysisResult& result)
 	{
 		nlohmann::json notesJson;
@@ -186,6 +196,8 @@ namespace Adagio
 			chordsJson.push_back({ {"name", chord.Name}, {"probability", chord.Probability} });
 		auto& keySig = result.Context->PredictedKey;
 		nlohmann::json keyJson = { {"name", keySig.Name}, {"tonic", keySig.Tonic}, {"tonicClass", keySig.TonicClass}, {"mode", keySig.ModeName}, {"scaleClasses", keySig.Scale}};
+		const std::optional<float>& tuningError = result.Context->AvgTuningError;
+		nlohmann::json tuningErrorJson = tuningError ? nlohmann::json(*tuningError) : nlohmann::json(nullptr);
 
 
 		// The spectrum itself, its maximum and binHz travel in the binary spectrum frame.
@@ -196,6 +208,7 @@ namespace Adagio
 					{"executionTimeMs", result.ExecutionTimeMs},
 					{"sampleRate", result.SampleRate},
 					{"notes", notesJson},
+					{"avgTuningError", tuningErrorJson},
 					{"keyHistogram", keyHistogramJson},
 					{"chordHistogram", chordHistogramJson},
 					{"detectedKey", keyJson},

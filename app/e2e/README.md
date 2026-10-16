@@ -35,12 +35,12 @@ and each step moves the readout by exactly one hop (16 ms at 8 kHz and 128).
 | Repeat | repeat restarts the track… |
 | Step and reset | step: each step is one hop… |
 | Timeline | timeline: the overview zooms and pans… |
-| Spectrum and keyboard | switching to Linear… · the piano and the spectrum grid draw… · sidebar: the chord badge matches… |
+| Spectrum and keyboard | switching to dB… · the piano and the spectrum grid draw… · sidebar: the chord badge matches… |
 | Sidebar | sidebar: … the tonic is marked, and the top bar fills 90% |
 | Tuning | tuning: a tone at 452.9 Hz… |
 | Empty and drop | empty state: Close brings the drop card back… |
 | Window size | window size: nothing scrolls or overlaps… |
-| Preferences | preferences: Ctrl+, and the cog open them… · preferences survive a restart… |
+| Preferences | preferences: Ctrl+, and the cog open them… · preferences survive a restart… · preferences reach an engine started by hand… |
 
 Also covered beyond §7: the engine starts at 20% volume, and a seek keeps the analysis.
 
@@ -51,9 +51,6 @@ These need eyes, a second client, or a real drag from Explorer:
 - **Both themes.** The suite runs in whatever theme the OS has, apart from the Preferences
   test that switches to Light. The palette and the "no colour literals" rule are unit tested,
   but how each theme looks isn't, and nor is the window frame or System following Windows.
-- **A hand-started engine ignores the saved analysis values.** Only an engine main spawns
-  gets `--sample-rate`, `--frame-length`, `--hop-size` and `--frame-smoothing`;
-  the modal then shows the engine's own values.
 - **A reset seen by two clients.** The engine broadcasts `analysisReset` to every client,
   which `smoke.ps1` checks. A second UI on the same spawned engine needs the token, so
   isn't automated here.

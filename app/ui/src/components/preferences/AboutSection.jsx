@@ -12,9 +12,10 @@ const AboutSection = () => (
             <BrandMark size={36} />
             <Lines>
                 <Name>Adagio</Name>
-                <Version>
+                <Detail>
                     Version {APP_VERSION} <Dot>·</Dot> Updated {formatBuildDate(BUILD_DATE)}
-                </Version>
+                </Detail>
+                <Detail>Free software under the GNU GPL v3 or later, with no warranty</Detail>
                 <Link href={REPO_URL} target="_blank" rel="noreferrer">
                     {REPO_URL.replace('https://', '')}
                     <ExternalLink size={12} />
@@ -44,7 +45,7 @@ const Name = Styled.span`
     color: var(--text-primary);
 `;
 
-const Version = Styled.span`
+const Detail = Styled.span`
     font: 400 11px/1.2 var(--font-ui);
     color: var(--text-secondary);
 `;

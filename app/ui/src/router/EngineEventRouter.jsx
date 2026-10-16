@@ -4,8 +4,9 @@ import { useEngineEvents, useEngineFrames, useEngineConnection } from '../hooks/
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { CONNECTION_STATE } from '../engine-client/WebSocketEngine';
 import { publishSpectrum, resetSpectrum, stageWaveform, commitWaveform, clearFrames } from '../engine-client/FrameStore';
-import { BINARY_FRAME } from '../utils/protocol';
-import { setDuration, setCurrentTime, setTransport, resetPlayback } from '../store/playbackSlice';
+import { BINARY_FRAME, TRANSPORT_STATE } from '../utils/protocol';
+import { engineParamsToRestore, loadPreferences } from '../utils/preferences';
+import { setDuration, setCurrentTime, setTransport, resetPlayback, selectIsPaused } from '../store/playbackSlice';
 import { setStatusMessage, setConnectionState, setEngineStatus } from '../store/appSlice';
 import { EVENT_TYPE } from '../utils/utils';
 import { setAnalysisData, resetAnalysis } from '../store/analysisSlice';
@@ -31,6 +32,23 @@ export default function EngineEventRouter() {
             return;
 
         let cancelled = false;
+
+        const restoreEngineParams = async transport => {
+            if (transport?.state === TRANSPORT_STATE.LOADING)
+                return;
+            const saved = await loadPreferences();
+            const changes = saved?.ok ? engineParamsToRestore(saved.value.engine, transport?.analysis) : null;
+            if (cancelled || !changes)
+                return;
+            const result = await commands.setEngineParams(changes);
+            if (!result.ok) {
+                dispatch(setStatusMessage({ type: 'error', message: `Couldn't restore the saved analysis settings: ${result.error}` }));
+                return;
+            }
+            if (selectIsPaused(store.getState()))
+                commands.analyseFrame();
+        };
+
         commands.status().then(result => {
             if (cancelled || !result.ok)
                 return;
@@ -41,6 +59,7 @@ export default function EngineEventRouter() {
                         commitWaveform();
                 });
             }
+            restoreEngineParams(result.value);
         });
         commands.getAnalysisSchema().then(result => {
             if (!cancelled && result.ok)
@@ -49,7 +68,7 @@ export default function EngineEventRouter() {
         return () => {
             cancelled = true;
         };
-    }, [connectionState, commands, dispatch]);
+    }, [connectionState, commands, dispatch, store]);
 
     // The other half of the engine's health: whether main could start the process at
     // all. The socket only says whether it is reachable now. Outside Electron there is
@@ -63,11 +82,15 @@ export default function EngineEventRouter() {
         case EVENT_TYPE.TRANSPORT:
             dispatch(setTransport(msg?.value));
             break;
-        case EVENT_TYPE.FILE_LOADED:
+        case EVENT_TYPE.FILE_LOADED: {
             commitWaveform();
             resetSpectrum();
             dispatch(setDuration(msg?.value?.duration));
+            const schema = await commands.getAnalysisSchema();
+            if (schema.ok)
+                dispatch(setSchema(schema.value));
             break;
+        }
         case EVENT_TYPE.FILE_CLOSED:
             clearFrames();
             dispatch(setStatusMessage({ type: 'info', message: 'Audio file closed' }));

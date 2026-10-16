@@ -4,11 +4,13 @@ import { useDispatch, useSelector, useStore } from 'react-redux';
 import Caption from './controls/Caption';
 import { useEngineCommands } from '../hooks/useEngineCommands';
 import { useReport } from '../hooks/useReport';
+import { useStoreFrameListener } from '../hooks/useStoreFrameListener';
 import { selectIsPaused } from '../store/playbackSlice';
 import {
     TUNING_KEY, TUNING_STAGE, selectHasSchema, selectTuningHz, selectTuningMax, selectTuningMin, setSettingValue,
 } from '../store/pipelineSlice';
-import { A4_DEFAULT_HZ, centsFrom440, formatCents } from '../utils/music';
+import { selectAvgTuningError } from '../store/analysisSlice';
+import { A4_DEFAULT_HZ, formatCents, tuningBand } from '../utils/music';
 import { clamp } from '../utils/math';
 
 const STEP_HZ = 0.5;
@@ -32,6 +34,18 @@ const TuningControl = () => {
     const hasSchema = useSelector(selectHasSchema);
     const connected = useSelector(state => state.app.connectionState === 'connected');
     const disabled = !connected || !hasSchema;
+
+    const errorRef = useRef(null);
+    useStoreFrameListener(selectAvgTuningError, cents => {
+        const element = errorRef.current;
+        if (!element)
+            return;
+        element.textContent = cents === null ? '—' : formatCents(cents, 1);
+        if (cents === null)
+            delete element.dataset.band;
+        else
+            element.dataset.band = tuningBand(cents);
+    });
 
     // Quick clicks step from the value in flight, not the one the engine last confirmed.
     const pendingRef = useRef(null);
@@ -202,7 +216,7 @@ const TuningControl = () => {
                     +
                 </StepButton>
             </Stepper>
-            <Offset title="Offset from A440">{formatCents(centsFrom440(shownHz), 1)}</Offset>
+            <TuningError ref={errorRef} title="Tuning error: how far the detected notes sit from the A4 reference, on average" />
         </Control>
     );
 };
@@ -270,9 +284,12 @@ const ValueHz = Styled.span`
     color: var(--text-primary);
 `;
 
-const Offset = Styled.span`
+const TuningError = Styled.span`
     min-width: 38px;
     font: 400 10px/1 var(--font-mono);
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
+    &[data-band='in'] { color: var(--tuning-in); }
+    &[data-band='near'] { color: var(--tuning-near); }
+    &[data-band='off'] { color: var(--tuning-off); }
 `;

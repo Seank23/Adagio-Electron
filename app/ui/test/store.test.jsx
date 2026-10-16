@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { makeStore, TRACK, analysisEvent } from './helpers';
 import { setTransport, selectIsFileOpen, selectIsPaused, selectIsPlaying } from '../src/store/playbackSlice';
 import {
-    resetAnalysis, selectAnalysisRate, selectChordNamesKey, selectChordProbabilities, selectPitchClassPercents,
-    setAnalysisData,
+    resetAnalysis, selectAnalysisRate, selectAvgTuningError, selectChordNamesKey, selectChordProbabilities,
+    selectPitchClassPercents, setAnalysisData,
 } from '../src/store/analysisSlice';
 import {
     TUNING_KEY, TUNING_STAGE, selectHasSchema, selectTuningHz, selectTuningMax, selectTuningMin, setSchema,
@@ -77,6 +77,20 @@ describe('analysisSlice', () => {
             key: { name: 'Eb Minor', tonic: 'Eb', tonicClass: 3, mode: 'Minor', scaleClasses: [6, 8, 10, 11, 1, 3, 5] },
         }).value));
         expect(store.getState().analysis.detectedKey.name).toBe('Eb Minor');
+    });
+
+    it('keeps the engine\'s tuning error, null included: no reading is not a perfect 0', () => {
+        const store = makeStore();
+        expect(selectAvgTuningError(store.getState())).toBeNull();
+        store.dispatch(setAnalysisData(analysisEvent({ avgTuningError: -3.25 }).value));
+        expect(selectAvgTuningError(store.getState())).toBe(-3.25);
+        store.dispatch(setAnalysisData(analysisEvent({ avgTuningError: 0 }).value));
+        expect(selectAvgTuningError(store.getState())).toBe(0);
+        store.dispatch(setAnalysisData(analysisEvent({ avgTuningError: null }).value));
+        expect(selectAvgTuningError(store.getState())).toBeNull();
+        store.dispatch(setAnalysisData(analysisEvent({ avgTuningError: 5 }).value));
+        store.dispatch(resetAnalysis());
+        expect(selectAvgTuningError(store.getState())).toBeNull();
     });
 
     it('keeps the analysis rate through a reset, so the axis does not collapse', () => {

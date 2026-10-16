@@ -5,6 +5,7 @@ import { Tooltip } from 'antd';
 import { Panel } from '../Panel';
 import AnalysisTab from './AnalysisTab';
 import { setSidebarTab } from '../../store/settingsSlice';
+import { PANEL_HEADER_HEIGHT } from '../../constants';
 
 const SIDEBAR_TABS = [
     { key: 'analysis', label: 'Analysis', Panel: AnalysisTab },
@@ -90,7 +91,7 @@ const TabBar = Styled.div`
     align-items: stretch;
     flex-shrink: 0;
     gap: 18px;
-    height: 36px;
+    height: ${PANEL_HEADER_HEIGHT}px;
     padding: 0 16px;
     border-bottom: 1px solid var(--border-subtle);
 `;

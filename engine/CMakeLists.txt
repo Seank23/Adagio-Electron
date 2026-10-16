@@ -6,6 +6,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Link the C++ runtime statically, so the packaged engine starts on a machine without the
+# Visual C++ Redistributable (it needed MSVCP140 and VCRUNTIME140 otherwise). Set before
+# any target, the FetchContent ones included: a library built against the other runtime
+# fails the link with LNK2038.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 option(ADAGIO_BUILD_TESTS "Build the AdagioTests unit test target" ON)
 option(ADAGIO_ENABLE_PROFILING "Write engine/build/Application_Profile.json at runtime" OFF)
 

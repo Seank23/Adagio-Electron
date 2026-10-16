@@ -1,21 +1,22 @@
 {
   "name": "adagio",
   "version": "0.1.0",
-  "description": "",
+  "description": "Slow music down without changing its pitch, and see its spectrum, notes, key and chords as it plays.",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm:dev:ui\" \"npm:dev:electron\"",
     "dev:ui": "cd ui && npm run dev",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
+    "build:engine": "cmake --build ../engine/build --config Release && cmake -E make_directory engine-bin && cmake -E copy ../engine/build/Release/AdagioEngine.exe engine-bin/AdagioEngine.exe",
     "build:ui": "cd ui && npm run build",
-    "build": "npm run build:ui && electron-builder",
+    "build": "npm run build:engine && npm run build:ui && electron-builder",
     "start": "electron .",
     "test": "cd ui && npm test",
     "test:e2e": "playwright test -c e2e/playwright.config.js"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "SK Software",
+  "license": "GPL-3.0-or-later",
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.63.0",

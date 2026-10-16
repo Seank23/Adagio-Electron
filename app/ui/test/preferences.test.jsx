@@ -378,11 +378,12 @@ describe('the Preferences modal', () => {
         }]);
     });
 
-    it('shows the version, the build date and the repo link, opened outside the app', () => {
+    it('shows the version, the build date, the licence and the repo link, opened outside the app', () => {
         setup();
         openModal();
         expect(screen.getByText(new RegExp(`Version ${APP_VERSION.replace(/\./g, '\\.')}`))).toBeTruthy();
         expect(screen.getByText(new RegExp(`Updated ${formatBuildDate(BUILD_DATE)}`))).toBeTruthy();
+        expect(screen.getByText(/GNU GPL v3 or later, with no warranty/)).toBeTruthy();
         const link = screen.getByRole('link', { name: /github\.com\/Seank23\/Adagio-Electron/ });
         expect(link.getAttribute('href')).toBe(REPO_URL);
         expect(link.getAttribute('target')).toBe('_blank');
@@ -421,8 +422,8 @@ describe('preferences state and readouts', () => {
         expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
-    it('labels the log axis up to 5 kHz when it runs to 8 kHz', () => {
-        expect(makeAxis({ maxHz: 8000, width: 800, log: true }).ticks).toContain(5000);
-        expect(makeAxis({ maxHz: 4000, width: 800, log: true }).ticks).not.toContain(5000);
+    it('labels the frequency axis up to 5 kHz when it runs to 8 kHz', () => {
+        expect(makeAxis({ maxHz: 8000, width: 800 }).ticks).toContain(5000);
+        expect(makeAxis({ maxHz: 4000, width: 800 }).ticks).not.toContain(5000);
     });
 });

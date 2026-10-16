@@ -18,7 +18,6 @@ import { formatClock } from '../utils/format';
 
 const SPEED_PRESETS = [50, 75, 100];
 const HINTS = ['Space  play / pause', '←/→  seek 5 s', '.  step'];
-const EMPTY_HINTS = ['Ctrl O  open a file'];
 
 const toPercent = value => Math.round(value * 100);
 
@@ -100,7 +99,7 @@ const TransportBar = () => {
             </Modes>
             <Hints>
                 <HintLine />
-                {(isFileOpen ? HINTS : EMPTY_HINTS).map(hint => <Hint key={hint}>{hint}</Hint>)}
+                {isFileOpen && HINTS.map(hint => <Hint key={hint}>{hint}</Hint>)}
             </Hints>
         </Bar>
     );

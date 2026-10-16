@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { formatHz, makeAxis, spectrumMaxHz } from '../src/utils/frequencyAxis';
 import { clamp } from '../src/utils/math';
 import { barWidths, formatPercent } from '../src/utils/bars';
-import { centsFrom440, formatCents, midiOf, tuningBand } from '../src/utils/music';
+import { formatCents, midiOf, tuningBand } from '../src/utils/music';
 import { fileNameOf, formatChannels, formatClock, formatDuration, formatOf, formatSampleRate } from '../src/utils/format';
 import { coarsestPeaks, peakColumns } from '../src/utils/waveform';
 import { decodeFrame } from '../src/engine-client/BinaryFrame';
@@ -14,22 +14,20 @@ import {
 
 describe('frequency axis', () => {
     it('returns null without a top or a width, instead of NaN geometry', () => {
-        expect(makeAxis({ maxHz: 0, width: 800, log: true })).toBeNull();
-        expect(makeAxis({ maxHz: 4000, width: 0, log: true })).toBeNull();
-        expect(makeAxis({ maxHz: 40, width: 800, log: false })).toBeNull();
+        expect(makeAxis({ maxHz: 0, width: 800 })).toBeNull();
+        expect(makeAxis({ maxHz: 4000, width: 0 })).toBeNull();
+        expect(makeAxis({ maxHz: 40, width: 800 })).toBeNull();
     });
 
-    it('maps 50 Hz to the left edge and the top to the right on both scales', () => {
-        for (const log of [true, false]) {
-            const axis = makeAxis({ maxHz: 4000, width: 800, log });
-            expect(axis.toX(50)).toBeCloseTo(0);
-            expect(axis.toX(4000)).toBeCloseTo(800);
-            expect(axis.ticks.every(hz => hz > 50 && hz < 4000)).toBe(true);
-        }
+    it('maps 50 Hz to the left edge and the top to the right', () => {
+        const axis = makeAxis({ maxHz: 4000, width: 800 });
+        expect(axis.toX(50)).toBeCloseTo(0);
+        expect(axis.toX(4000)).toBeCloseTo(800);
+        expect(axis.ticks.every(hz => hz > 50 && hz < 4000)).toBe(true);
     });
 
-    it('spaces octaves equally on the log scale, which the keyboard relies on', () => {
-        const axis = makeAxis({ maxHz: 4000, width: 800, log: true });
+    it('spaces octaves equally, which the keyboard relies on', () => {
+        const axis = makeAxis({ maxHz: 4000, width: 800 });
         expect(axis.toX(220) - axis.toX(110)).toBeCloseTo(axis.toX(880) - axis.toX(440));
     });
 
@@ -62,7 +60,7 @@ describe('small helpers', () => {
         expect([tuningBand(10), tuningBand(-10.1), tuningBand(20), tuningBand(20.5)]).toEqual(['in', 'near', 'near', 'off']);
         expect(formatCents(-4.2)).toBe('−4¢');
         expect(formatCents(14)).toBe('+14¢');
-        expect(formatCents(centsFrom440(442), 1)).toBe('+7.9¢');
+        expect(formatCents(1200 * Math.log2(442 / 440), 1)).toBe('+7.9¢');
         expect(formatCents(0)).toBe('0¢');
     });
 

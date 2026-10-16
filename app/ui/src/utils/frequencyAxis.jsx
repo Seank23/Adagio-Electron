@@ -1,26 +1,18 @@
 import { MIN_FREQ } from '../constants';
 
-const LOG_TICKS = [100, 200, 300, 500, 1000, 2000, 3000, 5000];
-const LINEAR_TICK_STEP = 500;
+const TICKS = [100, 200, 300, 500, 1000, 2000, 3000, 5000];
 
-export const makeAxis = ({ minHz = MIN_FREQ, maxHz, width, log }) => {
+// Log frequency, so every octave has the same width.
+export const makeAxis = ({ minHz = MIN_FREQ, maxHz, width }) => {
     if (!(maxHz > minHz) || !(width > 0))
         return null;
 
-    const toX = log
-        ? (() => {
-            const minLog = Math.log10(minHz);
-            const span = Math.log10(maxHz) - minLog;
-            return hz => (Math.log10(hz) - minLog) / span * width;
-        })()
-        : hz => (hz - minHz) / (maxHz - minHz) * width;
+    const minLog = Math.log10(minHz);
+    const span = Math.log10(maxHz) - minLog;
+    const toX = hz => (Math.log10(hz) - minLog) / span * width;
+    const ticks = TICKS.filter(hz => hz > minHz && hz < maxHz);
 
-    const ticks = log
-        ? LOG_TICKS.filter(hz => hz > minHz && hz < maxHz)
-        : Array.from({ length: Math.floor(maxHz / LINEAR_TICK_STEP) }, (_, i) => (i + 1) * LINEAR_TICK_STEP)
-            .filter(hz => hz > minHz && hz < maxHz);
-
-    return { minHz, maxHz, width, log, toX, ticks };
+    return { minHz, maxHz, width, toX, ticks };
 };
 
 // The top of the spectrum's axis: the frame's own when there is one, otherwise half the

@@ -305,6 +305,30 @@ describe('TuningControl', () => {
         await flush();
         expect(engine.sent('setAnalysisSetting').map(call => call.args.value)).toEqual([440]);
     });
+
+    it('shows the engine\'s tuning error, coloured by the bands a note\'s error uses, and a dash with none', async () => {
+        const { store } = setup({}, 'playing');
+        const readout = () => screen.getByTitle(/^Tuning error/);
+        const show = async avgTuningError => {
+            act(() => store.dispatch(setAnalysisData(analysisEvent({ avgTuningError }).value)));
+            await nextFrame();
+            return [readout().textContent, readout().dataset.band];
+        };
+        expect(await show(-3.24)).toEqual(['−3.2¢', 'in']);
+        expect(await show(14.5)).toEqual(['+14.5¢', 'near']);
+        expect(await show(-27.5)).toEqual(['−27.5¢', 'off']);
+        expect(await show(null)).toEqual(['—', undefined]);
+    });
+
+    it('does not re-render on analysis events: the readout is painted through a ref', () => {
+        let commits = 0;
+        const { store } = renderWithEngine(<Profiler id="tuning" onRender={() => commits++}><TuningControl /></Profiler>);
+        openTrack(store, { state: 'playing' });
+        const before = commits;
+        for (let i = 0; i < 30; i++)
+            act(() => store.dispatch(setAnalysisData(analysisEvent({ avgTuningError: i / 10 }).value)));
+        expect(commits).toBe(before);
+    });
 });
 
 describe('TransportBar with no file', () => {
@@ -324,9 +348,9 @@ describe('SpectrumPanel', () => {
         openTrack(store);
         act(() => store.dispatch(setTransport({ analysis: ANALYSIS })));
         expect(screen.getByText('50 Hz – 4 kHz')).toBeTruthy();
-        expect(screen.getByText('4-frame smoothing · 64 ms')).toBeTruthy();
-        act(() => store.dispatch(setTransport({ analysis: { ...ANALYSIS, hopSize: 32, frameSmoothing: 10 } })));
-        expect(screen.getByText('10-frame smoothing · 40 ms')).toBeTruthy();
+        expect(screen.getByText('4-frame smoothing')).toBeTruthy();
+        act(() => store.dispatch(setTransport({ analysis: { ...ANALYSIS, frameSmoothing: 10 } })));
+        expect(screen.getByText('10-frame smoothing')).toBeTruthy();
         act(() => store.dispatch(setTransport({ analysis: { ...ANALYSIS, frameSmoothing: 1 } })));
         expect(screen.getByText('no smoothing')).toBeTruthy();
     });
@@ -335,5 +359,16 @@ describe('SpectrumPanel', () => {
         const { store } = renderWithEngine(<SpectrumPanel />);
         act(() => store.dispatch(setTransport({ state: 'empty', track: null, analysis: ANALYSIS })));
         expect(screen.queryByText(/smoothing/)).toBeNull();
+    });
+
+    it('starts on a linear magnitude and switches to dB without asking the engine', async () => {
+        const { store, engine } = renderWithEngine(<SpectrumPanel />);
+        const scale = within(screen.getByRole('group', { name: 'Magnitude scale' }));
+        expect(scale.getByRole('button', { name: 'Linear' }).getAttribute('aria-pressed')).toBe('true');
+        fireEvent.click(scale.getByRole('button', { name: 'dB' }));
+        await flush();
+        expect(store.getState().settings.showDecibels).toBe(true);
+        expect(scale.getByRole('button', { name: 'dB' }).getAttribute('aria-pressed')).toBe('true');
+        expect(engine.calls).toEqual([]);
     });
 });

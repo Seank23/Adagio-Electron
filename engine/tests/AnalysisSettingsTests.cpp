@@ -164,6 +164,41 @@ TEST_CASE("The A4 reference is range-checked and names notes against itself")
 	CHECK(foundA4);
 }
 
+TEST_CASE("a reset setting returns to the stage's default, in the schema and in the stage")
+{
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	const Adagio::AudioFrame frame = MakeToneFrame(452.9f, 8000, 4096);
+	const auto hasA4 = [&]()
+	{
+		const auto result = pipeline->ProcessFrame(frame);
+		for (const auto& note : result->Context->Notes)
+		{
+			if (note.Midi == 69)
+				return true;
+		}
+		return false;
+	};
+
+	REQUIRE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 452.9, error));
+	REQUIRE(pipeline->SetSetting("NoteDetector", "ERROR_THRESHOLD", 10.0, error));
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 3, error));
+	REQUIRE(hasA4());
+
+	pipeline->ResetSetting("NoteDetector", "A440_TUNING");
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(440.0));
+	CHECK_FALSE(hasA4());
+
+	// Only that key: the stage's other settings and every other stage's keep their values.
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "NoteDetector", "ERROR_THRESHOLD").at("value") == doctest::Approx(10.0));
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "PeakExtractor", "MAX_PEAKS").at("value") == 3);
+
+	// Nothing to reset is not an error.
+	pipeline->ResetSetting("NoteDetector", "A440_TUNING");
+	pipeline->ResetSetting("NoSuchStage", "A440_TUNING");
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(440.0));
+}
+
 // A stage's name is the key its settings are stored and sent under. It used to be
 // derived from typeid, which only reads this way on MSVC; now each stage spells it,
 // and a rename that changed a key would break every client's stored settings.

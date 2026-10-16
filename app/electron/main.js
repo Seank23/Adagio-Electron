@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const { spawn } = require('child_process');
 const { randomBytes } = require('crypto');
 const fs = require('fs');
@@ -226,6 +226,20 @@ const createWindow = () => {
         mainWindow.webContents.on('ipc-message', (event, channel, ...args) => {
             console.log('[renderer -> main]', channel, args);
         });
+        // The menu that carried reload and DevTools is gone, so dev binds them itself.
+        const contents = mainWindow.webContents;
+        contents.on('before-input-event', (event, input) => {
+            if (input.type !== 'keyDown')
+                return;
+            const key = input.key.toLowerCase();
+            if (input.key === 'F5' || (input.control && !input.shift && !input.alt && key === 'r')) {
+                event.preventDefault();
+                contents.reload();
+            } else if (input.key === 'F12' || (input.control && input.shift && !input.alt && key === 'i')) {
+                event.preventDefault();
+                contents.toggleDevTools();
+            }
+        });
         mainWindow.loadURL('http://localhost:5173');
         if (!process.env.ADAGIO_E2E)
             mainWindow.webContents.openDevTools();
@@ -237,6 +251,8 @@ const createWindow = () => {
 };
 
 app.whenReady().then(async () => {
+    // No File/Edit/View bar: every control is in the page. Set before the window, which would otherwise get the default.
+    Menu.setApplicationMenu(null);
     preferences = loadPreferences();
     // Before the window, so its frame, prefers-color-scheme and its background agree from the first paint.
     nativeTheme.themeSource = preferences.theme;

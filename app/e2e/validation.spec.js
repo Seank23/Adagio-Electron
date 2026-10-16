@@ -4,8 +4,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 const {
-    HOP_MS, button, close, engineIndicator, inkOf, launch, makeFixtures, openFile, pitchClassRows, readout, removeUserData,
-    resize, snapshot, startEngine, stepFrames, tap,
+    HOP_MS, button, close, engineIndicator, inkOf, launch, makeFixtures, makeUserData, openFile, pitchClassRows, readout,
+    removeUserData, resize, snapshot, startEngine, stepFrames, tap,
 } = require('./harness');
 
 let fixtures;
@@ -24,6 +24,8 @@ test.afterEach(async () => {
 });
 
 const position = page => readout(page, 'Position');
+// The sidebar's key name: '—' until a key is detected. The tuning error reads '—' too, so a bare dash is ambiguous.
+const sidebarKey = page => page.getByRole('tabpanel').locator('section').first().locator('span').nth(1);
 
 test('cold start without the engine: Connecting, then Disconnected, then connected with no reload', async () => {
     session = await launch({ engine: false });
@@ -112,6 +114,33 @@ test('the engine starts quiet: 20% volume on a fresh launch', async () => {
     await expect(page.getByRole('slider', { name: 'Volume' })).toHaveAttribute('aria-valuenow', '20');
 });
 
+test('the window has no menu bar, and in dev Ctrl+R still reloads the page', async () => {
+    session = await launch();
+    const { app, page } = session;
+    expect(await app.evaluate(({ Menu }) => Menu.getApplicationMenu())).toBeNull();
+    // The window's content is all of its inside: no bar takes rows above the page.
+    const [contentHeight, innerHeight] = await Promise.all([
+        app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentSize()[1]),
+        page.evaluate(() => window.innerHeight),
+    ]);
+    expect(Math.abs(contentHeight - innerHeight)).toBeLessThanOrEqual(1);
+
+    // Playwright's keys never reach main's before-input-event, so the press goes through Electron,
+    // which delivers input only to a focused window.
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    await page.evaluate(() => { window.beforeReload = true; });
+    const reloaded = page.waitForEvent('load');
+    await app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window.focus();
+        window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'R', modifiers: ['control'] });
+        window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'R', modifiers: ['control'] });
+    });
+    await reloaded;
+    expect(await page.evaluate(() => window.beforeReload)).toBeUndefined();
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+});
+
 test('speed presets follow the engine, and the slider stops at 20%', async () => {
     session = await launch();
     const { app, page } = session;
@@ -160,7 +189,7 @@ test('step: each step is one hop, and 125 build the key up; reset empties the si
     session = await launch();
     const { app, page } = session;
     await openFile(app, page, fixtures.chord);
-    await expect(page.getByText('—', { exact: true })).toBeVisible();
+    await expect(sidebarKey(page)).toHaveText('—');
 
     await page.locator('body').click({ position: { x: 5, y: 300 } });
     for (let i = 0; i < 125; i++) {
@@ -175,7 +204,7 @@ test('step: each step is one hop, and 125 build the key up; reset empties the si
     await expect(button(page, 'Play')).toBeVisible();
 
     await button(page, 'Reset analysis: clears the spectrum, key and chords').click();
-    await expect(page.getByText('—', { exact: true })).toBeVisible();
+    await expect(sidebarKey(page)).toHaveText('—');
     await expect.poll(() => inkOf(page, 'Spectrum')).toBeGreaterThan(0);
 
     await page.waitForTimeout(35);
@@ -201,6 +230,36 @@ test('a seek keeps the analysis', async () => {
     await page.getByRole('group', { name: 'Waveform' }).click({ position: { x: 600, y: 10 } });
     await expect(page.getByText(keyName, { exact: true })).toBeVisible();
     await expect(page.getByText('—', { exact: true })).toHaveCount(0);
+});
+
+test('opening another track starts its analysis afresh: spectrum, key, chords, tuning error and A4', async () => {
+    session = await launch();
+    const { app, page } = session;
+    const tuning = page.getByRole('slider', { name: 'A440 reference' });
+    const tuningError = page.getByTitle(/^Tuning error/);
+    const chordRows = page.getByRole('tabpanel').locator('section').nth(1).locator(':scope > div');
+
+    await openFile(app, page, fixtures.chord);
+    await expect.poll(() => inkOf(page, 'Spectrum')).toBeGreaterThan(0);
+    const gridOnly = await inkOf(page, 'Spectrum');
+
+    await page.locator('body').click({ position: { x: 5, y: 300 } });
+    await stepFrames(page, 60);
+    await expect(sidebarKey(page)).not.toHaveText('—');
+    await expect(tuningError).not.toHaveText('—');
+    await expect(chordRows.first()).toBeVisible();
+    await expect.poll(() => inkOf(page, 'Spectrum')).toBeGreaterThan(gridOnly);
+    await tuning.focus();
+    await page.keyboard.press('ArrowUp');
+    await expect(tuning).toHaveAttribute('aria-valuenow', '440.5');
+
+    await openFile(app, page, fixtures.sharp);
+    await expect(tuning).toHaveAttribute('aria-valuenow', '440');
+    await expect(sidebarKey(page)).toHaveText('—');
+    await expect(tuningError).toHaveText('—');
+    await expect(chordRows).toHaveCount(0);
+    await expect(page.getByText('Chord', { exact: true })).toHaveCount(1);
+    await expect.poll(() => inkOf(page, 'Spectrum')).toBe(gridOnly);
 });
 
 test('timeline: the overview zooms and pans, the waveform seeks on a click and ignores a drag', async () => {
@@ -257,13 +316,13 @@ test('the piano and the spectrum grid draw as soon as a track is open, before an
     session = await launch();
     const { app, page } = session;
     await openFile(app, page, fixtures.chord);
-    await expect(page.getByText('—', { exact: true })).toBeVisible();
+    await expect(sidebarKey(page)).toHaveText('—');
     await expect.poll(() => inkOf(page, 'Piano heatmap')).toBeGreaterThan(0.9);
     await expect.poll(() => inkOf(page, 'Spectrum')).toBeGreaterThan(0);
     await expect(page.getByText('50 Hz – 4 kHz')).toBeVisible();
 });
 
-test('switching to Linear redraws the spectrum and leaves the keyboard as it was', async () => {
+test('switching to dB redraws the spectrum and leaves the keyboard as it was', async () => {
     session = await launch();
     const { app, page } = session;
     await openFile(app, page, fixtures.chord);
@@ -273,8 +332,8 @@ test('switching to Linear redraws the spectrum and leaves the keyboard as it was
 
     const keyboard = await snapshot(page, 'Piano heatmap');
     const spectrum = await snapshot(page, 'Spectrum');
-    await button(page, 'Linear').click();
-    await expect(button(page, 'Linear')).toHaveAttribute('aria-pressed', 'true');
+    await button(page, 'dB').click();
+    await expect(button(page, 'dB')).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => snapshot(page, 'Spectrum')).not.toBe(spectrum);
     expect(await snapshot(page, 'Piano heatmap')).toBe(keyboard);
 });
@@ -308,16 +367,19 @@ test('sidebar: the chord badge matches the top chord, the tonic is marked, and t
     await expect(page.getByRole('tab', { name: 'Settings' })).toBeDisabled();
 });
 
-test('tuning: a tone at 452.9 Hz is dropped at 440 and named A at 452.9; the value is clamped and kept', async () => {
+test('tuning: a tone at 452.9 Hz is dropped at 440 and named A, in tune, at 452.9; the value is clamped and kept', async () => {
     session = await launch();
     const { app, page } = session;
     await openFile(app, page, fixtures.sharp);
     const tuning = page.getByRole('slider', { name: 'A440 reference' });
+    const tuningError = page.getByTitle(/^Tuning error/);
     await expect(tuning).toHaveAttribute('aria-valuenow', '440');
 
+    // About 50 cents sharp of A4 at 440 is past the error threshold: no key, and no error to show.
     await stepFrames(page, 20);
     await page.waitForTimeout(200);
-    await expect(page.getByText('—', { exact: true })).toBeVisible();
+    await expect(sidebarKey(page)).toHaveText('—');
+    await expect(tuningError).toHaveText('—');
 
     // 440 → 452.9: 25 steps of 0.5 and 4 of 0.1.
     await tuning.focus();
@@ -326,11 +388,12 @@ test('tuning: a tone at 452.9 Hz is dropped at 440 and named A at 452.9; the val
     for (let i = 0; i < 4; i++)
         await page.keyboard.press('Shift+ArrowUp');
     await expect(tuning).toHaveAttribute('aria-valuenow', '452.9');
-    await expect(page.getByText('+50.0¢')).toBeVisible();
 
     await page.locator('body').click({ position: { x: 5, y: 300 } });
     await stepFrames(page, 20);
     await expect.poll(async () => (await pitchClassRows(page)).A.width).toBe('90%');
+    await expect(tuningError).toHaveAttribute('data-band', 'in');
+    await expect(tuningError).toHaveText(/^[+−]?\d\.\d¢$/);
 
     // Clamped at the top of the range, and back to 440 on a double-click.
     await tuning.focus();
@@ -382,6 +445,14 @@ test('window size: nothing scrolls or overlaps at 1100×700, and a taller window
     const name = await page.getByText(path.basename(fixtures.chord), { exact: true }).boundingBox();
     const back = await button(page, 'Back to start').boundingBox();
     expect(name.x + name.width).toBeLessThanOrEqual(back.x);
+
+    // The spectrum header and the sidebar's tabs end on one line.
+    const bottomOf = async locator => {
+        const box = await locator.boundingBox();
+        return box.y + box.height;
+    };
+    const spectrumHeader = page.getByRole('group', { name: 'Magnitude scale' }).locator('xpath=..');
+    expect(await bottomOf(page.getByRole('tablist', { name: 'Sidebar' }))).toBe(await bottomOf(spectrumHeader));
 
     const timeline = page.getByText('Timeline', { exact: true }).locator('xpath=ancestor::*[3]');
     const heights = async () => ({
@@ -495,6 +566,50 @@ test('preferences survive a restart: Light, 16 kHz, frame 8192, hop 256 and smoo
     await button(page, 'Play').click();
     await expect(page.getByText(/^Analysis (5[5-9]|6\d) frames\/s · 16 kHz · 8192 pt$/)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('50 Hz – 8 kHz')).toBeVisible();
-    // Six frames 256 samples apart at 16 kHz.
-    await expect(page.getByText('6-frame smoothing · 96 ms')).toBeVisible();
+    await expect(page.getByText('6-frame smoothing')).toBeVisible();
+});
+
+test('preferences reach an engine started by hand, as in dev, and one restarted under the running app', async () => {
+    const userData = makeUserData();
+    fs.writeFileSync(path.join(userData, 'preferences.json'), JSON.stringify({
+        theme: 'system',
+        engine: { sampleRate: 16000, frameLength: 8192, hopSize: 256, frameSmoothing: 6 },
+    }));
+    const analysisReadout = page => page.getByText(/^Analysis (5[5-9]|6\d) frames\/s · 16 kHz · 8192 pt$/);
+
+    let engine = startEngine();
+    try {
+        await engine.ready;
+        session = await launch({ engine: false, userData });
+        const { app, page } = session;
+        await expect(engineIndicator(page)).toHaveText('Engine connected');
+
+        // The store starts empty, so these are the engine's answers: defaults, then the restored values.
+        await button(page, 'Preferences (Ctrl+,)').click();
+        for (const [group, name] of [['Sample rate', '16 kHz'], ['Frame size', '8192'], ['Hop size', '256']])
+            await expect(preferenceChip(page, group, name)).toHaveAttribute('aria-pressed', 'true');
+        await expect(smoothing(page)).toHaveAttribute('aria-valuenow', '6');
+        await expect.poll(() => focusInDialog(page)).toBe(true);
+        await page.keyboard.press('Escape');
+        await expect(preferencesDialog(page)).toBeHidden();
+
+        await openFile(app, page, fixtures.chord);
+        await button(page, 'Play').click();
+        await expect(analysisReadout(page)).toBeVisible({ timeout: 5000 });
+
+        // A new engine starts on its defaults. The drop card returns once the app has its
+        // status, and the restore goes out right behind it, ahead of the next load.
+        await engine.stop();
+        engine = startEngine();
+        await engine.ready;
+        await expect(page.getByText('Drop an audio file to analyse')).toBeVisible({ timeout: 20000 });
+        await openFile(app, page, fixtures.chord);
+        await button(page, 'Play').click();
+        await expect(analysisReadout(page)).toBeVisible({ timeout: 5000 });
+        await expect(page.getByText(/Couldn't restore/)).toHaveCount(0);
+    } finally {
+        await close(session?.app);
+        session = null;
+        await engine.stop();
+    }
 });

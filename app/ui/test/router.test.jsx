@@ -8,6 +8,7 @@ import { CONNECTION_STATE } from '../src/engine-client/WebSocketEngine';
 import { getLatestSpectrum, getWaveform } from '../src/engine-client/FrameStore';
 import { BINARY_FRAME } from '../src/utils/protocol';
 import { toggleRepeat } from '../src/store/settingsSlice';
+import { selectTuningHz } from '../src/store/pipelineSlice';
 import { FakeEngine, TRACK, analysisEvent, flush, renderWithEngine } from './helpers';
 
 const statusWith = value => ({ status: () => ({ ok: true, value }) });
@@ -68,6 +69,61 @@ describe('EngineEventRouter on connect', () => {
     });
 });
 
+describe('EngineEventRouter restores the saved analysis values on connect', () => {
+    const DEFAULTS = { sampleRate: 8000, frameLength: 4096, hopSize: 128, frameSmoothing: 4 };
+    const SAVED = { ...DEFAULTS, hopSize: 64, frameSmoothing: 6 };
+    const saved = engine => {
+        window.api = { getPreferences: async () => ({ ok: true, value: { theme: 'system', engine } }) };
+    };
+
+    it('sends a hand-started engine only the values it lacks, then analyses the paused frame', async () => {
+        saved(SAVED);
+        const engine = new FakeEngine(statusWith({ state: 'paused', track: TRACK, analysis: DEFAULTS }));
+        renderWithEngine(<EngineEventRouter />, { engine });
+        await flush();
+        expect(engine.sent('setEngineParams').map(call => call.args)).toEqual([{ hopSize: 64, frameSmoothing: 6 }]);
+        expect(engine.sent('analyseFrame')).toHaveLength(1);
+    });
+
+    it('sends nothing to an engine that has them already, as one main spawned does', async () => {
+        saved(SAVED);
+        const engine = new FakeEngine(statusWith({ state: 'empty', track: null, analysis: SAVED }));
+        renderWithEngine(<EngineEventRouter />, { engine });
+        await flush();
+        expect(engine.sent('setEngineParams')).toEqual([]);
+    });
+
+    it('restores them again when the engine is restarted under the running app', async () => {
+        saved(SAVED);
+        const engine = new FakeEngine(statusWith({ state: 'empty', track: null, analysis: DEFAULTS }), CONNECTION_STATE.CONNECTING);
+        renderWithEngine(<EngineEventRouter />, { engine });
+        act(() => engine.setState(CONNECTION_STATE.CONNECTED));
+        await flush();
+        act(() => engine.setState(CONNECTION_STATE.DISCONNECTED));
+        act(() => engine.setState(CONNECTION_STATE.CONNECTED));
+        await flush();
+        expect(engine.sent('setEngineParams')).toHaveLength(2);
+        expect(engine.sent('analyseFrame')).toEqual([]);
+    });
+
+    it('leaves a loading engine alone, and says so when one refuses', async () => {
+        saved(SAVED);
+        const loading = new FakeEngine(statusWith({ state: 'loading', track: null, analysis: DEFAULTS }));
+        renderWithEngine(<EngineEventRouter />, { engine: loading });
+        await flush();
+        expect(loading.sent('setEngineParams')).toEqual([]);
+
+        saved(SAVED);
+        const refusing = new FakeEngine({
+            ...statusWith({ state: 'empty', track: null, analysis: DEFAULTS }),
+            setEngineParams: () => ({ ok: false, error: 'Hop size 64 is not allowed.' }),
+        });
+        const { store } = renderWithEngine(<EngineEventRouter />, { engine: refusing });
+        await flush();
+        expect(store.getState().app.statusMessage).toMatchObject({ type: 'error', message: expect.stringContaining('Hop size 64 is not allowed.') });
+    });
+});
+
 describe('EngineEventRouter events', () => {
     const setup = handlers => {
         const engine = new FakeEngine(handlers);
@@ -100,6 +156,7 @@ describe('EngineEventRouter events', () => {
         const { analysis } = store.getState();
         expect(analysis.detectedKey).toBeNull();
         expect(analysis.predictedChords).toEqual([]);
+        expect(analysis.avgTuningError).toBeNull();
         expect(analysis.spectrumSR).toBe(8000);
     });
 
@@ -146,6 +203,23 @@ describe('EngineEventRouter events', () => {
         emit({ type: 'fileClosed' });
         expect(getWaveform()).toBeNull();
         expect(store.getState().playback.duration).toBe(0);
+    });
+
+    it('asks for the schema again on fileLoaded, so the A4 reference the engine reset shows', async () => {
+        let tuning = 452.9;
+        const { store, emit, engine } = setup({
+            getAnalysisSchema: () => ({
+                ok: true,
+                value: { stages: [{ name: 'NoteDetector', settings: [{ key: 'A440_TUNING', type: 'float', value: tuning }] }] },
+            }),
+        });
+        await flush();
+        expect(selectTuningHz(store.getState())).toBe(452.9);
+        tuning = 440;
+        emit({ type: 'fileLoaded', value: { duration: 2 } });
+        await flush();
+        expect(engine.sent('getAnalysisSchema')).toHaveLength(2);
+        expect(selectTuningHz(store.getState())).toBe(440);
     });
 
     it('turns error and info events into status messages', async () => {

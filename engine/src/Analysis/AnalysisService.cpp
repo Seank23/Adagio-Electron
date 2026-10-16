@@ -35,7 +35,8 @@ namespace Adagio
 	void AnalysisService::Init(std::shared_ptr<PcmFeeder> feeder, AnalysisParams params, const PlaybackService* playback)
 	{
 		StopAnalysis();
-		m_Pipeline->ResetPersistentData();
+		ClearTrackers();
+		m_Pipeline->ResetSetting(std::string(NoteDetector::Name), "A440_TUNING");
 
 		m_Feeder = feeder;
 		m_Playback = playback;
@@ -102,8 +103,14 @@ namespace Adagio
 		m_Playback = nullptr;
 		m_Params = AnalysisParams{};
 		m_AudioSource.reset();
-		m_Pipeline->ResetPersistentData();
+		ClearTrackers();
 		m_AnalysisBuffer.reset();
+	}
+
+	void AnalysisService::ClearTrackers()
+	{
+		m_Pipeline->ResetPersistentData();
+		MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
 	}
 
 	void AnalysisService::StartAnalysis()
@@ -216,8 +223,7 @@ namespace Adagio
 		}
 		else
 		{
-			m_Pipeline->ResetPersistentData();
-			MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
+			ClearTrackers();
 		}
 	}
 

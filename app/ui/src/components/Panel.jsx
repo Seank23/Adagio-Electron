@@ -1,4 +1,5 @@
 import Styled from '@emotion/styled';
+import { PANEL_HEADER_HEIGHT } from '../constants';
 
 export const Panel = Styled.div`
     display: flex;
@@ -9,7 +10,7 @@ export const Panel = Styled.div`
     background: var(--bg-panel);
 `;
 
-export const PanelHeader = ({ title, height = 34, children }) => (
+export const PanelHeader = ({ title, height = PANEL_HEADER_HEIGHT, children }) => (
     <HeaderRow style={{ height }}>
         <PanelTitle>{title}</PanelTitle>
         {children}

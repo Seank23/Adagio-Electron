@@ -4,6 +4,7 @@ import { selectTuningHz } from './pipelineSlice';
 
 const initialState = {
     notes: [],
+    avgTuningError: null,
     spectrumSR: 0,
     executionTime: 0,
     keyHistogram: [],
@@ -18,6 +19,7 @@ const analysisSlice = createSlice({
     reducers: {
         setAnalysisData: (state, action) => {
             state.notes = action.payload?.notes;
+            state.avgTuningError = action.payload?.avgTuningError ?? null;
             state.spectrumSR = action.payload?.sampleRate;
             state.executionTime = action.payload?.executionTimeMs;
             state.keyHistogram = action.payload?.keyHistogram || [];
@@ -61,5 +63,7 @@ export const selectChordProbabilities = createSelector(
 // A string, so the chord rows re-render only when a name or the count changes.
 export const selectChordNamesKey = state =>
     state.analysis.predictedChords.slice(0, CHORD_ROWS).map(chord => chord.name).join('|');
+
+export const selectAvgTuningError = state => state.analysis.avgTuningError;
 
 export default analysisSlice.reducer;

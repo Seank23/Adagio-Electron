@@ -3,7 +3,7 @@ import { createSlice } from '@reduxjs/toolkit';
 const settingsSlice = createSlice({
     name: 'settings',
     initialState: {
-        showLogScale: true,
+        showDecibels: false,
         // 'system' follows the OS; 'dark' and 'light' force one.
         themeMode: 'system',
         repeat: false,
@@ -11,8 +11,8 @@ const settingsSlice = createSlice({
         sidebarTab: 'analysis',
     },
     reducers: {
-        setShowLogScale: (state, action) => {
-            state.showLogScale = action.payload;
+        setShowDecibels: (state, action) => {
+            state.showDecibels = action.payload;
         },
         setThemeMode: (state, action) => {
             state.themeMode = action.payload;
@@ -29,5 +29,5 @@ const settingsSlice = createSlice({
     },
 });
 
-export const { setShowLogScale, setThemeMode, toggleRepeat, toggleFollow, setSidebarTab } = settingsSlice.actions;
+export const { setShowDecibels, setThemeMode, toggleRepeat, toggleFollow, setSidebarTab } = settingsSlice.actions;
 export default settingsSlice.reducer;

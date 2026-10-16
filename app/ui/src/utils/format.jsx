@@ -42,9 +42,9 @@ export const formatFrame = (frameLength, sampleRate) =>
 export const formatSmoothing = (count, hopSize, sampleRate) =>
     count > 1 ? `last ${oneDecimal(count * hopSize / sampleRate * 1000)} ms` : 'off';
 
-// 4 of 128 at 8000 → '4-frame smoothing · 64 ms'; 1 → 'no smoothing'
-export const formatSmoothingSummary = (count, hopSize, sampleRate) =>
-    count > 1 ? `${count}-frame smoothing · ${oneDecimal(count * hopSize / sampleRate * 1000)} ms` : 'no smoothing';
+// 4 of 128 at 8000 → '4-frame smoothing'; 1 → 'no smoothing'
+export const formatSmoothingSummary = (count) =>
+    count > 1 ? `${count}-frame smoothing` : 'no smoothing';
 
 export const formatChannels = channels =>
     channels === 1 ? 'mono' : channels === 2 ? 'stereo' : channels ? `${channels} ch` : '';

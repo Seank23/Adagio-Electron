@@ -5,3 +5,9 @@ export const loadPreferences = async () =>
 
 export const savePreferences = async patch =>
     window.api?.setPreferences ? window.api.setPreferences(patch) : { ok: false, unsaved: true };
+
+// The saved analysis values the engine doesn't hold, or null when it holds them all.
+export const engineParamsToRestore = (saved, current) => {
+    const changes = Object.fromEntries(Object.entries(saved ?? {}).filter(([key, value]) => current?.[key] !== value));
+    return Object.keys(changes).length > 0 ? changes : null;
+};
