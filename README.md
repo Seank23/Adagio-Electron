@@ -1,6 +1,8 @@
 # Adagio
 
-Adagio is a Windows desktop app for performing musical analysis and information retrieval. It allows the track to be slowed down to 20% of its speed without changing its pitch, and as it plays it shows the spectrum, the notes it detects, and a prediction of the key signature and chords currently played.
+Adagio is a Windows desktop app esigned to provide a technical analysis of the musical elements present in an audio track. It slows an audio file down to as little as 20% of its speed without changing its pitch, and while it plays it shows the spectrum, the notes it hears, the key and the chords. While the analysis produced is not guaranteed to be completely accurate, Adagio aims to serve as a tool to help musicians and music enthusiasts in their quest to transcribe, or better understand a piece of music.
+
+It is the spiritual successor to [MusicAnalyser](https://github.com/Seank23/MusicAnalyser), rebuilt from scratch: see [Improvements over MusicAnalyser](#improvements-over-musicanalyser).
 
 <img width="2377" height="1332" alt="image" src="https://github.com/user-attachments/assets/ddb111f9-f2f3-494f-b2fb-788b0b017e0d" />
 
@@ -40,6 +42,22 @@ Adagio is two programs. The window is an Electron and React app in `app/`. The a
 The engine analyses its own copy of the track, mixed to mono and resampled to the analysis sample rate. Each frame goes through an FFT, a harmonic product spectrum, peak picking, note detection against the A4 reference, a key detector and a chord predictor. Frames arrive at a fixed rate in wall time, so slower playback analyses the music more finely. The spectrum streams to the window as binary frames every hop; the notes, key and chords as JSON about 31 times a second.
 
 `CLAUDE.md` describes the architecture in detail: the threads, the protocol, how the analysis works and the traps worth knowing.
+
+## Improvements over MusicAnalyser
+
+MusicAnalyser was a C# WinForms app on .NET Framework that did the same job: play a track slowed down and show its spectrum, notes, key and chords. Adagio keeps the idea and the shape of its analysis chain (FFT, harmonic product spectrum, spectrum filter, peak picking, then notes, key and chords) and rebuilds everything around it.
+
+- **A native engine in its own process.** MusicAnalyser ran its analysis from a timer on the window's UI thread, so a slow frame held up the interface and a busy interface held up the analysis. Adagio's C++ engine plays, time-stretches and analyses on threads of its own, and the window only draws what the engine sends it.
+- **Analysis at a steady rate.** MusicAnalyser's timer stretched its interval to however long recent frames had taken, so the frames a second depended on the machine and the settings. Adagio analyses a frame each time the playhead moves one hop: 62.5 frames a second at the defaults and up to 500, each read centred on where the playhead is at that moment. At slower speeds it samples the music more finely.
+- **Key and chords that don't depend on the frame rate.** MusicAnalyser took the key from its last 10,000 detected notes and the chords from note counts, so how far back they looked changed with the update rate, the playback speed and how busy the music was. Adagio weights everything it accumulates by the stretch of music each frame covers: the key leans on the last 20 seconds and the chords on the last half second, at any speed, hop or sample rate.
+- **Analysis resolution you can choose.** MusicAnalyser's frame was fixed at 4,096 samples. Adagio's analysis sample rate (4, 8 or 16 kHz), frame size (2,048 to 8,192 samples) and hop (32 to 256 samples) are preferences you can change mid-track, to trade frequency detail against time detail for the music in hand.
+- **A spectrum laid out like a keyboard.** MusicAnalyser plotted the spectrum on a linear frequency axis. Adagio's axis is logarithmic and gridded by piano key, with a keyboard beneath whose keys sit under the peaks; detected notes are dotted on it, and the magnitude can be linear or in decibels.
+- **A full semitone of tuning.** MusicAnalyser's Pitch Sync moved note naming by up to 50 cents either way. Adagio sets the A4 reference anywhere from 415 to 466 Hz, a semitone each side of 440, so a recording at baroque pitch is named correctly.
+- **Playback.** RubberBand does the time-stretching in place of SoundTouch, still down to 20% at the original pitch, and FLAC opens alongside WAV and MP3.
+- **Installs like an app.** A per-user installer with Start menu shortcuts and an uninstaller replaces the zip to extract. The engine links its runtime statically, so nothing else needs installing.
+- **Builds from a clean checkout, and is tested.** Every dependency comes at a pinned version through CMake or npm, with nothing to copy in by hand. Engine unit tests, socket-level smoke and stress tests, UI component tests and Playwright tests of the real app cover it, and CI builds the engine and runs its unit and smoke tests on every push.
+
+Adagio is still work in progress so not everything has come across yet. MusicAnalyser's recording from an input device, spectrogram viewer, editable script chain and its presets (the CQT one among them), note highlight filter, pitch shifting and section looping have no equivalent in Adagio so far. These features will be added in future releases.
 
 ## Build from source
 
