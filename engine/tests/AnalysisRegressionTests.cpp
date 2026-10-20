@@ -1,9 +1,10 @@
 // Regression tests for the analysis findings in the architecture review.
 //
-// The cases marked doctest::should_fail reproduce bugs that Phase 2 fixes. They
-// are decorated rather than left plainly failing so `ctest` can gate merges from
-// Phase 0 onward. When Phase 2 lands the fix, the decoration itself starts
-// failing, which is the signal to delete it and keep the assertion.
+// The cases marked doctest::should_fail reproduce bugs that a later change fixes:
+// Phase 2 for most, the Note Selection plan for A10. They are decorated rather
+// than left plainly failing so `ctest` can gate merges in the meantime. When the
+// fix lands, the decoration itself starts failing, which is the signal to delete
+// it and keep the assertion.
 #include "../src/Analysis/AnalysisPipeline.h"
 #include "../src/Analysis/AnalysisService.h"
 #include "../src/Analysis/AnalysisUtils.h"
@@ -13,11 +14,22 @@
 #include "../src/Analysis/KeyDetector.h"
 #include "../src/Analysis/NoteDetector.h"
 #include "../src/Analysis/PeakExtractor.h"
+#include "../src/Analysis/SpectrumFilterProcessor.h"
+
+// The Note Selection plan's three stages, which its third commit adds. The cases that
+// read them directly compile in once they exist; take the guard off then.
+#if __has_include("../src/Analysis/NoteSelector.h")
+#define ADAGIO_NOTE_SELECTION 1
+#include "../src/Analysis/HarmonicGrouper.h"
+#include "../src/Analysis/NoteSelector.h"
+#include "../src/Analysis/PartialExtractor.h"
+#endif
 
 #include <doctest/doctest.h>
 
 #include <array>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -769,3 +781,486 @@ TEST_CASE("the analysis event sends the tuning error, or null with none")
 	result.Context->AvgTuningError = -3.5f;
 	CHECK(Adagio::AnalysisPipeline::GetResultJson(result).at("value").at("avgTuningError").get<double>() == doctest::Approx(-3.5));
 }
+
+// A10 and the Note Selection plan. HPS gives every partial an image a twelfth below
+// it, and PeakExtractor reports images and partials alike as notes. The plan replaces
+// both with PartialExtractor, HarmonicGrouper and NoteSelector, behind SpectrumFilter.
+namespace
+{
+	constexpr double PiD = 3.14159265358979323846;
+	constexpr uint32_t AnalysisRate = 8000;
+	constexpr int AnalysisHop = 256;
+
+	struct Component
+	{
+		double Frequency = 0.0;
+		float Amplitude = 0.0f;
+	};
+
+	// Partials 1 to count of one note at the amplitudes the shape gives them, stretched
+	// as a piano's are when inharmonicity is set. Partials at or above Nyquist are left
+	// out, as Preprocess's lowpass leaves them out of the analysis stream.
+	std::vector<Component> Tone(double fundamentalHz, int partials, const std::function<float(int)>& amplitude, double inharmonicity = 0.0)
+	{
+		std::vector<Component> components;
+		for (int k = 1; k <= partials; ++k)
+		{
+			const double hz = k * fundamentalHz * std::sqrt(1.0 + inharmonicity * k * k);
+			if (hz >= AnalysisRate / 2.0)
+				break;
+			if (amplitude(k) > 0.0f)
+				components.push_back({ hz, amplitude(k) });
+		}
+		return components;
+	}
+
+	// Partials at 1/k amplitude, the shape the plan measured with.
+	std::vector<Component> HarmonicTone(double fundamentalHz, int partials, float gain = 1.0f)
+	{
+		return Tone(fundamentalHz, partials, [gain](int k) { return gain / static_cast<float>(k); });
+	}
+
+	std::vector<Component> Mix(std::initializer_list<std::vector<Component>> voices)
+	{
+		std::vector<Component> components;
+		for (const std::vector<Component>& voice : voices)
+			components.insert(components.end(), voice.begin(), voice.end());
+		return components;
+	}
+
+	// The components summed over the given seconds, in double precision so a 4 s tone
+	// keeps its phase, with uniform noise snrDb below the tone from a fixed seed. Then
+	// the whole is scaled by gainDb, noise included, so only the level changes.
+	std::vector<float> Synthesize(const std::vector<Component>& components, double seconds, double snrDb = 60.0, double gainDb = 0.0)
+	{
+		const size_t length = static_cast<size_t>(seconds * AnalysisRate);
+		std::vector<double> mixed(length, 0.0);
+		for (const Component& component : components)
+		{
+			const double step = 2.0 * PiD * component.Frequency / AnalysisRate;
+			for (size_t i = 0; i < length; ++i)
+				mixed[i] += component.Amplitude * std::sin(step * static_cast<double>(i));
+		}
+
+		double power = 0.0;
+		for (double sample : mixed)
+			power += sample * sample;
+		// Uniform noise on [-1, 1) has an RMS of 1/sqrt(3).
+		const double noiseScale = std::sqrt(3.0 * power / static_cast<double>(length)) * std::pow(10.0, -snrDb / 20.0);
+		const double gain = std::pow(10.0, gainDb / 20.0);
+
+		uint32_t state = 0x9E3779B9u;
+		std::vector<float> signal(length);
+		for (size_t i = 0; i < length; ++i)
+		{
+			state ^= state << 13;
+			state ^= state >> 17;
+			state ^= state << 5;
+			const double noise = state / 2147483648.0 - 1.0;
+			signal[i] = static_cast<float>(gain * (mixed[i] + noiseScale * noise));
+		}
+		return signal;
+	}
+
+	// The frame centred on a sample, as AnalysisService centres one on the playhead.
+	Adagio::AudioFrame FrameAt(const std::vector<float>& signal, size_t centre, uint32_t frameLength)
+	{
+		Adagio::AudioFrame frame;
+		frame.SampleRate = AnalysisRate;
+		frame.FrameLength = frameLength;
+		frame.Timestamp = centre / static_cast<double>(AnalysisRate);
+		frame.DeltaTime = AnalysisHop / static_cast<double>(AnalysisRate);
+		frame.Samples.resize(frameLength);
+		for (uint32_t i = 0; i < frameLength; ++i)
+			frame.Samples[i] = signal[centre - frameLength / 2 + i];
+		return frame;
+	}
+
+	// The notes of every frame that lies wholly inside the signal, a production hop apart.
+	std::vector<std::vector<Adagio::Note>> DetectNotes(Adagio::AnalysisPipeline& pipeline, const std::vector<float>& signal, uint32_t frameLength = 4096)
+	{
+		std::vector<std::vector<Adagio::Note>> frames;
+		for (size_t centre = frameLength / 2; centre + frameLength / 2 <= signal.size(); centre += AnalysisHop)
+			frames.push_back(pipeline.ProcessFrame(FrameAt(signal, centre, frameLength))->Context->Notes);
+		return frames;
+	}
+
+	bool HasNote(const std::vector<Adagio::Note>& notes, int midi)
+	{
+		for (const Adagio::Note& note : notes)
+		{
+			if (note.Midi == midi)
+				return true;
+		}
+		return false;
+	}
+
+	// The share of each pitch class in the score-weighted note weight of every frame,
+	// which is what the key and chord histograms accumulate.
+	std::array<double, 12> PitchClassShare(const std::vector<std::vector<Adagio::Note>>& frames)
+	{
+		std::array<double, 12> share{};
+		double total = 0.0;
+		for (const std::vector<Adagio::Note>& notes : frames)
+		{
+			for (const Adagio::Note& note : notes)
+			{
+				share[note.Midi % 12] += note.PeakInfo.Score;
+				total += note.PeakInfo.Score;
+			}
+		}
+		for (double& value : share)
+			value = total > 0.0 ? value / total : 0.0;
+		return share;
+	}
+}
+
+TEST_CASE("A10: a single tone gives one note per frame" * doctest::should_fail())
+{
+	// Today a C4 sine comes out as 3 notes a frame, 29% of its weight on F, and a C3
+	// with 8 harmonics as 11. Only the spectrum's own peaks can be notes now, and each
+	// note explains its harmonics away before the next is picked. The level and the
+	// frame length must not matter. A note without its fundamental is named by its
+	// lowest partial, an octave up; the plan lists that among its risks.
+	const double c2 = PitchHz(36);
+	const double c3 = PitchHz(48);
+
+	struct ToneCase
+	{
+		std::string Name;
+		std::vector<Component> Components;
+		int Midi;
+	};
+
+	const std::vector<ToneCase> cases = {
+		{ "C4, pure sine", HarmonicTone(PitchHz(60), 1), 60 },
+		{ "C3, 8 harmonics", HarmonicTone(c3, 8), 48 },
+		{ "C2, 12 harmonics", HarmonicTone(c2, 12), 36 },
+		{ "C3, odd harmonics only", Tone(c3, 8, [](int k) { return k % 2 == 1 ? 1.0f / k : 0.0f; }), 48 },
+		{ "C3 without its fundamental", Tone(c3, 8, [](int k) { return k > 1 ? 1.0f / k : 0.0f; }), 60 },
+		{ "C3, 2nd partial 6 dB above the fundamental", Tone(c3, 8, [](int k) { return k == 2 ? 2.0f : 1.0f / k; }), 48 },
+		{ "C6, 4 harmonics", HarmonicTone(PitchHz(84), 4), 84 },
+		{ "C2, piano-like, 16 partials", Tone(c2, 16, [](int k) { return 1.0f / k; }, 1e-4), 36 },
+	};
+
+	for (const ToneCase& testCase : cases)
+	{
+		for (double gainDb : { 0.0, -40.0 })
+		{
+			for (uint32_t frameLength : { 2048u, 4096u, 8192u })
+			{
+				CAPTURE(testCase.Name);
+				CAPTURE(gainDb);
+				CAPTURE(frameLength);
+				std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+				const auto frames = DetectNotes(*pipeline, Synthesize(testCase.Components, 4.0, 60.0, gainDb), frameLength);
+				REQUIRE_FALSE(frames.empty());
+
+				size_t wrong = 0;
+				for (const std::vector<Adagio::Note>& notes : frames)
+				{
+					if (notes.size() != 1 || notes[0].Midi != testCase.Midi)
+						++wrong;
+				}
+				CHECK(wrong == 0);
+			}
+		}
+	}
+}
+
+TEST_CASE("A10: two notes sharing partials are both found in every frame")
+{
+	// Today finds both because it reports nearly every partial. The new stages must
+	// keep both while explaining harmonics away: G4 sits exactly on C3's 3rd partial
+	// and C4 on its 2nd, so each survives by what rises above C3's envelope there.
+	const double c3 = PitchHz(48);
+
+	struct PairCase
+	{
+		std::string Name;
+		std::vector<Component> Components;
+		int Low;
+		int High;
+	};
+
+	const std::vector<PairCase> cases = {
+		{ "C3 + G4 on its 3rd partial", Mix({ HarmonicTone(c3, 8), HarmonicTone(3.0 * c3, 8) }), 48, 67 },
+		{ "C3 + C4", Mix({ HarmonicTone(c3, 8), HarmonicTone(2.0 * c3, 8) }), 48, 60 },
+		{ "C3 + E4 at -20 dB", Mix({ HarmonicTone(c3, 8), HarmonicTone(PitchHz(64), 8, 0.1f) }), 48, 64 },
+	};
+
+	for (const PairCase& testCase : cases)
+	{
+		CAPTURE(testCase.Name);
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+		const auto frames = DetectNotes(*pipeline, Synthesize(testCase.Components, 4.0));
+		REQUIRE_FALSE(frames.empty());
+
+		size_t missing = 0;
+		for (const std::vector<Adagio::Note>& notes : frames)
+		{
+			if (!HasNote(notes, testCase.Low) || !HasNote(notes, testCase.High))
+				++missing;
+		}
+		CHECK(missing == 0);
+	}
+}
+
+TEST_CASE("A10: two bass notes a semitone apart both come through" * doctest::should_fail())
+{
+	// 65 and 69 Hz are two bins apart at a frame of 4,096, inside the peak test's
+	// +-3 bins, so the fundamentals make one peak and the upper partials have to tell
+	// the notes apart. At the limit of the frame, so it asks for the pitch classes
+	// and an even split, not both notes in every frame. Today's images split it
+	// 0.36 to 0.64.
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	const auto frames = DetectNotes(*pipeline, Synthesize(Mix({ HarmonicTone(PitchHz(36), 12), HarmonicTone(PitchHz(37), 12) }), 4.0));
+	const std::array<double, 12> share = PitchClassShare(frames);
+
+	CAPTURE(share[0]);
+	CAPTURE(share[1]);
+	REQUIRE(share[0] + share[1] > 0.0);
+	CHECK(share[0] / (share[0] + share[1]) > 0.4);
+	CHECK(share[1] / (share[0] + share[1]) > 0.4);
+}
+
+TEST_CASE("A10: a triad in noise gives its three notes in every frame" * doctest::should_fail())
+{
+	// C3-E3-G3 with 8 harmonics each, at 10 dB SNR. Today gives 14 notes a frame from
+	// it, adding their octaves and an image at C2.
+	const std::vector<Component> triad = Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) });
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	const auto frames = DetectNotes(*pipeline, Synthesize(triad, 4.0, 10.0));
+	REQUIRE_FALSE(frames.empty());
+
+	size_t wrong = 0;
+	for (const std::vector<Adagio::Note>& notes : frames)
+	{
+		if (notes.size() != 3 || !HasNote(notes, 48) || !HasNote(notes, 52) || !HasNote(notes, 55))
+			++wrong;
+	}
+	CHECK(wrong == 0);
+}
+
+TEST_CASE("A10: the spectrum leaves the pipeline as SpectrumFilter left it" * doctest::should_fail())
+{
+	// SpectrumFilter is the EQ for every stage after it, and none of them writes
+	// Magnitudes, so the screen shows the FFT after the EQ. Today it shows HPS's product.
+	const std::vector<float> signal = Synthesize(Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) }), 1.0);
+	const Adagio::AudioFrame frame = FrameAt(signal, signal.size() / 2, 4096);
+
+	Adagio::AnalysisPipeline equaliser;
+	equaliser.AddStage(std::make_unique<Adagio::FFTProcessor>());
+	equaliser.AddStage(std::make_unique<Adagio::SpectrumFilterProcessor>());
+	const std::unique_ptr<Adagio::AnalysisResult> expected = equaliser.ProcessFrame(frame);
+	const std::unique_ptr<Adagio::AnalysisResult> actual = Adagio::AnalysisService::CreatePipeline()->ProcessFrame(frame);
+
+	const kfr::univector<float>& want = expected->Context->Magnitudes;
+	const kfr::univector<float>& got = actual->Context->Magnitudes;
+	CHECK(actual->Context->BinHz == expected->Context->BinHz);
+	REQUIRE(got.size() == want.size());
+	size_t changed = 0;
+	for (size_t i = 0; i < want.size(); ++i)
+	{
+		if (got[i] != want[i])
+			++changed;
+	}
+	CHECK(changed == 0);
+}
+
+TEST_CASE("A10: no note is reported below SpectrumFilter's low cut")
+{
+	// A-flat 1 is 51.9 Hz: above NoteSelector's MIN_FREQ but below the EQ's low cut, so
+	// with the EQ in front its fundamental never reaches the stages. The note is still
+	// heard through its harmonics, an octave up.
+	const float lowCut = Adagio::SpectrumFilterProcessorSettings{}.LOW_CUT_C1;
+	REQUIRE(PitchHz(32) < lowCut);
+
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	const auto frames = DetectNotes(*pipeline, Synthesize(HarmonicTone(PitchHz(32), 8), 4.0));
+
+	size_t below = 0;
+	size_t heard = 0;
+	for (const std::vector<Adagio::Note>& notes : frames)
+	{
+		bool flat = false;
+		for (const Adagio::Note& note : notes)
+		{
+			if (note.PeakInfo.Frequency < lowCut)
+				++below;
+			if (note.Midi % 12 == 8)
+				flat = true;
+		}
+		if (flat)
+			++heard;
+	}
+	CHECK(below == 0);
+	CHECK(heard == frames.size());
+}
+
+TEST_CASE("A10: the production pipeline reads a C-F-G-C progression in C major")
+{
+	// Each partial's image a twelfth below lands a fifth lower in pitch class, so the
+	// roots' ghosts are F, B-flat and C, pulling the key toward F. It holds today, and
+	// has to hold once every weight comes from the chord tones alone.
+	const std::vector<std::vector<int>> progression = {
+		{ 60, 64, 67 },   // C
+		{ 65, 69, 72 },   // F
+		{ 67, 71, 74 },   // G
+		{ 60, 64, 67 },   // C
+	};
+	const size_t segmentSamples = AnalysisRate * 5 / 2;
+
+	std::vector<float> signal;
+	for (const std::vector<int>& chord : progression)
+	{
+		std::vector<Component> components;
+		for (int midi : chord)
+		{
+			const std::vector<Component> tone = HarmonicTone(PitchHz(midi), 6);
+			components.insert(components.end(), tone.begin(), tone.end());
+		}
+		const std::vector<float> segment = Synthesize(components, segmentSamples / static_cast<double>(AnalysisRate));
+		signal.insert(signal.end(), segment.begin(), segment.end());
+	}
+
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::string key;
+	for (size_t centre = 2048; centre + 2048 <= signal.size(); centre += AnalysisHop)
+		key = pipeline->ProcessFrame(FrameAt(signal, centre, 4096))->Context->PredictedKey.Name;
+	CHECK(key == "C Major");
+}
+
+#ifdef ADAGIO_NOTE_SELECTION
+namespace
+{
+	// The new stages in production order, without the notes, key and chords after them.
+	std::unique_ptr<Adagio::AnalysisResult> RunNoteSelection(const Adagio::AudioFrame& frame)
+	{
+		Adagio::AnalysisPipeline pipeline;
+		pipeline.AddStage(std::make_unique<Adagio::FFTProcessor>());
+		pipeline.AddStage(std::make_unique<Adagio::SpectrumFilterProcessor>());
+		pipeline.AddStage(std::make_unique<Adagio::PartialExtractor>());
+		pipeline.AddStage(std::make_unique<Adagio::HarmonicGrouper>());
+		pipeline.AddStage(std::make_unique<Adagio::NoteSelector>());
+		return pipeline.ProcessFrame(frame);
+	}
+
+	// The index of the partial nearest a frequency, or -1 with none.
+	int NearestPartial(const std::vector<Adagio::Partial>& partials, double hz)
+	{
+		int nearest = -1;
+		for (size_t i = 0; i < partials.size(); ++i)
+		{
+			if (nearest < 0 || std::abs(partials[i].Frequency - hz) < std::abs(partials[nearest].Frequency - hz))
+				nearest = static_cast<int>(i);
+		}
+		return nearest;
+	}
+
+	double ToDb(double ratio)
+	{
+		return 20.0 * std::log10(ratio);
+	}
+}
+
+TEST_CASE("A10: PartialExtractor finds one partial per harmonic and no sidelobes")
+{
+	// A bin must be the largest within +-3 bins, which a sidelobe never is beside its
+	// main lobe, and stand GATE_DB above the median of the 25 bins around it. Each
+	// partial's frequency is the parabola's vertex: up to 0.19 bins from the nearest bin
+	// here, which rounding to the bin would miss.
+	const double c3 = PitchHz(48);
+	const std::vector<float> signal = Synthesize(HarmonicTone(c3, 8), 1.0);
+	const std::unique_ptr<Adagio::AnalysisResult> result = RunNoteSelection(FrameAt(signal, signal.size() / 2, 4096));
+	const std::vector<Adagio::Partial>& partials = result->Context->Partials;
+	const float binHz = result->Context->BinHz;
+
+	REQUIRE(partials.size() == 8);
+	for (int k = 1; k <= 8; ++k)
+	{
+		CAPTURE(k);
+		const Adagio::Partial& partial = partials[k - 1];
+		CHECK(std::abs(partial.Frequency - k * c3) < 0.1 * binHz);
+		CHECK(partial.Bin == static_cast<int>(std::lround(k * c3 / binHz)));
+		CHECK(partial.Amplitude == result->Context->Magnitudes[partial.Bin]);
+	}
+	CHECK(result->Context->NoiseFloor > 0.0f);
+	CHECK(result->Context->GateLevel > result->Context->NoiseFloor);
+}
+
+TEST_CASE("A10: HarmonicGrouper gives C3 a series holding its partials 2 to 8 in order")
+{
+	// Entry k - 1 of a partial's series is the partial nearest k times its frequency
+	// within MATCH_CENTS, or -1, for every multiple below Nyquist. The first entry is the
+	// partial itself.
+	const double c3 = PitchHz(48);
+	const std::vector<float> signal = Synthesize(HarmonicTone(c3, 8), 1.0);
+	const std::unique_ptr<Adagio::AnalysisResult> result = RunNoteSelection(FrameAt(signal, signal.size() / 2, 4096));
+	const std::vector<Adagio::Partial>& partials = result->Context->Partials;
+	REQUIRE(result->Context->HarmonicSeries.size() == partials.size());
+
+	const int fundamental = NearestPartial(partials, c3);
+	REQUIRE(fundamental >= 0);
+	const std::vector<int>& series = result->Context->HarmonicSeries[fundamental];
+	// 30 x C3 is the last multiple below 4 kHz.
+	REQUIRE(series.size() == 30);
+	CHECK(series[0] == fundamental);
+	for (int k = 2; k <= 8; ++k)
+	{
+		CAPTURE(k);
+		REQUIRE(series[k - 1] >= 0);
+		CHECK(series[k - 1] == NearestPartial(partials, k * c3));
+		CHECK(partials[series[k - 1]].Frequency > partials[series[k - 2]].Frequency);
+	}
+	for (size_t k = 9; k <= series.size(); ++k)
+	{
+		CAPTURE(k);
+		CHECK(series[k - 1] == -1);
+	}
+}
+
+TEST_CASE("A10: NoteSelector's salience is the plan's worked example")
+{
+	// Salience is the geometric mean of what remains of a partial's partials 1 to
+	// HARMONICS + 1, a missing one counting 30 dB below it. With partials at 1/k, C3 is
+	// the mean of 0, -6 and -9.5 dB; its 2nd partial, C4, of C3's 2nd, 4th and 6th; its
+	// 3rd, G4, of C3's 3rd, 6th and 9th, so the tone has 12 partials rather than 8. A
+	// pure sine is (0 - 30 - 30) / 3 dB below its level. Salience(context, partial,
+	// residual) is NoteSelector's own, given each partial whole, as before any pick.
+	const double c3 = PitchHz(48);
+	Adagio::NoteSelector selector;
+
+	{
+		const std::vector<float> signal = Synthesize(HarmonicTone(c3, 12), 1.0);
+		const std::unique_ptr<Adagio::AnalysisResult> result = RunNoteSelection(FrameAt(signal, signal.size() / 2, 4096));
+		const Adagio::AnalysisContext& context = *result->Context;
+
+		std::vector<float> residual;
+		for (const Adagio::Partial& partial : context.Partials)
+			residual.push_back(partial.Amplitude);
+
+		const int fundamental = NearestPartial(context.Partials, c3);
+		REQUIRE(fundamental >= 0);
+		const double reference = context.Partials[fundamental].Amplitude;
+		const auto salienceDb = [&](double hz)
+		{
+			return ToDb(selector.Salience(context, NearestPartial(context.Partials, hz), residual) / reference);
+		};
+
+		CHECK(std::abs(salienceDb(c3) + 5.0) <= 1.0);
+		CHECK(std::abs(salienceDb(2.0 * c3) + 11.0) <= 1.0);
+		CHECK(std::abs(salienceDb(3.0 * c3) + 15.0) <= 1.0);
+	}
+
+	{
+		const std::vector<float> signal = Synthesize(HarmonicTone(PitchHz(60), 1), 1.0);
+		const std::unique_ptr<Adagio::AnalysisResult> result = RunNoteSelection(FrameAt(signal, signal.size() / 2, 4096));
+		const Adagio::AnalysisContext& context = *result->Context;
+		REQUIRE(context.Partials.size() == 1);
+
+		const std::vector<float> residual = { context.Partials[0].Amplitude };
+		CHECK(std::abs(ToDb(selector.Salience(context, 0, residual) / context.Partials[0].Amplitude) + 20.0) <= 1.0);
+	}
+}
+#endif
