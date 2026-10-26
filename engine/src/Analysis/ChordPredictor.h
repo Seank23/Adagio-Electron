@@ -11,7 +11,7 @@ namespace Adagio
 	struct ChordPredictorSettings
 	{
 		float ROLLING_WINDOW = 0.5f;
-		float SCORE_THRESHOLD = 0.05f;
+		float SCORE_THRESHOLD = 0.1f;
 
 		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ChordPredictorSettings, ROLLING_WINDOW, SCORE_THRESHOLD)
 	};
@@ -310,15 +310,13 @@ namespace Adagio
 					"name": "Rolling Window",
 					"type": "float",	
 					"min": 0.01,
-					"max": 5.0,	
-					"default": 0.5
+					"max": 5.0
 				},
 				"SCORE_THRESHOLD": {
 					"name": "Score Threshold",
 					"type": "float",	
 					"min": 0.0,
-					"max": 1.0,	
-					"default": 0.05
+					"max": 1.0
 				}
 			})");
 		}

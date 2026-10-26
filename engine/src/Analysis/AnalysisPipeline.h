@@ -12,11 +12,26 @@ namespace Adagio
 {
 	class AnalysisStage;
 
+	struct Partial
+	{
+		int BinIndex = 0;
+		float Frequency = 0.0f;
+		float Magnitude = 0.0f;
+	};
+
 	struct Peak
 	{
 		float Frequency = 0.0f;
 		float Magnitude = 0.0f;
 		float Score = 0.0f;
+	};
+
+	struct TrackedNote
+	{
+		Peak LastPeak;
+		float Presence = 0.0f;
+		bool On = false;
+		float OctaveHeld = 0.0f;
 	};
 
 	struct Note
@@ -66,6 +81,17 @@ namespace Adagio
 		double TuningErrorSum = 0.0;
 		double TuningErrorWeight = 0.0;
 		float TuningReference = 0.0f;
+
+		kfr::univector<float> MaskedMagnitudes;
+		float MaskedBinHz = 0.0f;
+		float MaskedReference = 0.0f;
+		double MaskedTimestamp = 0.0;
+
+		std::vector<float> SelectedFrequencies;
+		double SelectedTimestamp = 0.0;
+
+		std::vector<TrackedNote> TrackedNotes;
+		double TrackedTimestamp = 0.0;
 	};
 
 	struct AnalysisContext
@@ -80,7 +106,11 @@ namespace Adagio
 		std::vector<Peak> Peaks;
 		float BinHz = 0.0f;
 		int Harmonics = 0;
+		float NoiseFloor = 0.0f;
+		float GateLevel = 0.0f;
 
+		std::vector<Partial> Partials;
+		std::vector<std::vector<int>> HarmonicGroups;
 		std::vector<Note> Notes;
 		std::optional<float> AvgTuningError;
 		std::map<int, float> KeyFrequencyHistogram;

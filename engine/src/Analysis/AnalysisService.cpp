@@ -7,6 +7,10 @@
 #include "NoteDetector.h"
 #include "PeakExtractor.h"
 #include "SpectrumFilterProcessor.h"
+#include "PartialExtractor.h"
+#include "HarmonicGrouper.h"
+#include "NoteSelector.h"
+#include "PresenceFilter.h"
 #include "../Core/PcmFeeder.h"
 #include "../Core/BinaryFrame.h"
 #include "../Core/HighResolutionTimer.h"
@@ -77,9 +81,13 @@ namespace Adagio
 	{
 		std::unique_ptr<AnalysisPipeline> pipeline = std::make_unique<AnalysisPipeline>();
 		pipeline->AddStage(std::make_unique<FFTProcessor>());
-		pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
 		pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
-		pipeline->AddStage(std::make_unique<PeakExtractor>());
+		pipeline->AddStage(std::make_unique<PartialExtractor>());
+		pipeline->AddStage(std::make_unique<HarmonicGrouper>());
+		pipeline->AddStage(std::make_unique<NoteSelector>());
+		pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
+		//pipeline->AddStage(std::make_unique<PeakExtractor>());
+		pipeline->AddStage(std::make_unique<PresenceFilter>());
 		pipeline->AddStage(std::make_unique<NoteDetector>());
 		pipeline->AddStage(std::make_unique<KeyDetector>());
 		pipeline->AddStage(std::make_unique<ChordPredictor>());

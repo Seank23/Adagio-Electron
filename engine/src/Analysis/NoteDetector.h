@@ -18,6 +18,9 @@ namespace Adagio
 
 	class NoteDetector : public ConfigurableStage<NoteDetectorSettings>
 	{
+	private:
+		static constexpr double MIN_TUNING_WEIGHT = 0.05;
+
 	public:
 		static constexpr std::string_view Name = "NoteDetector";
 		std::string_view GetStageName() const override { return Name; }
@@ -85,8 +88,6 @@ namespace Adagio
 		}
 
 	private:
-		static constexpr double MinTuningWeight = 0.05;
-
 		std::optional<float> AccumulateTuningError(PersistentData& persistent, double errorSum, size_t noteCount, double dt)
 		{
 			const float reference = m_Settings.A440_TUNING;
@@ -98,7 +99,7 @@ namespace Adagio
 			persistent.TuningErrorSum = persistent.TuningErrorSum * decay + errorSum * dt;
 			persistent.TuningErrorWeight = persistent.TuningErrorWeight * decay + (double)noteCount * dt;
 
-			if (persistent.TuningErrorWeight < MinTuningWeight)
+			if (persistent.TuningErrorWeight < MIN_TUNING_WEIGHT)
 				return std::nullopt;
 			return (float)(persistent.TuningErrorSum / persistent.TuningErrorWeight);
 		}

@@ -210,8 +210,9 @@ TEST_CASE("the production stages keep their settings keys, in pipeline order")
 		names.push_back(stage.at("name").get<std::string>());
 
 	const std::vector<std::string> expected = {
-		"FFTProcessor", "HPSDownsamplerProcessor", "SpectrumFilterProcessor",
-		"PeakExtractor", "NoteDetector", "KeyDetector", "ChordPredictor"
+		"FFTProcessor", "SpectrumFilterProcessor", "PartialExtractor", "HarmonicGrouper",
+		"NoteSelector", "HPSDownsamplerProcessor", "PresenceFilter", "NoteDetector",
+		"KeyDetector", "ChordPredictor"
 	};
 	CHECK(names == expected);
 }

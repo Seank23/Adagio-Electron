@@ -1,6 +1,7 @@
 #pragma once
 #include "AnalysisStage.h"
 #include "AnalysisPipeline.h"
+#include "AnalysisUtils.h"
 
 #include <kfr/dsp.hpp>
 #include <kfr/dft.hpp>
@@ -141,7 +142,7 @@ namespace Adagio
 			// Score each candidate against references that belong to the frame rather
 			// than to the candidate set. This keeps Score comparable between frames,
 			// which is what the key and chord histograms accumulate.
-			const float noiseFloorDb = ToDb(NoiseFloor(spectrum, startBin, endBin));
+			const float noiseFloorDb = AnalysisUtils::ToDb(AnalysisUtils::Median(spectrum, startBin, endBin));
 			float maxSpec = spectrum[startBin];
 			for (size_t i = startBin; i <= endBin; ++i)
 				maxSpec = std::max(maxSpec, spectrum[i]);
@@ -151,9 +152,9 @@ namespace Adagio
 			constexpr float wProm = 0.45f;
 			for (auto& c : candidates)
 			{
-				const float normSnr = NormaliseAboveFloor(c.whitened, noiseFloorDb, context->Harmonics);
+				const float normSnr = AnalysisUtils::NormaliseAboveFloor(c.whitened, noiseFloorDb, context->Harmonics);
 				const float normMag = (maxSpec > 0.0f) ? std::min(1.0f, c.specVal / maxSpec) : 0.0f;
-				const float normProm = NormaliseAboveFloor(c.prominence, noiseFloorDb, context->Harmonics);
+				const float normProm = AnalysisUtils::NormaliseAboveFloor(c.prominence, noiseFloorDb, context->Harmonics);
 				c.score = wSnr * normSnr + wMag * normMag + wProm * normProm;
 			}
 
@@ -267,37 +268,6 @@ namespace Adagio
 		}
 
 	private:
-		float ToDb(float value) const
-		{
-			constexpr float epsilon = 1e-12f;
-			return 20.0f * std::log10(std::max(value, epsilon));
-		}
-
-		// The level the frame sits at where nothing is sounding: the median of the
-		// searched band, which no single peak can move.
-		float NoiseFloor(const std::vector<float>& spectrum, size_t startBin, size_t endBin) const
-		{
-			std::vector<float> band(spectrum.begin() + startBin, spectrum.begin() + endBin + 1);
-			const size_t mid = band.size() / 2;
-			std::nth_element(band.begin(), band.begin() + mid, band.end());
-			float median = band[mid];
-			if ((band.size() & 1) == 0)
-			{
-				const float lower = *std::max_element(band.begin(), band.begin() + mid);
-				median = (lower + median) * 0.5f;
-			}
-			return median;
-		}
-
-		// How far a value stands above the frame's noise floor, in dB, mapped onto
-		// [0,1]. Both ends of that measure are properties of the frame, so a lone
-		// peak still scores what its level earns.
-		float NormaliseAboveFloor(float value, float floorDb, int harmonics) const
-		{
-			float rangeDb = 60.0f * (harmonics + 1);
-			return std::clamp((ToDb(value) - floorDb) / rangeDb, 0.0f, 1.0f);
-		}
-
 		float ParabolicInterpolation(const std::vector<float>& data, int k) const
 		{
 			if (k <= 0 || k >= static_cast<int>(data.size()) - 1)
