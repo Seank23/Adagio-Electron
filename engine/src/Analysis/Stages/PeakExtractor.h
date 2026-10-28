@@ -1,7 +1,7 @@
 #pragma once
-#include "AnalysisStage.h"
-#include "AnalysisPipeline.h"
-#include "AnalysisUtils.h"
+#include "../AnalysisStage.h"
+#include "../AnalysisPipeline.h"
+#include "../AnalysisUtils.h"
 
 #include <kfr/dsp.hpp>
 #include <kfr/dft.hpp>

@@ -5,9 +5,9 @@
 // covered the moment it is registered.
 #include "../src/Analysis/AnalysisPipeline.h"
 #include "../src/Analysis/AnalysisService.h"
-#include "../src/Analysis/FFTProcessor.h"
-#include "../src/Analysis/NoteDetector.h"
-#include "../src/Analysis/PeakExtractor.h"
+#include "../src/Analysis/Stages/FFTProcessor.h"
+#include "../src/Analysis/Stages/NoteDetector.h"
+#include "../src/Analysis/Stages/PeakExtractor.h"
 
 #include <doctest/doctest.h>
 

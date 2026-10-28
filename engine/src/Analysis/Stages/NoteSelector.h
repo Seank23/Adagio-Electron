@@ -1,7 +1,7 @@
 #pragma once
-#include "AnalysisStage.h"
-#include "AnalysisPipeline.h"
-#include "AnalysisUtils.h"
+#include "../AnalysisStage.h"
+#include "../AnalysisPipeline.h"
+#include "../AnalysisUtils.h"
 
 #include <algorithm>
 
@@ -15,7 +15,7 @@ namespace Adagio
 		float MIN_FREQ = 50.0f;
 		float MAX_FREQ = 4000.0f;
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteSelectorSettings, HARMONICS, STOP_DB, MAX_NOTES, MIN_FREQ, MAX_FREQ, CONTINUITY_DB)
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(NoteSelectorSettings, HARMONICS, STOP_DB, MAX_NOTES, MIN_FREQ, MAX_FREQ)
 	};
 
 	class NoteSelector : public ConfigurableStage<NoteSelectorSettings>
@@ -55,7 +55,7 @@ namespace Adagio
 					// note's partial or a noise peak, and its salience would be its own level.
 					if (context->HarmonicGroups[i].size() == 1)
 						continue;
-					if (rejected[i] || p.Frequency < m_Settings.MIN_FREQ || p.Frequency > m_Settings.MAX_FREQ || residuals[i] < p.Magnitude / (4.0f * ease) || residuals[i] < context->GateLevel / ease)
+					if (rejected[i] || p.Frequency < m_Settings.MIN_FREQ || p.Frequency > m_Settings.MAX_FREQ || residuals[i] < p.Magnitude / 4.0f || residuals[i] < context->GateLevel)
 						continue;
 
 					float salience = FindSalience(context, i, residuals);

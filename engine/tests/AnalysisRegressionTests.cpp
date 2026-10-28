@@ -9,20 +9,20 @@
 #include "../src/Analysis/AnalysisService.h"
 #include "../src/Analysis/AnalysisUtils.h"
 #include "../src/Analysis/AudioFrame.h"
-#include "../src/Analysis/ChordPredictor.h"
-#include "../src/Analysis/FFTProcessor.h"
-#include "../src/Analysis/KeyDetector.h"
-#include "../src/Analysis/NoteDetector.h"
-#include "../src/Analysis/PeakExtractor.h"
-#include "../src/Analysis/SpectrumFilterProcessor.h"
+#include "../src/Analysis/Stages/ChordPredictor.h"
+#include "../src/Analysis/Stages/FFTProcessor.h"
+#include "../src/Analysis/Stages/KeyDetector.h"
+#include "../src/Analysis/Stages/NoteDetector.h"
+#include "../src/Analysis/Stages/PeakExtractor.h"
+#include "../src/Analysis/Stages/SpectrumFilterProcessor.h"
 
 // The Note Selection plan's three stages, which its third commit adds. The cases that
 // read them directly compile in once they exist; take the guard off then.
 #if __has_include("../src/Analysis/NoteSelector.h")
 #define ADAGIO_NOTE_SELECTION 1
-#include "../src/Analysis/HarmonicGrouper.h"
-#include "../src/Analysis/NoteSelector.h"
-#include "../src/Analysis/PartialExtractor.h"
+#include "../src/Analysis/Stages/HarmonicGrouper.h"
+#include "../src/Analysis/Stages/NoteSelector.h"
+#include "../src/Analysis/Stages/PartialExtractor.h"
 #endif
 
 #include <doctest/doctest.h>
