@@ -5,6 +5,7 @@
 // covered the moment it is registered.
 #include "../src/Analysis/AnalysisPipeline.h"
 #include "../src/Analysis/AnalysisService.h"
+#include "../src/Analysis/PipelineStore.h"
 #include "../src/Analysis/Stages/FFTProcessor.h"
 #include "../src/Analysis/Stages/NoteDetector.h"
 #include "../src/Analysis/Stages/PeakExtractor.h"
@@ -12,6 +13,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -64,6 +66,23 @@ namespace
 			}
 		}
 		return {};
+	}
+
+	std::vector<std::string> BuiltInStageNames(const std::string& id)
+	{
+		Adagio::PipelineStore store(std::filesystem::path{});
+		store.Load();
+		const Adagio::PipelineDefinition* definition = store.Find(id);
+		REQUIRE(definition != nullptr);
+
+		std::vector<std::string> warnings;
+		const nlohmann::json schema = Adagio::AnalysisService::BuildPipeline(*definition, warnings)->GetSchemaJson();
+		CHECK(warnings.empty());
+
+		std::vector<std::string> names;
+		for (const auto& stage : schema.at("stages"))
+			names.push_back(stage.at("name").get<std::string>());
+		return names;
 	}
 }
 
@@ -202,17 +221,89 @@ TEST_CASE("a reset setting returns to the stage's default, in the schema and in 
 // A stage's name is the key its settings are stored and sent under. It used to be
 // derived from typeid, which only reads this way on MSVC; now each stage spells it,
 // and a rename that changed a key would break every client's stored settings.
-TEST_CASE("the production stages keep their settings keys, in pipeline order")
+TEST_CASE("the built-in pipelines' stages keep their settings keys, in pipeline order")
 {
-	const nlohmann::json schema = Adagio::AnalysisService::CreatePipeline()->GetSchemaJson();
-	std::vector<std::string> names;
-	for (const auto& stage : schema.at("stages"))
-		names.push_back(stage.at("name").get<std::string>());
-
-	const std::vector<std::string> expected = {
-		"FFTProcessor", "SpectrumFilterProcessor", "PartialExtractor", "HarmonicGrouper",
-		"NoteSelector", "HPSDownsamplerProcessor", "PresenceFilter", "NoteDetector",
-		"KeyDetector", "ChordPredictor"
+	const std::vector<std::string> hps = {
+		"FFTProcessor", "SpectrumFilterProcessor", "HPSDownsamplerProcessor", "PeakExtractor",
+		"PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
 	};
-	CHECK(names == expected);
+	CHECK(BuiltInStageNames("hps") == hps);
+
+	const std::vector<std::string> partialTracking = {
+		"FFTProcessor", "SpectrumFilterProcessor", "PartialExtractor", "HarmonicGrouper",
+		"NoteSelector", "PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
+	};
+	CHECK(BuiltInStageNames("partialTracking") == partialTracking);
+}
+
+TEST_CASE("a stored value a stage refuses is a warning, and the stage keeps its default")
+{
+	const Adagio::PipelineDefinition definition{
+		.ID = "mine",
+		.Name = "Mine",
+		.Stages = { { "NoteDetector", { {"ERROR_THRESHOLD", 999.0}, {"TUNING_WINDOW", 2.0} } } }
+	};
+	std::vector<std::string> warnings;
+	const nlohmann::json schema = Adagio::AnalysisService::BuildPipeline(definition, warnings)->GetSchemaJson();
+
+	REQUIRE(warnings.size() == 1);
+	CHECK(warnings[0].find("mine / NoteDetector / ERROR_THRESHOLD") != std::string::npos);
+	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("value") == doctest::Approx(25.0));
+	CHECK(FindSetting(schema, "NoteDetector", "TUNING_WINDOW").at("value") == doctest::Approx(2.0));
+}
+
+TEST_CASE("the stored values are every setting but A4, and A4 alone is per track")
+{
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	REQUIRE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 442.0, error));
+	REQUIRE(pipeline->SetSetting("NoteDetector", "ERROR_THRESHOLD", 10.0, error));
+
+	// { stage: { key: value } }, as PipelineStore keeps them, with every stage listed.
+	const nlohmann::json values = pipeline->GetValuesJson();
+	CHECK(values.size() == 3);
+	CHECK(values.at("FFTProcessor").at("WINDOW") == "Hamming");
+	CHECK(values.at("NoteDetector").at("ERROR_THRESHOLD") == doctest::Approx(10.0));
+	CHECK_FALSE(values.at("NoteDetector").contains("A440_TUNING"));
+
+	CHECK(pipeline->GetPerTrackValuesJson() == nlohmann::json{ {"NoteDetector", { {"A440_TUNING", 442.0} }} });
+}
+
+TEST_CASE("restoring every default leaves the pipeline readable and running")
+{
+	const Adagio::AudioFrame frame = MakeToneFrame(440.0f, 8000, 4096);
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	REQUIRE(pipeline->SetSetting("FFTProcessor", "WINDOW", "Hann", error));
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 1, error));
+	REQUIRE(pipeline->SetSetting("NoteDetector", "A440_TUNING", 442.0, error));
+	REQUIRE(pipeline->ProcessFrame(frame)->Context->Peaks.size() == 1);
+
+	// It used to store null for each stage, which the schema, the values and the next frame all threw on.
+	pipeline->ResetAllSettings();
+	const nlohmann::json schema = pipeline->GetSchemaJson();
+	CHECK(FindSetting(schema, "FFTProcessor", "WINDOW").at("value") == "Hamming");
+	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(440.0));
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor").at("MAX_PEAKS") != 1);
+	CHECK(pipeline->ProcessFrame(frame)->Context->Peaks.size() > 1);
+	CHECK(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 2, error));
+}
+
+TEST_CASE("a pipeline switch carries the A4 reference over")
+{
+	Adagio::AnalysisService service(MakePipeline());
+	std::string error;
+	REQUIRE(service.SetSetting("NoteDetector", "A440_TUNING", 442.0, error));
+	REQUIRE(service.SetSetting("NoteDetector", "ERROR_THRESHOLD", 10.0, error));
+
+	Adagio::PipelineStore store(std::filesystem::path{});
+	store.Load();
+	std::vector<std::string> warnings;
+	service.SwitchPipeline(Adagio::AnalysisService::BuildPipeline(*store.Find("hps"), warnings));
+
+	const nlohmann::json schema = service.GetSchemaJson();
+	CHECK(schema.at("stages").size() == 8);
+	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(442.0));
+	// Only the per-track value: the rest are the new pipeline's own.
+	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("value") == doctest::Approx(25.0));
 }

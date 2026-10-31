@@ -329,3 +329,56 @@ TEST_CASE("A failed write is one error event, and isn't retried until the next c
 	store.Save();
 	CHECK_FALSE(Adagio::MessageQueue::GetInstance().Pop(message));
 }
+
+TEST_CASE("Values the store already holds are not a change, so nothing is written")
+{
+	using namespace std::chrono_literals;
+
+	TempFolder folder;
+	const std::filesystem::path file = folder.File("pipelines.json");
+	const nlohmann::json values = { {"KeyDetector", { {"ROLLING_WINDOW", 6.0} }} };
+	{
+		PipelineStore first(file);
+		first.Load();
+		first.SetValues("hps", values);
+		first.Save();
+	}
+
+	PipelineStore store(file);
+	REQUIRE(store.Load().empty());
+	std::filesystem::remove(file);
+
+	const std::chrono::steady_clock::time_point start{};
+	store.SetValues("hps", values);
+	store.SaveIfDue(start);
+	store.SaveIfDue(start + 1000ms);
+	store.Save();
+	CHECK_FALSE(std::filesystem::exists(file));
+
+	store.SetValues("hps", { {"KeyDetector", { {"ROLLING_WINDOW", 7.0} }} });
+	store.Save();
+	CHECK(std::filesystem::exists(file));
+}
+
+TEST_CASE("The summary lists every pipeline in order, the custom ones after the built-ins")
+{
+	TempFolder folder;
+	const std::filesystem::path file = folder.File("pipelines.json");
+	WriteText(file, R"({
+		"active": "mine",
+		"pipelines": [ { "id": "mine", "name": "Mine", "description": "Peaks only", "stages": [ { "stage": "PeakExtractor" } ] } ]
+	})");
+
+	PipelineStore store(file);
+	REQUIRE(store.Load().empty());
+	const nlohmann::json summary = store.SummaryJson();
+
+	REQUIRE(summary.is_array());
+	REQUIRE(summary.size() == LoadDefaults().SummaryJson().size() + 1);
+	for (const auto& pipeline : summary)
+	{
+		CHECK(pipeline.size() == 3);
+		CHECK(store.Find(pipeline.at("id").get<std::string>()) != nullptr);
+	}
+	CHECK(summary.back() == nlohmann::json{ {"id", "mine"}, {"name", "Mine"}, {"description", "Peaks only"} });
+}

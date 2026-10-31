@@ -23,6 +23,11 @@ namespace Adagio
 		std::vector<StageEntry> Stages;
 	};
 
+	class AnalysisStage;
+
+	std::unique_ptr<AnalysisStage> CreateStage(std::string_view name);
+	bool IsKnownStage(std::string_view name);
+
 	class PipelineStore
 	{
 	private:
@@ -39,6 +44,7 @@ namespace Adagio
 		void SaveIfDue(std::chrono::steady_clock::time_point now);
 
 		const std::string& GetActiveId() const;
+		const PipelineDefinition* GetActivePipeline();
 		void SetActiveId(const std::string& id);
 		void SetValues(const std::string& id, const nlohmann::json& values);
 

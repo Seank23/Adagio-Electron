@@ -6,6 +6,7 @@
 #include "HighResolutionTimer.h"
 #include "MessageQueue.h"
 #include "Trace.h"
+#include "../Analysis/AnalysisPipeline.h"
 #include "../Analysis/AnalysisService.h"
 #include "../Debug/Instrumentation.h"
 #include "../IO/AudioData.h"
@@ -17,6 +18,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <iostream>
 #include <thread>
 
 namespace Adagio
@@ -26,6 +28,13 @@ namespace Adagio
 		void PushEvent(const nlohmann::json& event)
 		{
 			MessageQueue::GetInstance().Push(event.dump());
+		}
+
+		// To stderr, like the command-line arguments main refuses.
+		void LogWarnings(const std::vector<std::string>& warnings)
+		{
+			for (const std::string& warning : warnings)
+				std::cerr << warning << "\n" << std::flush;
 		}
 
 		void PushError(const std::string& message)
@@ -67,15 +76,19 @@ namespace Adagio
 		}
 	}
 
-	Application::Application(const EngineParams& engineParams)
-		: m_EngineParams(engineParams)
+	Application::Application(const EngineParams& engineParams, const std::filesystem::path& pipelinesFile)
+		: m_EngineParams(engineParams), m_PipelineStore(pipelinesFile)
 	{
 		ADAGIO_PROFILE_BEGIN_SESSION("Application", "Application_Profile.json");
 		m_AudioData = std::make_shared<AudioData>();
 		m_PcmFeeder = std::make_shared<PcmFeeder>();
 		m_FileIOService = std::make_unique<FileIOService>();
 		m_PlaybackService = std::make_unique<PlaybackService>();
-		m_AnalysisService = std::make_unique<AnalysisService>();
+
+		std::vector<std::string> warnings = m_PipelineStore.Load();
+		m_AnalysisService = std::make_unique<AnalysisService>(AnalysisService::BuildPipeline(*m_PipelineStore.GetActivePipeline(), warnings));
+		LogWarnings(warnings);
+		RecordPipeline();
 	}
 
 	Application::~Application()
@@ -94,6 +107,7 @@ namespace Adagio
 		{
 			ProcessCommands();
 			const auto now = std::chrono::steady_clock::now();
+			m_PipelineStore.SaveIfDue(now);
 			if (now - lastPosition >= positionInterval)
 			{
 				PushEvent({ {"type", Protocol::Event::Position}, {"value", m_PlaybackService->GetPositionSeconds()} });
@@ -116,6 +130,7 @@ namespace Adagio
 		if (m_State.load(std::memory_order_acquire) != TransportState::Empty)
 			ClearAudio();
 		m_State.store(TransportState::Empty, std::memory_order_release);
+		m_PipelineStore.Save();
 	}
 
 	void Application::ProcessCommands()
@@ -239,7 +254,7 @@ namespace Adagio
 			m_AnalysisService->RequestCurrentFrameAnalysis();
 			break;
 		case CommandType::GetAnalysisSchema:
-			outcome.Value = m_AnalysisService->GetSchemaJson();
+			outcome.Value = SchemaJson();
 			break;
 		case CommandType::GetWaveform:
 			for (const std::string& frame : m_WaveformFrames)
@@ -258,9 +273,37 @@ namespace Adagio
 
 			std::string error;
 			if (!m_AnalysisService->SetSetting(cmd.Args.at("stage").get<std::string>(), cmd.Args.at("key").get<std::string>(), cmd.Args.at("value"), error))
+			{
 				outcome = Failed(error);
+				break;
+			}
+			RecordPipeline();
 			break;
 		}
+		case CommandType::SwitchPipeline:
+		{
+			const PipelineDefinition* definition = m_PipelineStore.Find(cmd.StrValue);
+			if (!definition)
+			{
+				outcome = Failed("There is no pipeline '" + cmd.StrValue + "'.");
+				break;
+			}
+			if (definition->ID != m_PipelineStore.GetActiveId())
+			{
+				std::vector<std::string> warnings;
+				m_AnalysisService->SwitchPipeline(AnalysisService::BuildPipeline(*definition, warnings));
+				LogWarnings(warnings);
+				m_PipelineStore.SetActiveId(definition->ID);
+				RecordPipeline();
+			}
+			outcome.Value = SchemaJson();
+			break;
+		}
+		case CommandType::RestorePipelineDefaults:
+			m_AnalysisService->RestoreDefaults();
+			RecordPipeline();
+			outcome.Value = SchemaJson();
+			break;
 		case CommandType::SetEngineParams:
 		{
 			EngineParams next = m_EngineParams;
@@ -387,6 +430,19 @@ namespace Adagio
 		{
 			PushError("Failed to release the loaded file cleanly.");
 		}
+	}
+
+	void Application::RecordPipeline()
+	{
+		m_PipelineStore.SetValues(m_PipelineStore.GetActiveId(), m_AnalysisService->GetPipelineValues());
+	}
+
+	nlohmann::json Application::SchemaJson() const
+	{
+		nlohmann::json schema = m_AnalysisService->GetSchemaJson();
+		schema["activePipeline"] = m_PipelineStore.GetActiveId();
+		schema["pipelines"] = m_PipelineStore.SummaryJson();
+		return schema;
 	}
 
 	nlohmann::json Application::GetStatusJson() const

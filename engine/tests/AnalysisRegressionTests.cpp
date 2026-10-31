@@ -9,6 +9,7 @@
 #include "../src/Analysis/AnalysisService.h"
 #include "../src/Analysis/AnalysisUtils.h"
 #include "../src/Analysis/AudioFrame.h"
+#include "../src/Analysis/PipelineStore.h"
 #include "../src/Analysis/Stages/ChordPredictor.h"
 #include "../src/Analysis/Stages/FFTProcessor.h"
 #include "../src/Analysis/Stages/KeyDetector.h"
@@ -29,6 +30,7 @@
 
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <memory>
@@ -41,6 +43,22 @@ namespace
 	constexpr float Pi = 3.14159265358979323846f;
 	// One production hop at 1x: 256 samples of the 8 kHz analysis stream.
 	constexpr double HopSeconds = 256.0 / 8000.0;
+
+	// A built-in pipeline as the engine builds it, every stage at its default: by id, or with none, the one a first launch runs.
+	std::unique_ptr<Adagio::AnalysisPipeline> BuiltInPipeline(std::string id = {})
+	{
+		Adagio::PipelineStore store(std::filesystem::path{});
+		store.Load();
+		if (id.empty())
+			id = store.GetActiveId();
+
+		const Adagio::PipelineDefinition* definition = store.Find(id);
+		REQUIRE(definition != nullptr);
+		std::vector<std::string> warnings;
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::BuildPipeline(*definition, warnings);
+		CHECK(warnings.empty());
+		return pipeline;
+	}
 
 	// A fundamental plus three harmonics at 1/k amplitude, i.e. a plucked-string
 	// shape rather than a bare sine.
@@ -596,7 +614,7 @@ namespace
 		constexpr uint32_t sampleRate = 8000;
 		constexpr uint32_t frameLength = 4096;
 
-		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline();
 		std::map<int64_t, FrameReading> readings;
 		for (int64_t position = hopSamples; position < static_cast<int64_t>(signal.size()); position += hopSamples)
 		{
@@ -655,7 +673,7 @@ TEST_CASE("F1: a chord root's presence is measured in seconds")
 TEST_CASE("F1: the production pipeline reads the same key and chords at every speed")
 {
 	// The hop is fixed in wall time, so 0.5x, 1x and 2x analyse the source every 128,
-	// 256 and 512 samples. The first test to run HPS: it goes through CreatePipeline.
+	// 256 and 512 samples. The first test to run HPS: it builds the default pipeline.
 	constexpr uint32_t sampleRate = 8000;
 	const std::vector<std::vector<int>> progression = {
 		{ 60, 64, 67 },   // C
@@ -790,6 +808,8 @@ namespace
 	constexpr double PiD = 3.14159265358979323846;
 	constexpr uint32_t AnalysisRate = 8000;
 	constexpr int AnalysisHop = 256;
+	// The built-in pipeline the plan's stages make up.
+	const std::string PartialPipeline = "partialTracking";
 
 	struct Component
 	{
@@ -951,7 +971,7 @@ TEST_CASE("A10: a single tone gives one note per frame")
 				CAPTURE(testCase.Name);
 				CAPTURE(gainDb);
 				CAPTURE(frameLength);
-				std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+				std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 				const auto frames = DetectNotes(*pipeline, Synthesize(testCase.Components, 4.0, 60.0, gainDb), frameLength);
 				REQUIRE_FALSE(frames.empty());
 
@@ -980,7 +1000,7 @@ TEST_CASE("A10: a C3 whose 2nd partial is 6 dB above its fundamental is one note
 		{
 			CAPTURE(gainDb);
 			CAPTURE(frameLength);
-			std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+			std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 			const auto frames = DetectNotes(*pipeline, Synthesize(tone, 4.0, 60.0, gainDb), frameLength);
 			REQUIRE_FALSE(frames.empty());
 
@@ -1022,7 +1042,7 @@ TEST_CASE("A10: two notes sharing partials are both found in every frame")
 	for (const PairCase& testCase : cases)
 	{
 		CAPTURE(testCase.Name);
-		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 		const auto frames = DetectNotes(*pipeline, Synthesize(testCase.Components, 4.0));
 		REQUIRE_FALSE(frames.empty());
 
@@ -1043,7 +1063,7 @@ TEST_CASE("A10: two bass notes a semitone apart both come through")
 	// the notes apart. At the limit of the frame, so it asks for the pitch classes
 	// and an even split, not both notes in every frame. HPS's images split it 0.36 to
 	// 0.64; the new stages split it 0.49 to 0.51.
-	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 	const auto frames = DetectNotes(*pipeline, Synthesize(Mix({ HarmonicTone(PitchHz(36), 12), HarmonicTone(PitchHz(37), 12) }), 4.0));
 	const std::array<double, 12> share = PitchClassShare(frames);
 
@@ -1059,7 +1079,7 @@ TEST_CASE("A10: a triad in noise gives its three notes in every frame")
 	// C3-E3-G3 with 8 harmonics each, at 10 dB SNR. HPS and PeakExtractor gave 14 notes a
 	// frame from it, adding their octaves and an image at C2.
 	const std::vector<Component> triad = Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) });
-	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 	const auto frames = DetectNotes(*pipeline, Synthesize(triad, 4.0, 10.0));
 	REQUIRE_FALSE(frames.empty());
 
@@ -1078,7 +1098,7 @@ TEST_CASE("A10: a triad in noise gives no other notes" * doctest::should_fail())
 	// peaks through, and about two a frame become notes, from F4 up to B6. Accepted with
 	// the calibration on real tracks; the decoration goes when a change fixes it.
 	const std::vector<Component> triad = Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) });
-	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 	const auto frames = DetectNotes(*pipeline, Synthesize(triad, 4.0, 10.0));
 	REQUIRE_FALSE(frames.empty());
 
@@ -1091,10 +1111,10 @@ TEST_CASE("A10: a triad in noise gives no other notes" * doctest::should_fail())
 	CHECK(extra == 0);
 }
 
-TEST_CASE("A10: the spectrum leaves the pipeline as SpectrumFilter left it" * doctest::should_fail())
+TEST_CASE("A10: the spectrum leaves the pipeline as SpectrumFilter left it")
 {
 	// SpectrumFilter is the EQ for every stage after it, and none of them writes
-	// Magnitudes, so the screen shows the FFT after the EQ. Today it shows HPS's product.
+	// Magnitudes, so the screen shows the FFT after the EQ. The hps pipeline shows HPS's product.
 	const std::vector<float> signal = Synthesize(Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) }), 1.0);
 	const Adagio::AudioFrame frame = FrameAt(signal, signal.size() / 2, 4096);
 
@@ -1102,7 +1122,7 @@ TEST_CASE("A10: the spectrum leaves the pipeline as SpectrumFilter left it" * do
 	equaliser.AddStage(std::make_unique<Adagio::FFTProcessor>());
 	equaliser.AddStage(std::make_unique<Adagio::SpectrumFilterProcessor>());
 	const std::unique_ptr<Adagio::AnalysisResult> expected = equaliser.ProcessFrame(frame);
-	const std::unique_ptr<Adagio::AnalysisResult> actual = Adagio::AnalysisService::CreatePipeline()->ProcessFrame(frame);
+	const std::unique_ptr<Adagio::AnalysisResult> actual = BuiltInPipeline(PartialPipeline)->ProcessFrame(frame);
 
 	const kfr::univector<float>& want = expected->Context->Magnitudes;
 	const kfr::univector<float>& got = actual->Context->Magnitudes;
@@ -1125,7 +1145,7 @@ TEST_CASE("A10: no note is reported below SpectrumFilter's low cut")
 	const float lowCut = Adagio::SpectrumFilterProcessorSettings{}.LOW_CUT_C1;
 	REQUIRE(PitchHz(32) < lowCut);
 
-	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 	const auto frames = DetectNotes(*pipeline, Synthesize(HarmonicTone(PitchHz(32), 8), 4.0));
 
 	size_t below = 0;
@@ -1173,7 +1193,7 @@ TEST_CASE("A10: the production pipeline reads a C-F-G-C progression in C major")
 		signal.insert(signal.end(), segment.begin(), segment.end());
 	}
 
-	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::CreatePipeline();
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(PartialPipeline);
 	std::string key;
 	for (size_t centre = 2048; centre + 2048 <= signal.size(); centre += AnalysisHop)
 		key = pipeline->ProcessFrame(FrameAt(signal, centre, 4096))->Context->PredictedKey.Name;

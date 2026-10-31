@@ -76,7 +76,8 @@ namespace Adagio
 					"name": "A440 Reference",
 					"type": "float",
 					"min": 415.0,
-					"max": 466.0
+					"max": 466.0,
+					"persistent": false
 				},
 				"TUNING_WINDOW": {
 					"name": "Tuning Error Window",

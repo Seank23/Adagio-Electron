@@ -7,6 +7,16 @@
 
 namespace Adagio
 {
+	namespace
+	{
+		// "persistent": false marks a setting that belongs to the loaded track (A4), so it is never saved with the pipeline.
+		bool IsNotPersistent(const nlohmann::json& definition)
+		{
+			const auto persistent = definition.find("persistent");
+			return persistent != definition.end() && persistent->is_boolean() && !persistent->get<bool>();
+		}
+	}
+
 	AnalysisPipeline::AnalysisPipeline()
 	{
 		m_PersistentData = std::make_unique<PersistentData>();
@@ -107,6 +117,38 @@ namespace Adagio
 		return { {"version", Protocol::Version}, {"stages", std::move(stages)} };
 	}
 
+	nlohmann::json AnalysisPipeline::CollectValues(bool perTrack) const
+	{
+		nlohmann::json stages = nlohmann::json::object();
+
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		for (const auto& stage : m_Stages)
+		{
+			const std::string& name = stage->GetName();
+			const nlohmann::json& values = m_Settings.at(name);
+
+			nlohmann::json settings = nlohmann::json::object();
+			for (const auto& [key, definition] : stage->GetSettingsSchema().items())
+			{
+				if (IsNotPersistent(definition) == perTrack)
+					settings[key] = values.value(key, definition.value("default", nlohmann::json()));
+			}
+			if (!perTrack || !settings.empty())
+				stages[name] = std::move(settings);
+		}
+		return stages;
+	}
+
+	nlohmann::json AnalysisPipeline::GetValuesJson() const
+	{
+		return CollectValues(false);
+	}
+
+	nlohmann::json AnalysisPipeline::GetPerTrackValuesJson() const
+	{
+		return CollectValues(true);
+	}
+
 	bool AnalysisPipeline::SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
 	{
 		const AnalysisStage* target = FindStage(stage);
@@ -169,6 +211,28 @@ namespace Adagio
 		if (!m_Settings.contains(stage) || !m_Settings[stage].contains(key))
 			return;
 		m_Settings[stage].erase(key);
+		m_SettingsVersion++;
+	}
+
+	void AnalysisPipeline::ResetAllSettings()
+	{
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		for (const auto& stage : m_Stages)
+			m_Settings[stage->GetName()] = nlohmann::json::object();
+		m_SettingsVersion++;
+	}
+
+	void AnalysisPipeline::ResetPerTrackSettings()
+	{
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		for (const auto& stage : m_Stages)
+		{
+			for (const auto& [key, definition] : stage->GetSettingsSchema().items())
+			{
+				if (IsNotPersistent(definition))
+					m_Settings[stage->GetName()].erase(key);
+			}
+		}
 		m_SettingsVersion++;
 	}
 

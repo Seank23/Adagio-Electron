@@ -140,13 +140,19 @@ namespace Adagio
 		void ResetPersistentData();
 
 		nlohmann::json GetSchemaJson() const;
+		nlohmann::json GetValuesJson() const;
+		nlohmann::json GetPerTrackValuesJson() const;
+
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
 		void ResetSetting(const std::string& stage, const std::string& key);
+		void ResetAllSettings();
+		void ResetPerTrackSettings();
 
 		static nlohmann::json GetResultJson(const AnalysisResult& result);
 
 	private:
 		const AnalysisStage* FindStage(const std::string& name) const;
+		nlohmann::json CollectValues(bool perTrack) const;
 
 		std::vector<std::unique_ptr<AnalysisStage>> m_Stages;
 		// Written by the command thread, read by the analysis thread once per frame.

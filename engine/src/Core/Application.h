@@ -1,10 +1,12 @@
 #pragma once
 #include "TransportState.h"
 #include "EngineParams.h"
+#include "../Analysis/PipelineStore.h"
 
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,7 +29,7 @@ namespace Adagio
 	class Application
 	{
 	public:
-		explicit Application(const EngineParams& engineParams = {});
+		explicit Application(const EngineParams& engineParams = {}, const std::filesystem::path& pipelinesFile = {});
 		virtual ~Application();
 
 		void Run();
@@ -44,6 +46,9 @@ namespace Adagio
 		bool LoadAudio(const std::string& filePath, std::string& outError);
 		void ClearAudio();
 
+		void RecordPipeline();
+		nlohmann::json SchemaJson() const;
+
 		std::shared_ptr<PcmFeeder> m_PcmFeeder;
 		std::unique_ptr<FileIOService> m_FileIOService;
 		std::unique_ptr<PlaybackService> m_PlaybackService;
@@ -54,6 +59,7 @@ namespace Adagio
 		std::vector<std::string> m_WaveformFrames;
 
 		EngineParams m_EngineParams;
+		PipelineStore m_PipelineStore;
 
 		std::atomic<TransportState> m_State{ TransportState::Empty };
 		std::atomic<bool> m_Running{ false };

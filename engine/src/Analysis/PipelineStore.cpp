@@ -1,5 +1,4 @@
 #include "PipelineStore.h"
-#include "StageRegistry.h"
 #include "Stages/ChordPredictor.h"
 #include "Stages/FFTProcessor.h"
 #include "Stages/HPSDownsamplerProcessor.h"
@@ -20,6 +19,44 @@
 
 namespace Adagio
 {
+	namespace
+	{
+		template<typename TStage>
+		std::unique_ptr<AnalysisStage> MakeStage()
+		{
+			return std::make_unique<TStage>();
+		}
+
+		constexpr std::pair<std::string_view, std::unique_ptr<AnalysisStage>(*)()> StageFactories[] = {
+			{ FFTProcessor::Name, &MakeStage<FFTProcessor> },
+			{ SpectrumFilterProcessor::Name, &MakeStage<SpectrumFilterProcessor> },
+			{ HPSDownsamplerProcessor::Name, &MakeStage<HPSDownsamplerProcessor> },
+			{ PeakExtractor::Name, &MakeStage<PeakExtractor> },
+			{ PartialExtractor::Name, &MakeStage<PartialExtractor> },
+			{ HarmonicGrouper::Name, &MakeStage<HarmonicGrouper> },
+			{ NoteSelector::Name, &MakeStage<NoteSelector> },
+			{ PresenceFilter::Name, &MakeStage<PresenceFilter> },
+			{ NoteDetector::Name, &MakeStage<NoteDetector> },
+			{ KeyDetector::Name, &MakeStage<KeyDetector> },
+			{ ChordPredictor::Name, &MakeStage<ChordPredictor> }
+		};
+	}
+
+	std::unique_ptr<AnalysisStage> CreateStage(std::string_view name)
+	{
+		for (const auto& [stageName, create] : StageFactories)
+		{
+			if (stageName == name)
+				return create();
+		}
+		return nullptr;
+	}
+
+	bool IsKnownStage(std::string_view name)
+	{
+		return std::ranges::any_of(StageFactories, [name](const auto& factory) { return factory.first == name; });
+	}
+
 	namespace
 	{
 		bool ReadPipeline(const nlohmann::json& entry, PipelineDefinition& outPipeline, std::string& outError)
@@ -285,6 +322,11 @@ namespace Adagio
 		return m_ActivePipelineId;
 	}
 
+	const PipelineDefinition* PipelineStore::GetActivePipeline()
+	{
+		return Find(m_ActivePipelineId);
+	}
+
 	void PipelineStore::SetActiveId(const std::string& id)
 	{
 		m_ActivePipelineId = id;
@@ -296,14 +338,22 @@ namespace Adagio
 	{
 		if (!values.is_object())
 			return;
-		if (PipelineDefinition* pipeline = const_cast<PipelineDefinition*>(Find(id)))
+		PipelineDefinition* pipeline = const_cast<PipelineDefinition*>(Find(id));
+		if (!pipeline)
+			return;
+
+		bool changed = false;
+		for (StageEntry& stage : pipeline->Stages)
 		{
-			for (StageEntry& stage : pipeline->Stages)
+			const auto value = values.find(stage.StageID);
+			if (value != values.end() && stage.Settings != *value)
 			{
-				const auto value = values.find(stage.StageID);
-				if (value != values.end())
-					stage.Settings = *value;
+				stage.Settings = *value;
+				changed = true;
 			}
+		}
+		if (changed)
+		{
 			m_IsDirty = true;
 			m_SaveDueTime.reset();
 		}
@@ -311,12 +361,10 @@ namespace Adagio
 
 	nlohmann::json PipelineStore::SummaryJson() const
 	{
-		const PipelineDefinition* activePipeline = Find(m_ActivePipelineId);
-		return {
-			{ "id", m_ActivePipelineId },
-			{ "name", activePipeline ? activePipeline->Name : "" },
-			{ "description", activePipeline ? activePipeline->Description : "" },
-		};
+		nlohmann::json pipelines = nlohmann::json::array();
+		for (const PipelineDefinition& pipeline : m_Pipelines)
+			pipelines.push_back({ { "id", pipeline.ID }, { "name", pipeline.Name }, { "description", pipeline.Description } });
+		return pipelines;
 	}
 
 	const std::vector<PipelineDefinition>& PipelineStore::BuiltInPipelines()

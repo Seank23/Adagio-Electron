@@ -34,6 +34,8 @@ namespace Adagio
 
 		case CommandType::Load:
 		case CommandType::SetEngineParams:
+		case CommandType::SwitchPipeline:
+		case CommandType::RestorePipelineDefaults:
 			return state != TransportState::Loading;
 
 		case CommandType::Pause:

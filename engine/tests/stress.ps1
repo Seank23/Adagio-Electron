@@ -189,7 +189,8 @@ if (-not (Test-Path $EnginePath)) {
 }
 
 Write-Host "Starting $EnginePath"
-$engine = Start-Process -FilePath $EnginePath -PassThru -WindowStyle Hidden
+# Its own pipelines file, so a run starts on the defaults and leaves the one beside the engine alone.
+$engine = Start-Process -FilePath $EnginePath -ArgumentList "`"--pipelines=$(Join-Path $fixtureDir 'pipelines.json')`"" -PassThru -WindowStyle Hidden
 $socket = $null
 try {
     $deadline = (Get-Date).AddSeconds(15)

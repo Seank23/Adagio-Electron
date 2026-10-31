@@ -24,6 +24,8 @@
         { "name": "analyseFrame", "cpp": "AnalyseFrame", "js": "ANALYSE_FRAME", "arg": "none" },
         { "name": "getAnalysisSchema", "cpp": "GetAnalysisSchema", "js": "GET_ANALYSIS_SCHEMA", "arg": "none" },
         { "name": "setAnalysisSetting", "cpp": "SetAnalysisSetting", "js": "SET_ANALYSIS_SETTING", "arg": "object" },
+        { "name": "switchPipeline", "cpp": "SwitchPipeline", "js": "SWITCH_PIPELINE", "arg": "string" },
+        { "name": "restorePipelineDefaults", "cpp": "RestorePipelineDefaults", "js": "RESTORE_PIPELINE_DEFAULTS", "arg": "none" },
         { "name": "setEngineParams", "cpp": "SetEngineParams", "js": "SET_ENGINE_PARAMS", "arg": "object" },
         { "name": "status", "cpp": "Status", "js": "STATUS", "arg": "none" },
         { "name": "getWaveform", "cpp": "GetWaveform", "js": "GET_WAVEFORM", "arg": "none" },

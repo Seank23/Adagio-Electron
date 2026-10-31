@@ -8,11 +8,14 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace Adagio
 {
 	struct AnalysisResult;
+	struct PipelineDefinition;
 
 	class PcmFeeder;
 	class AnalysisPipeline;
@@ -25,7 +28,7 @@ namespace Adagio
 	class AnalysisService
 	{
 	public:
-		AnalysisService();
+		explicit AnalysisService(std::unique_ptr<AnalysisPipeline> pipeline);
 		~AnalysisService();
 
 		void Init(std::shared_ptr<PcmFeeder> feeder, AnalysisParams params, const PlaybackService* playback);
@@ -36,13 +39,17 @@ namespace Adagio
 		void RequestCurrentFrameAnalysis();
 		void ResetAnalysis();
 
+		void SwitchPipeline(std::unique_ptr<AnalysisPipeline> pipeline);
+		void RestoreDefaults();
+
 		nlohmann::json GetSchemaJson() const;
+		nlohmann::json GetPipelineValues() const;
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
 
 		const AnalysisParams& GetParams() const { return m_Params; }
 
 		static double ExtrapolatePlayhead(double playbackTime, double lastFrameTimestamp, double now, double speed, bool playing);
-		static std::unique_ptr<AnalysisPipeline> CreatePipeline();
+		static std::unique_ptr<AnalysisPipeline> BuildPipeline(const PipelineDefinition& definition, std::vector<std::string>& outWarnings);
 		static kfr::univector<float> Preprocess(const AudioData& source, float sampleRate);
 
 		static nlohmann::json ParamsJson(const AnalysisParams& params);
@@ -53,7 +60,6 @@ namespace Adagio
 		// Frames arrive at sampleRate / hopSize a second, so the analysis event goes by wall time: 31.25 Hz at any setting.
 		static constexpr std::chrono::microseconds AnalysisEventInterval{ 32000 };
 
-		void BuildPipeline();
 		void ClearTrackers();
 		void LoadAnalysisBuffer();
 		double EstimatePlayhead() const;

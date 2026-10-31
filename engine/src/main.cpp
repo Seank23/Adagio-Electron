@@ -7,9 +7,17 @@
 #include "Core/WebSocketServer.h"
 #include "Protocol.generated.h"
 
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 namespace
 {
@@ -47,6 +55,39 @@ namespace
 				std::cerr << "Ignoring " << prefix << text << ": " << error << "\n" << std::flush;
 		}
 		return params;
+	}
+
+	// main passes userData's pipelines.json. Without it, the file beside the executable, so a dev engine started by hand
+	// keeps its settings apart from the installed app's.
+	std::filesystem::path PipelinesFileFromArgs(int argc, char** argv)
+	{
+#ifdef _WIN32
+		const std::wstring prefix = L"--pipelines=";
+		std::filesystem::path file;
+		int wideArgc = 0;
+		if (LPWSTR* wideArgv = CommandLineToArgvW(GetCommandLineW(), &wideArgc))
+		{
+			for (int i = 1; i < wideArgc && file.empty(); ++i)
+			{
+				const std::wstring arg = wideArgv[i];
+				if (arg.rfind(prefix, 0) == 0)
+					file = arg.substr(prefix.size());
+			}
+			LocalFree(wideArgv);
+		}
+		if (!file.empty())
+			return file;
+
+		std::wstring executable(MAX_PATH, L'\0');
+		DWORD length = 0;
+		while ((length = GetModuleFileNameW(nullptr, executable.data(), (DWORD)executable.size())) == executable.size())
+			executable.resize(executable.size() * 2);
+		executable.resize(length);
+		return std::filesystem::path(executable).parent_path() / L"pipelines.json";
+#else
+		const std::string file = ValueFromArgs(argc, argv, "--pipelines=");
+		return file.empty() ? std::filesystem::path("pipelines.json") : std::filesystem::path(file);
+#endif
 	}
 
 	bool HasFlag(int argc, char** argv, const std::string& flag)
@@ -88,7 +129,7 @@ int main(int argc, char** argv)
 {
 	Adagio::SetTracing(HasFlag(argc, argv, "--trace"));
 
-	Adagio::Application app(EngineParamsFromArgs(argc, argv));
+	Adagio::Application app(EngineParamsFromArgs(argc, argv), PipelinesFileFromArgs(argc, argv));
 	Adagio::WSServer wsServer(Adagio::Protocol::Port, ValueFromArgs(argc, argv, "--token="));
 	wsServer.SetCommandHandler(OnClientMessage);
 

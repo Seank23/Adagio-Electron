@@ -1,16 +1,7 @@
 #include "AnalysisService.h"
 #include "AnalysisPipeline.h"
-#include "Stages/ChordPredictor.h"
-#include "Stages/FFTProcessor.h"
-#include "Stages/HPSDownsamplerProcessor.h"
-#include "Stages/KeyDetector.h"
-#include "Stages/NoteDetector.h"
-#include "Stages/PeakExtractor.h"
-#include "Stages/SpectrumFilterProcessor.h"
-#include "Stages/PartialExtractor.h"
-#include "Stages/HarmonicGrouper.h"
-#include "Stages/NoteSelector.h"
-#include "Stages/PresenceFilter.h"
+#include "AnalysisStage.h"
+#include "PipelineStore.h"
 #include "../Core/PcmFeeder.h"
 #include "../Core/BinaryFrame.h"
 #include "../Core/HighResolutionTimer.h"
@@ -26,10 +17,9 @@
 
 namespace Adagio
 {
-	AnalysisService::AnalysisService()
-		: m_Running(false), m_AnalysisBuffer(nullptr)
+	AnalysisService::AnalysisService(std::unique_ptr<AnalysisPipeline> pipeline)
+		: m_Pipeline(std::move(pipeline))
 	{
-		BuildPipeline();
 	}
 
 	AnalysisService::~AnalysisService()
@@ -40,7 +30,7 @@ namespace Adagio
 	{
 		StopAnalysis();
 		ClearTrackers();
-		m_Pipeline->ResetSetting(std::string(NoteDetector::Name), "A440_TUNING");
+		m_Pipeline->ResetPerTrackSettings();
 
 		m_Feeder = feeder;
 		m_Playback = playback;
@@ -72,31 +62,63 @@ namespace Adagio
 		m_AnalysisBuffer->Write(preprocessed.data(), preprocessed.size());
 	}
 
-	void AnalysisService::BuildPipeline()
-	{
-		m_Pipeline = CreatePipeline();
-	}
-
-	std::unique_ptr<AnalysisPipeline> AnalysisService::CreatePipeline()
+	std::unique_ptr<AnalysisPipeline> AnalysisService::BuildPipeline(const PipelineDefinition& definition, std::vector<std::string>& outWarnings)
 	{
 		std::unique_ptr<AnalysisPipeline> pipeline = std::make_unique<AnalysisPipeline>();
-		pipeline->AddStage(std::make_unique<FFTProcessor>());
-		pipeline->AddStage(std::make_unique<SpectrumFilterProcessor>());
-		pipeline->AddStage(std::make_unique<PartialExtractor>());
-		pipeline->AddStage(std::make_unique<HarmonicGrouper>());
-		pipeline->AddStage(std::make_unique<NoteSelector>());
-		pipeline->AddStage(std::make_unique<HPSDownsamplerProcessor>());
-		//pipeline->AddStage(std::make_unique<PeakExtractor>());
-		pipeline->AddStage(std::make_unique<PresenceFilter>());
-		pipeline->AddStage(std::make_unique<NoteDetector>());
-		pipeline->AddStage(std::make_unique<KeyDetector>());
-		pipeline->AddStage(std::make_unique<ChordPredictor>());
+		for (const StageEntry& entry : definition.Stages)
+		{
+			std::unique_ptr<AnalysisStage> stage = CreateStage(entry.StageID);
+			if (!stage)
+			{
+				outWarnings.push_back("Ignoring " + definition.ID + " / " + entry.StageID + ": the engine has no such stage.");
+				continue;
+			}
+			pipeline->AddStage(std::move(stage));
+
+			for (const auto& [key, value] : entry.Settings.items())
+			{
+				std::string error;
+				if (!pipeline->SetSetting(entry.StageID, key, value, error))
+					outWarnings.push_back("Ignoring " + definition.ID + " / " + entry.StageID + " / " + key + ": " + error);
+			}
+		}
 		return pipeline;
+	}
+
+	void AnalysisService::SwitchPipeline(std::unique_ptr<AnalysisPipeline> pipeline)
+	{
+		const bool wasRunning = m_Running.load(std::memory_order_acquire);
+		StopAnalysis();
+
+		const nlohmann::json trackValues = m_Pipeline->GetPerTrackValuesJson();
+		m_Pipeline = std::move(pipeline);
+		for (const auto& [stage, settings] : trackValues.items())
+		{
+			for (const auto& [key, value] : settings.items())
+			{
+				std::string error;
+				m_Pipeline->SetSetting(stage, key, value, error);
+			}
+		}
+
+		ClearTrackers();
+		if (wasRunning)
+			StartAnalysis();
+	}
+
+	void AnalysisService::RestoreDefaults()
+	{
+		m_Pipeline->ResetAllSettings();
 	}
 
 	nlohmann::json AnalysisService::GetSchemaJson() const
 	{
 		return m_Pipeline->GetSchemaJson();
+	}
+
+	nlohmann::json AnalysisService::GetPipelineValues() const
+	{
+		return m_Pipeline->GetValuesJson();
 	}
 
 	bool AnalysisService::SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
