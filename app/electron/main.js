@@ -27,6 +27,7 @@ let quitting = false;
 const THEMES = ['system', 'dark', 'light'];
 const ENGINE_KEYS = ['sampleRate', 'frameLength', 'hopSize', 'frameSmoothing'];
 const preferencesFile = () => path.join(app.getPath('userData'), 'preferences.json');
+const pipelinesFile = () => path.join(app.getPath('userData'), 'pipelines.json');
 
 // Field by field, so one bad value costs only itself. The engine's lists live in protocol.json, which
 // isn't packaged, so only positive integers are kept here; the engine refuses anything else at startup.
@@ -114,7 +115,7 @@ const spawnEngine = (enginePath, params) => new Promise(resolve => {
 
     let child = null;
     try {
-        child = spawn(enginePath, [`--token=${engineToken}`, ...engineArguments(params)], {
+        child = spawn(enginePath, [`--token=${engineToken}`, `--pipelines=${pipelinesFile()}`, ...engineArguments(params)], {
             cwd: path.dirname(enginePath),
             detached: false,
             // stdin is a pipe on purpose: the engine shuts down when it reads EOF,

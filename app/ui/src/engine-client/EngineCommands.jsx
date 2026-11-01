@@ -15,6 +15,8 @@ export const createEngineCommands = engine => ({
     resetAnalysis: () => engine.request(COMMAND.RESET_ANALYSIS),
     getAnalysisSchema: () => engine.request(COMMAND.GET_ANALYSIS_SCHEMA),
     setAnalysisSetting: (stage, key, value) => engine.request(COMMAND.SET_ANALYSIS_SETTING, { stage, key, value }),
+    switchPipeline: id => engine.request(COMMAND.SWITCH_PIPELINE, id),
+    restorePipelineDefaults: () => engine.request(COMMAND.RESTORE_PIPELINE_DEFAULTS),
     // Any of { sampleRate, frameLength, hopSize, frameSmoothing }; answers them all as the engine now has them.
     setEngineParams: params => engine.request(COMMAND.SET_ENGINE_PARAMS, params),
     status: () => engine.request(COMMAND.STATUS),

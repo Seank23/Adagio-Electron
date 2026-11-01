@@ -222,7 +222,7 @@ TEST_CASE("A bad custom pipeline sets aside the built-in values stored beside it
 	PipelineStore store(file);
 	const std::vector<std::string> warnings = store.Load();
 	REQUIRE(warnings.size() == 1);
-	CHECK(warnings[0] == "Ignoring pipelines.json: pipeline 'mine' has a stage the engine doesn't know: Nope. Kept a copy as pipelines.json.bad.");
+	CHECK(warnings[0] == "Ignoring pipelines.json: pipeline 'mine' has an unknown stage: Nope. Kept a copy as pipelines.json.bad.");
 	CHECK(*FindSettings(*store.Find("hps"), "FFTProcessor") == nlohmann::json::object());
 	CHECK(store.GetActiveId() == LoadDefaults().GetActiveId());
 }

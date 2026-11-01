@@ -33,7 +33,7 @@ const TransportBar = () => {
     const repeat = useSelector(state => state.settings.repeat);
     const follow = useSelector(state => state.settings.follow);
 
-    const speed = useEngineSlider(engineSpeed, commands.setSpeed, false);
+    const speed = useEngineSlider(engineSpeed, commands.setSpeed, { sendWhileDragging: false });
     const volume = useEngineSlider(engineVolume, commands.setVolume);
 
     return (
@@ -60,7 +60,7 @@ const TransportBar = () => {
                         <Chip
                             key={preset}
                             type="button"
-                            selected={speed.percent === preset}
+                            selected={speed.value === preset}
                             onClick={async () => report(await commands.setSpeed(preset / 100))}
                         >
                             {preset}

@@ -479,6 +479,93 @@ try {
         if ($window.value -ne 'Hann') { throw "the schema still reports $($window.value)" }
     }
 
+    Write-Host "`nPipelines (Stage 11)"
+    # The engine writes pipelines.json half a second after the last change, renaming a temporary file over
+    # it, so a read waits for what it expects and tries again if it lands mid-rename.
+    function Read-PipelinesFile {
+        param([scriptblock]$Until, [int]$TimeoutMs = 2000)
+        $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
+        do {
+            if (Test-Path $pipelinesPath) {
+                try {
+                    $file = Get-Content -Raw $pipelinesPath | ConvertFrom-Json
+                    if (& $Until $file) { return $file }
+                } catch { }
+            }
+            Start-Sleep -Milliseconds 50
+        } while ((Get-Date) -lt $deadline)
+        return $null
+    }
+
+    function Get-FileSetting {
+        param($File, [string]$Pipeline, [string]$Stage, [string]$Key)
+        $entry = ($File.pipelines | Where-Object { $_.id -eq $Pipeline }).stages | Where-Object { $_.stage -eq $Stage }
+        return $entry.settings.$Key
+    }
+
+    function Get-SchemaSetting {
+        param($Schema, [string]$Stage, [string]$Key)
+        return ($Schema.stages | Where-Object { $_.name -eq $Stage }).settings | Where-Object { $_.key -eq $Key }
+    }
+
+    Test-Case 'the schema names the pipeline in force and lists both built-ins' {
+        $schema = (Invoke-EngineCommand -Cmd 'getAnalysisSchema').value
+        if ($schema.activePipeline -ne 'hps') { throw "expected hps in force, got '$($schema.activePipeline)'" }
+        $ids = @($schema.pipelines | ForEach-Object { $_.id }) -join ','
+        if ($ids -ne 'hps,partialTracking') { throw "expected hps,partialTracking, got $ids" }
+        if ($schema.stages.Count -ne 8) { throw "expected 8 stages, got $($schema.stages.Count)" }
+    }
+
+    Test-Case 'pipelines.json holds the values in force, and never the A4 reference' {
+        Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'NoteDetector'; key = 'A440_TUNING'; value = 442.0 } | Out-Null
+        $file = Read-PipelinesFile { param($f) (Get-FileSetting $f 'hps' 'FFTProcessor' 'WINDOW') -eq 'Hann' }
+        if ($null -eq $file) { throw "$pipelinesPath did not get the Hann window within 2 s" }
+        if ($file.active -ne 'hps') { throw "expected active hps, got $($file.active)" }
+        # Unchanged values are stored too, so the file reads as the whole configuration.
+        if ($null -eq (Get-FileSetting $file 'hps' 'NoteDetector' 'ERROR_THRESHOLD')) { throw 'the file leaves out an unchanged value' }
+        if ($null -ne (Get-FileSetting $file 'hps' 'NoteDetector' 'A440_TUNING')) { throw 'the file stores the per-track A4 reference' }
+    }
+
+    Test-Case 'a switch answers the new schema after an analysisReset, and carries A4 over' {
+        $script:Events = @()
+        $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'partialTracking'
+        if (-not $reply.ok) { throw "switch refused: $($reply.error)" }
+        if ($reply.value.activePipeline -ne 'partialTracking') { throw "the reply names $($reply.value.activePipeline)" }
+        if ($reply.value.stages.Count -ne 9) { throw "expected 9 stages, got $($reply.value.stages.Count)" }
+        if (-not ($script:Events | Where-Object { $_.type -eq 'analysisReset' })) { throw 'no analysisReset event before the reply' }
+        if ((Get-SchemaSetting $reply.value 'NoteDetector' 'A440_TUNING').value -ne 442) { throw 'the A4 reference did not come across' }
+        $schema = (Invoke-EngineCommand -Cmd 'getAnalysisSchema').value
+        if ($schema.activePipeline -ne 'partialTracking' -or $schema.stages.Count -ne 9) { throw 'getAnalysisSchema disagrees with the switch' }
+    }
+
+    Test-Case 'a switch to a pipeline the engine does not have is refused by name' {
+        $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'nope'
+        if ($reply.ok) { throw 'the engine switched to a pipeline it does not have' }
+        if ($reply.error -ne "There is no pipeline 'nope'.") { throw "unexpected refusal: $($reply.error)" }
+        if ((Invoke-EngineCommand -Cmd 'getAnalysisSchema').value.activePipeline -ne 'partialTracking') { throw 'the refusal changed the pipeline' }
+    }
+
+    Test-Case 'a change reaches the file within 1.5 s, under the pipeline in force' {
+        $reply = Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'KeyDetector'; key = 'ROLLING_WINDOW'; value = 30.0 }
+        if (-not $reply.ok) { throw "refused: $($reply.error)" }
+        $file = Read-PipelinesFile { param($f) $f.active -eq 'partialTracking' -and (Get-FileSetting $f 'partialTracking' 'KeyDetector' 'ROLLING_WINDOW') -eq 30 } 1500
+        if ($null -eq $file) { throw 'the file did not follow within 1.5 s' }
+        if ((Get-FileSetting $file 'hps' 'FFTProcessor' 'WINDOW') -ne 'Hann') { throw "the other pipeline's values were lost" }
+        if ($null -ne (Get-FileSetting $file 'partialTracking' 'NoteDetector' 'A440_TUNING')) { throw 'the file stores the per-track A4 reference' }
+    }
+
+    Test-Case 'restoring the defaults answers them, A4 included, and the file follows' {
+        $reply = Invoke-EngineCommand -Cmd 'restorePipelineDefaults'
+        if (-not $reply.ok) { throw "refused: $($reply.error)" }
+        $window = Get-SchemaSetting $reply.value 'KeyDetector' 'ROLLING_WINDOW'
+        if ($window.value -ne $window.default) { throw "expected the default $($window.default), got $($window.value)" }
+        if ((Get-SchemaSetting $reply.value 'NoteDetector' 'A440_TUNING').value -ne 440) { throw 'the A4 reference was not restored' }
+        $file = Read-PipelinesFile { param($f) (Get-FileSetting $f 'partialTracking' 'KeyDetector' 'ROLLING_WINDOW') -eq $window.default } 1500
+        if ($null -eq $file) { throw 'the file did not follow within 1.5 s' }
+    }
+    # The cases below run on the default pipeline, as they did before there was a choice.
+    Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'hps' | Out-Null
+
     Write-Host "`nEngine parameters with no file"
     Test-Case 'status reports the analysis parameters' {
         $analysis = (Get-Status).analysis
@@ -762,6 +849,22 @@ try {
         }
         # The step cases count in 64-sample hops at 8 kHz, whatever the defaults and whatever happened above.
         Invoke-EngineCommand -Cmd 'setEngineParams' -Arguments @{ sampleRate = 8000; frameLength = 4096; hopSize = 64 } | Out-Null
+
+        Write-Host "`nPipelines with a file open"
+        Test-Case 'a switch while playing keeps the track playing and the analysis flowing' {
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "expected to be playing already, got $($status.state)" }
+            $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'partialTracking'
+            if (-not $reply.ok) { throw "switch refused: $($reply.error)" }
+            $script:Socket.ResetCounts()
+            Start-Sleep -Milliseconds 500
+            $status = Get-Status
+            if ($status.state -ne 'playing') { throw "expected playing, got $($status.state)" }
+            # 31.25 a second, so about 15 in half a second.
+            if ($script:Socket.AnalysisEvents -lt 10) { throw "expected analysis events on the new pipeline, got $($script:Socket.AnalysisEvents)" }
+            $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'hps'
+            if (-not $reply.ok) { throw "switch back refused: $($reply.error)" }
+        }
 
         Write-Host "`nFrame step and analysis reset"
         # One 64-sample hop of the 8 kHz analysis stream, in the fixture's 44.1 kHz samples.

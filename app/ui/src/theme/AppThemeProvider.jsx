@@ -45,6 +45,21 @@ const buildAntdTheme = palette => ({
             handleSize: 12,
             handleSizeHover: 12,
         },
+        Select: {
+            controlHeight: 28,
+            selectorBg: palette.bg.surface,
+            hoverBorderColor: palette.text.muted,
+            activeBorderColor: palette.accent.primaryFg,
+            activeOutlineColor: 'transparent',
+            optionActiveBg: palette.bg.surface,
+            optionSelectedBg: palette.accent.soft,
+            optionSelectedColor: palette.accent.primaryText,
+            optionSelectedFontWeight: 500,
+            optionPadding: '8px 10px 8px 8px',
+            borderRadiusLG: 8,
+            borderRadiusSM: 5,
+            boxShadowSecondary: `0 8px 24px ${palette.shadow.modal}`,
+        },
     },
 });
 

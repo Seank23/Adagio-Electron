@@ -1,6 +1,7 @@
-import { createSlice } from '@reduxjs/toolkit';
+import { createSelector, createSlice } from '@reduxjs/toolkit';
 import { setTransport } from './playbackSlice';
 import { A4_DEFAULT_HZ } from '../utils/music';
+import { stageHasChanges } from '../utils/settings';
 
 export const TUNING_STAGE = 'NoteDetector';
 export const TUNING_KEY = 'A440_TUNING';
@@ -12,12 +13,16 @@ const pipelineSlice = createSlice({
     name: 'pipeline',
     initialState: {
         stages: [],
+        activePipeline: null,
+        pipelines: [],
         // { sampleRate, frameLength, hopSize, frameSmoothing }
         params: null,
     },
     reducers: {
         setSchema(state, action) {
             state.stages = action.payload?.stages ?? [];
+            state.activePipeline = action.payload?.activePipeline ?? null;
+            state.pipelines = action.payload?.pipelines ?? [];
         },
         setSettingValue(state, action) {
             const { stage, key, value } = action.payload;
@@ -46,6 +51,11 @@ export const selectTuningHz = state => {
 export const selectTuningMin = state => selectTuningSetting(state)?.min ?? 415;
 export const selectTuningMax = state => selectTuningSetting(state)?.max ?? 466;
 export const selectHasSchema = state => state.pipeline.stages.length > 0;
+
+export const selectStages = state => state.pipeline.stages;
+export const selectActivePipeline = state => state.pipeline.activePipeline;
+export const selectPipelines = state => state.pipeline.pipelines;
+export const selectHasChanges = createSelector([selectStages], stages => stages.some(stageHasChanges));
 
 export const selectSampleRate = state => state.pipeline.params?.sampleRate ?? null;
 export const selectFrameLength = state => state.pipeline.params?.frameLength ?? null;

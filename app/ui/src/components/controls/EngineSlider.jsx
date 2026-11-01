@@ -2,20 +2,20 @@ import Styled from '@emotion/styled';
 import { Slider } from 'antd';
 
 // An icon, a 112px slider and its value.
-const EngineSlider = ({ icon, label, min, max, percent, onChange, onChangeComplete, disabled = false }) => (
+const EngineSlider = ({ icon, label, min, max, value, onChange, onChangeComplete, disabled = false }) => (
     <Row>
         <Icon aria-hidden>{icon}</Icon>
         <Track
             min={min}
             max={max}
-            value={percent}
+            value={value}
             disabled={disabled}
             tooltip={{ open: false }}
             ariaLabelForHandle={label}
             onChange={onChange}
             onChangeComplete={onChangeComplete}
         />
-        <Value>{percent}%</Value>
+        <Value>{value}%</Value>
     </Row>
 );
 export default EngineSlider;

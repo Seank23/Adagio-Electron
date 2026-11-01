@@ -215,16 +215,28 @@ describe('Sidebar', () => {
         expect(commits).toBe(settled);
     });
 
-    it('keeps the disabled Settings tab out of reach, and unmounts a hidden tab', () => {
+    it('reaches the Settings tab with the arrow keys, and unmounts a hidden tab', () => {
         const { store } = renderWithEngine(<Sidebar />);
+        const analysis = screen.getByRole('tab', { name: 'Analysis' });
         const settings = screen.getByRole('tab', { name: 'Settings' });
-        expect(settings.disabled).toBe(true);
-        expect(settings.tabIndex).toBe(-1);
-        expect(screen.getByRole('tab', { name: 'Analysis' }).tabIndex).toBe(0);
-        // Asking for the disabled tab still shows Analysis.
-        act(() => store.dispatch(setSidebarTab('settings')));
-        expect(screen.getByRole('tab', { name: 'Analysis' }).getAttribute('aria-selected')).toBe('true');
+        expect(settings.disabled).toBe(false);
+        expect([analysis.tabIndex, settings.tabIndex]).toEqual([0, -1]);
+
+        fireEvent.keyDown(analysis, { key: 'ArrowRight' });
+        expect(store.getState().settings.sidebarTab).toBe('settings');
+        expect(settings.getAttribute('aria-selected')).toBe('true');
+        expect(document.activeElement).toBe(settings);
         expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+        expect(screen.queryByText('Pitch classes')).toBeNull();
+        expect(screen.getByRole('combobox', { name: 'Analysis pipeline' })).toBeTruthy();
+
+        // It wraps, and Home and End go to the ends.
+        fireEvent.keyDown(settings, { key: 'ArrowRight' });
+        expect(store.getState().settings.sidebarTab).toBe('analysis');
+        fireEvent.keyDown(analysis, { key: 'End' });
+        expect(store.getState().settings.sidebarTab).toBe('settings');
+        act(() => store.dispatch(setSidebarTab('nonsense')));
+        expect(analysis.getAttribute('aria-selected')).toBe('true');
     });
 
     it('keeps the arrow keys inside the tab list', () => {

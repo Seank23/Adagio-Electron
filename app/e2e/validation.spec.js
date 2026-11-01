@@ -360,11 +360,11 @@ test('sidebar: the chord badge matches the top chord, the tonic is marked, and t
     const topChord = await chordSection.locator(':scope > div').first().locator('span').first().textContent();
     await expect(page.getByText('Chord', { exact: true }).first().locator('xpath=following-sibling::*[1]')).toHaveText(topChord);
 
-    // The arrows stay on the Analysis tab: Settings is disabled.
+    // The arrows reach the Settings tab, which shows the pipeline in force.
     await page.getByRole('tab', { name: 'Analysis' }).focus();
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Analysis' })).toBeFocused();
-    await expect(page.getByRole('tab', { name: 'Settings' })).toBeDisabled();
+    await expect(page.getByRole('tab', { name: 'Settings' })).toBeFocused();
+    await expect(page.getByRole('combobox', { name: 'Analysis pipeline' })).toBeVisible();
 });
 
 test('tuning: a tone at 452.9 Hz is dropped at 440 and named A, in tune, at 452.9; the value is clamped and kept', async () => {
@@ -612,4 +612,84 @@ test('preferences reach an engine started by hand, as in dev, and one restarted 
         session = null;
         await engine.stop();
     }
+});
+
+// Stage 11: the Settings tab. The engine owns pipelines.json in userData; main only tells it where.
+const settingsTab = page => page.getByRole('tab', { name: 'Settings' });
+const stageHeader = (page, name) => page.getByRole('button', { name, exact: true });
+const keyWindow = page => page.getByRole('region', { name: 'Key Detector' }).getByRole('spinbutton', { name: 'Rolling Window' });
+// What the closed pipeline select shows.
+const shownPipeline = page => page.locator('.ant-select').filter({ has: page.getByRole('combobox', { name: 'Analysis pipeline' }) })
+    .locator('[title]').first();
+const readPipelines = userData => {
+    try {
+        return JSON.parse(fs.readFileSync(path.join(userData, 'pipelines.json'), 'utf8'));
+    } catch {
+        return null;
+    }
+};
+const storedValue = (file, pipeline, stage, key) =>
+    file?.pipelines.find(entry => entry.id === pipeline)?.stages.find(entry => entry.stage === stage)?.settings[key];
+
+test('settings: a switch while playing refills the analysis, and the pipeline and its values survive a restart until Reset all', async () => {
+    session = await launch();
+    let { app, page } = session;
+    const { userData } = session;
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    // The engine writes the file half a second after it starts, with the default pipeline in force.
+    await expect.poll(() => readPipelines(userData)?.active).toBe('hps');
+
+    await openFile(app, page, fixtures.chord);
+    await button(page, 'Play').click();
+    await expect(sidebarKey(page)).not.toHaveText('—');
+
+    await settingsTab(page).click();
+    await expect(shownPipeline(page)).toHaveText('Harmonic Product Spectrum');
+    await expect(page.getByText('8 stages · changes apply immediately')).toBeVisible();
+    // The chosen name covers antd's input, so the click lands on what shows.
+    await shownPipeline(page).click();
+    await page.getByText('Partial Tracking', { exact: true }).click();
+    await expect(page.getByText('9 stages · changes apply immediately')).toBeVisible();
+    await expect(shownPipeline(page)).toHaveText('Partial Tracking');
+    await expect(stageHeader(page, 'Note Selector')).toBeVisible();
+    // Still playing, and the new pipeline names the key again.
+    await expect(button(page, 'Pause')).toBeVisible();
+    await page.getByRole('tab', { name: 'Analysis' }).click();
+    await expect(sidebarKey(page)).not.toHaveText('—');
+    await button(page, 'Pause').click();
+
+    await settingsTab(page).click();
+    await stageHeader(page, 'Key Detector').click();
+    await keyWindow(page).fill('30');
+    await keyWindow(page).press('Enter');
+    await expect(keyWindow(page)).toHaveValue('30.0');
+    await expect(page.getByRole('button', { name: 'Reset Rolling Window' })).toBeVisible();
+    await expect.poll(() => storedValue(readPipelines(userData), 'partialTracking', 'KeyDetector', 'ROLLING_WINDOW')).toBe(30);
+    await close(app);
+
+    // The sidebar shows only with a track open: the drop card stands in for it.
+    session = await launch({ userData });
+    ({ app, page } = session);
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    await openFile(app, page, fixtures.short);
+    await settingsTab(page).click();
+    await expect(shownPipeline(page)).toHaveText('Partial Tracking');
+    await stageHeader(page, 'Key Detector').click();
+    await expect(keyWindow(page)).toHaveValue('30.0');
+
+    await page.getByRole('button', { name: 'Reset all' }).click();
+    await expect(keyWindow(page)).toHaveValue('20.0');
+    await expect(page.getByRole('button', { name: 'Reset all' })).toBeDisabled();
+    await expect.poll(() => storedValue(readPipelines(userData), 'partialTracking', 'KeyDetector', 'ROLLING_WINDOW')).toBe(20);
+    await close(app);
+
+    // The sidebar shows only with a track open: the drop card stands in for it.
+    session = await launch({ userData });
+    ({ app, page } = session);
+    await expect(engineIndicator(page)).toHaveText('Engine connected');
+    await openFile(app, page, fixtures.short);
+    await settingsTab(page).click();
+    await expect(shownPipeline(page)).toHaveText('Partial Tracking');
+    await stageHeader(page, 'Key Detector').click();
+    await expect(keyWindow(page)).toHaveValue('20.0');
 });

@@ -16,8 +16,10 @@ Requirements:
   server.
 
 Every launch gets its own `userData` directory through `ADAGIO_USER_DATA`, so one test's
-`preferences.json` (a Light theme, a 16 kHz analysis) never reaches the next. The restart
-test passes the first launch's directory back in.
+`preferences.json` (a Light theme, a 16 kHz analysis) and `pipelines.json` (a pipeline
+switch, a changed setting) never reach the next. The restart tests pass the first launch's
+directory back in. An engine a test starts by hand gets no `--pipelines=`, so it uses the
+`pipelines.json` beside `engine/build/Release/AdagioEngine.exe`.
 
 The fixtures are WAV files generated at 48 kHz in a temp directory: a C major chord (40 s
 and 1.5 s) and a 452.9 Hz tone. At 48 kHz one analysis hop is a whole number of samples at
@@ -41,6 +43,7 @@ and each step moves the readout by exactly one hop (16 ms at 8 kHz and 128).
 | Empty and drop | empty state: Close brings the drop card back… |
 | Window size | window size: nothing scrolls or overlaps… |
 | Preferences | preferences: Ctrl+, and the cog open them… · preferences survive a restart… · preferences reach an engine started by hand… |
+| Stage settings | settings: a switch while playing refills the analysis, and the pipeline and its values survive a restart… |
 
 Also covered beyond §7: the engine starts at 20% volume, and a seek keeps the analysis.
 

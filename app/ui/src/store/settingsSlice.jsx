@@ -9,6 +9,7 @@ const settingsSlice = createSlice({
         repeat: false,
         follow: true,
         sidebarTab: 'analysis',
+        openStages: [],
     },
     reducers: {
         setShowDecibels: (state, action) => {
@@ -26,8 +27,14 @@ const settingsSlice = createSlice({
         setSidebarTab: (state, action) => {
             state.sidebarTab = action.payload;
         },
+        toggleStage: (state, action) => {
+            const name = action.payload;
+            state.openStages = state.openStages.includes(name)
+                ? state.openStages.filter(open => open !== name)
+                : [...state.openStages, name];
+        },
     },
 });
 
-export const { setShowDecibels, setThemeMode, toggleRepeat, toggleFollow, setSidebarTab } = settingsSlice.actions;
+export const { setShowDecibels, setThemeMode, toggleRepeat, toggleFollow, setSidebarTab, toggleStage } = settingsSlice.actions;
 export default settingsSlice.reducer;
