@@ -17,7 +17,29 @@ It is the spiritual successor to [MusicAnalyser](https://github.com/Seank23/Musi
 - **Tuning**: set the A4 reference from 415 to 466 Hz for a recording that isn't at 440. Drag the readout up or down, or use its − and + buttons (Shift for finer steps); double-click puts it back to 440. Beside it is the average tuning error of the notes heard, in cents. Each track opens at 440.
 - **Step** one analysis frame at a time while paused or stopped, with `.` or by holding the step button, and reset the analysis to start the key and chords afresh.
 - **Preferences** (Ctrl+,): a System, Light or Dark theme; the analysis sample rate (4, 8 or 16 kHz), frame size (2048, 4096 or 8192) and hop size (32 to 256 samples), which trade frequency detail against time detail; the spectrum's smoothing; and About.
+- **Settings**: the sidebar's Settings tab picks the analysis pipeline and tunes every stage in it while the track plays. See [Settings tab](#settings-tab).
 - **Status bar**: the analysis rate and settings, the time the pipeline takes per frame (on hover), and whether the engine is connected.
+
+### Settings tab
+
+The sidebar has two tabs, **Analysis** (key and chords) and **Settings**. Settings lets you tweak the parameters used by each analysis stage in the pipeline.
+
+- **Pipeline**: choose the analysis pipeline. There are two built in:
+  - **Harmonic Product Spectrum** (the default): FFT → Spectrum Filter → HPS Downsampler → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. It multiplies downsampled copies of the spectrum so that fundamentals stand out, then picks peaks. This is the original approach, carried over from MusicAnalyser.
+  - **Partial Tracking**: FFT → Spectrum Filter → Partial Extractor → Harmonic Grouper → Note Selector → Presence Filter → Note Detector → Key Detector → Chord Predictor. It finds the individual partials, groups them into harmonic series and picks notes by salience.
+
+  Switching pipelines restarts the key and chords. The A4 tuning comes with you to the new pipeline.
+- **Stages**: under the pipeline, each stage is a numbered section in the order it runs. Click a stage's header to open it. Each setting has an appropriate control: a number field with a slider (its unit shown beside it, such as Hz, dB, s or ¢), a switch, or a choice of options. A few examples:
+  - the FFT's window function
+  - the spectrum filter's low and high cuts
+  - the frequency range and peak thresholds used for picking notes
+  - the presence window and octave hold that steady the notes from frame to frame
+  - the window the key and chords look back over, and the score a chord needs before it is shown
+- **Changes apply immediately**, between frames, and show only once the engine has accepted them. A value outside a setting's range is refused, with the reason in the status bar. While paused, the current frame is analysed again, so you see the effect without pressing play.
+- **Resetting**: a dot on a stage's header means one of its settings differs from its default. The ↺ button beside a changed setting puts back that one setting (hover over it to see the default). **Reset all** returns every setting in the pipeline to its default, A4 included.
+- **Saved automatically**: each pipeline's settings are saved in `%APPDATA%\Adagio\pipelines.json` and are still there the next time you open the app. The A4 reference is the one exception: it belongs to the track, so every file opens at 440 Hz.
+
+App-wide choices live in Preferences rather than here: the theme, the analysis sample rate, frame size and hop, and the spectrum's smoothing.
 
 ### Keyboard
 
@@ -33,13 +55,13 @@ It is the spiritual successor to [MusicAnalyser](https://github.com/Seank23/Musi
 
 Download `Adagio Setup <version>.exe` from the [releases page](https://github.com/Seank23/Adagio-Electron/releases) and run it. It installs for the current user, with no administrator prompt, and adds Start menu and desktop shortcuts; uninstall it from Settings > Apps. The installer is not code-signed, so SmartScreen warns before it runs: choose **More info**, then **Run anyway**.
 
-Adagio needs Windows 10 or 11 on x64, a CPU with AVX2 (Intel since 2013, AMD since 2015) and an audio output device. It keeps its preferences in `%APPDATA%\Adagio\preferences.json`.
+Adagio needs Windows 10 or 11 on x64, a CPU with AVX2 (Intel since 2013, AMD since 2015) and an audio output device. It keeps its preferences in `%APPDATA%\Adagio\preferences.json` and its analysis settings in `pipelines.json` beside it.
 
 ## How it works
 
 Adagio is two programs. The window is an Electron and React app in `app/`. The audio work happens in a separate C++20 engine in `engine/`, which decodes the file, plays it through miniaudio, time-stretches it with RubberBand and runs the analysis. They talk over a local, authenticated WebSocket, described once in `protocol/protocol.json`.
 
-The engine analyses its own copy of the track, mixed to mono and resampled to the analysis sample rate. Each frame goes through an FFT, a harmonic product spectrum, peak picking, note detection against the A4 reference, a key detector and a chord predictor. Frames arrive at a fixed rate in wall time, so slower playback analyses the music more finely. The spectrum streams to the window as binary frames every hop; the notes, key and chords as JSON about 31 times a second.
+The engine analyses its own copy of the track, mixed to mono and resampled to the analysis sample rate. Each frame goes through a pipeline of stages: by default an FFT, a harmonic product spectrum, peak picking, a presence filter, note detection against the A4 reference, a key detector and a chord predictor. The partial-tracking pipeline swaps the harmonic product spectrum and the peak picking for partial extraction, harmonic grouping and note selection. The engine owns each stage's settings and saves them to `pipelines.json`; the Settings tab is a form built from the schema the engine sends. Frames arrive at a fixed rate in wall time, so slower playback analyses the music more finely. The spectrum streams to the window as binary frames every hop; the notes, key and chords as JSON about 31 times a second.
 
 `CLAUDE.md` describes the architecture in detail: the threads, the protocol, how the analysis works and the traps worth knowing.
 
@@ -53,11 +75,12 @@ MusicAnalyser was a C# WinForms app on .NET Framework that did the same job: pla
 - **Analysis resolution you can choose.** MusicAnalyser's frame was fixed at 4,096 samples. Adagio's analysis sample rate (4, 8 or 16 kHz), frame size (2,048 to 8,192 samples) and hop (32 to 256 samples) are preferences you can change mid-track, to trade frequency detail against time detail for the music in hand.
 - **A spectrum laid out like a keyboard.** MusicAnalyser plotted the spectrum on a linear frequency axis. Adagio's axis is logarithmic and gridded by piano key, with a keyboard beneath whose keys sit under the peaks; detected notes are dotted on it, and the magnitude can be linear or in decibels.
 - **A full semitone of tuning.** MusicAnalyser's Pitch Sync moved note naming by up to 50 cents either way. Adagio sets the A4 reference anywhere from 415 to 466 Hz, a semitone each side of 440, so a recording at baroque pitch is named correctly.
+- **A choice of analysis pipelines, tuned live.** Alongside the harmonic product spectrum chain there is a partial-tracking pipeline. Every stage's settings appear in the Settings tab, take effect on the next frame, and are kept between sessions.
 - **Playback.** RubberBand does the time-stretching in place of SoundTouch, still down to 20% at the original pitch, and FLAC opens alongside WAV and MP3.
 - **Installs like an app.** A per-user installer with Start menu shortcuts and an uninstaller replaces the zip to extract. The engine links its runtime statically, so nothing else needs installing.
 - **Builds from a clean checkout, and is tested.** Every dependency comes at a pinned version through CMake or npm, with nothing to copy in by hand. Engine unit tests, socket-level smoke and stress tests, UI component tests and Playwright tests of the real app cover it, and CI builds the engine and runs its unit and smoke tests on every push.
 
-Adagio is still work in progress so not everything has come across yet. MusicAnalyser's recording from an input device, spectrogram viewer, editable script chain and its presets (the CQT one among them), note highlight filter, pitch shifting and section looping have no equivalent in Adagio so far. These features will be added in future releases.
+Adagio is still work in progress so not everything has come across yet. MusicAnalyser's recording from an input device, spectrogram viewer, a chain you can reorder or add stages to, presets (the CQT one among them), note highlight filter, pitch shifting and section looping have no equivalent in Adagio so far. These features will be added in future releases.
 
 ## Build from source
 
