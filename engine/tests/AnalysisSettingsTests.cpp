@@ -104,6 +104,20 @@ TEST_CASE("The schema names every stage in pipeline order, with the value in for
 	CHECK(window.at("options").size() == 4);
 }
 
+TEST_CASE("A number carries its unit in the schema, and a count or a choice carries none")
+{
+	const nlohmann::json schema = MakePipeline()->GetSchemaJson();
+
+	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("unit") == "Hz");
+	CHECK(FindSetting(schema, "NoteDetector", "TUNING_WINDOW").at("unit") == "s");
+	CHECK(FindSetting(schema, "PeakExtractor", "MIN_SEMITONE_DISTANCE").at("unit") == "st");
+	// The schema spells the cents sign as a JSON escape, since MSVC reads the source without /utf-8; it parses to UTF-8.
+	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("unit") == "\xC2\xA2");
+
+	CHECK_FALSE(FindSetting(schema, "PeakExtractor", "MAX_PEAKS").contains("unit"));
+	CHECK_FALSE(FindSetting(schema, "FFTProcessor", "WINDOW").contains("unit"));
+}
+
 TEST_CASE("A setting is checked against the stage's own schema")
 {
 	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();

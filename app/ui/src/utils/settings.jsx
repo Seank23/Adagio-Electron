@@ -1,5 +1,5 @@
 // The rules the Settings tab's controls follow, kept out of the components so the tests reach them.
-// A setting is one entry of a stage in getAnalysisSchema's reply: { key, name, type, min?, max?, options?, default, value }.
+// A setting is one entry of a stage in getAnalysisSchema's reply: { key, name, type, min?, max?, unit?, options?, default, value }.
 import { clamp } from './math';
 
 const SEGMENTED_MAX_LABEL = 12;

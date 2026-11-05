@@ -309,6 +309,7 @@ namespace Adagio
 				"ROLLING_WINDOW": {
 					"name": "Rolling Window",
 					"type": "float",	
+					"unit": "s",
 					"min": 0.01,
 					"max": 5.0
 				},

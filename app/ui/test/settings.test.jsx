@@ -32,24 +32,24 @@ const SHARED_HEAD = [
     stage('FFTProcessor', [choice('WINDOW', 'Window Function', ['Rectangle', 'Hamming', 'Hann', 'BlackmannHarris'], 'Hamming')]),
     stage('SpectrumFilterProcessor', [
         choice('ENABLED', 'Enabled', ['Yes', 'No'], 'Yes'),
-        number('LOW_CUT_C1', 'Low Cut C1', 'float', 0, 20000, 55),
+        number('LOW_CUT_C1', 'Low Cut C1', 'float', 0, 20000, 55, { unit: 'Hz' }),
     ]),
 ];
 const SHARED_TAIL = [
     stage('PresenceFilter', [
         choice('MASK_ENABLED', 'Mask Enabled', ['No', 'Yes'], 'No'),
-        number('PRESENCE_WINDOW', 'Presence Window', 'float', 0, 1, f32(0.2)),
+        number('PRESENCE_WINDOW', 'Presence Window', 'float', 0, 1, f32(0.2), { unit: 's' }),
     ]),
     stage('NoteDetector', [
-        number('A440_TUNING', 'A440 Reference', 'float', 415, 466, 440, { persistent: false }),
-        number('ERROR_THRESHOLD', 'Error Threshold', 'float', 0, 50, 25),
+        number('A440_TUNING', 'A440 Reference', 'float', 415, 466, 440, { unit: 'Hz', persistent: false }),
+        number('ERROR_THRESHOLD', 'Error Threshold', 'float', 0, 50, 25, { unit: '¢' }),
     ]),
     stage('KeyDetector', [
         choice('ALGORITHM', 'Algorithm', ['Scale Match', 'Krumhansl'], 'Krumhansl'),
-        number('ROLLING_WINDOW', 'Rolling Window', 'float', 5, 50, 20),
+        number('ROLLING_WINDOW', 'Rolling Window', 'float', 5, 50, 20, { unit: 's' }),
     ]),
     stage('ChordPredictor', [
-        number('ROLLING_WINDOW', 'Rolling Window', 'float', 0.01, 5, 0.5),
+        number('ROLLING_WINDOW', 'Rolling Window', 'float', 0.01, 5, 0.5, { unit: 's' }),
         number('SCORE_THRESHOLD', 'Score Threshold', 'float', 0, 1, f32(0.1)),
     ]),
 ];
@@ -74,9 +74,9 @@ const PARTIAL_TRACKING = {
     activePipeline: 'partialTracking',
     stages: [
         ...SHARED_HEAD,
-        stage('PartialExtractor', [number('GATE_DB', 'Gate Level dB', 'float', 0, 40, 4)]),
-        stage('HarmonicGrouper', [number('MATCH_CENTS', 'Match Cents', 'int', 5, 50, 25)]),
-        stage('NoteSelector', [number('STOP_DB', 'Stop dB', 'float', 10, 80, 30)]),
+        stage('PartialExtractor', [number('GATE_DB', 'Gate Level', 'float', 0, 40, 4, { unit: 'dB' })]),
+        stage('HarmonicGrouper', [number('MATCH_CENTS', 'Match Tolerance', 'int', 5, 50, 25, { unit: '¢' })]),
+        stage('NoteSelector', [number('STOP_DB', 'Stop Level', 'float', 10, 80, 30, { unit: 'dB' })]),
         ...SHARED_TAIL,
     ],
 };
@@ -314,6 +314,22 @@ describe('the Settings tab', () => {
         act(() => store.dispatch(setSettingValue({ stage: 'NoteDetector', key: 'A440_TUNING', value: 442 })));
         expect(within(region('Note Detector')).getByRole('spinbutton', { name: 'A440 Reference' }).value).toBe('442.0');
         expect(selectTuningHz(store.getState())).toBe(442);
+    });
+
+    it('shows a number\'s unit beside its field, and none where the schema gives none', () => {
+        setup();
+        open('Note Detector');
+        open('HPS Downsampler');
+        const field = (stageName, name) => within(region(stageName)).getByRole('spinbutton', { name });
+
+        const tuning = field('Note Detector', 'A440 Reference');
+        expect(tuning.parentElement.textContent).toBe('Hz');
+        expect(tuning.getAttribute('aria-valuetext')).toBe('440.0 Hz');
+        expect(field('Note Detector', 'Error Threshold').getAttribute('aria-valuetext')).toBe('25.0 ¢');
+
+        const harmonics = field('HPS Downsampler', 'Number of Harmonics');
+        expect(harmonics.parentElement.textContent).toBe('');
+        expect(harmonics.getAttribute('aria-valuetext')).toBe('2');
     });
 
     it('analyses the paused frame after each accepted change, and not after a refused one or while playing', async () => {

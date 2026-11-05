@@ -69,8 +69,9 @@ namespace Adagio
 		{
 			return nlohmann::json::parse(R"({
 				"GATE_DB": {
-					"name": "Gate Level dB",
+					"name": "Gate Level",
 					"type": "float",	
+					"unit": "dB",
 					"min": 0.0,
 					"max": 40.0
 				}

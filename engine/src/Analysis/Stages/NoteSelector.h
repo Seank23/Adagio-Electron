@@ -120,8 +120,9 @@ namespace Adagio
 					"max": 5
 				},
 				"STOP_DB": {
-					"name": "Stop dB",
+					"name": "Stop Level",
 					"type": "float",
+					"unit": "dB",
 					"min": 10.0,
 					"max": 80.0
 				},
@@ -134,12 +135,14 @@ namespace Adagio
 				"MIN_FREQ": {
 					"name": "Min Frequency",
 					"type": "float",
+					"unit": "Hz",
 					"min": 20.0,
 					"max": 500.0
 				},
 				"MAX_FREQ": {
 					"name": "Max Frequency",
 					"type": "float",
+					"unit": "Hz",
 					"min": 500.0,
 					"max": 12000.0
 				}

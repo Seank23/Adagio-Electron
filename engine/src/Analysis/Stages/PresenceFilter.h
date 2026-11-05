@@ -105,12 +105,14 @@ namespace Adagio
 				"PRESENCE_WINDOW": {
 					"name": "Presence Window",
 					"type": "float",
+					"unit": "s",
 					"min": 0.0,
 					"max": 1.0
 				},
 				"OCTAVE_HOLD": {
 					"name": "Octave Hold",
 					"type": "float",
+					"unit": "s",
 					"min": 0.0,
 					"max": 1.0
 				},
@@ -122,6 +124,7 @@ namespace Adagio
 				"MASK_HALF_WIDTH": {
 					"name": "Mask Half Width",
 					"type": "int",
+					"unit": "bins",
 					"min": 1,
 					"max": 10
 				}

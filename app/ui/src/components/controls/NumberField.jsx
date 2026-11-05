@@ -117,4 +117,6 @@ const Unit = Styled.span`
     flex-shrink: 0;
     font: 400 10px/1 var(--font-mono);
     color: var(--text-muted);
+    margin-top: 2px;
+    margin-left: 1px;
 `;

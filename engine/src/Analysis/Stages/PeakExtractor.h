@@ -218,14 +218,16 @@ namespace Adagio
 		{
 			return nlohmann::json::parse(R"json({
 				"MIN_FREQ": {
-					"name": "Minimum Frequency (Hz)",
+					"name": "Minimum Frequency",
 					"type": "float",
+					"unit": "Hz",
 					"min": 20.0,
 					"max": 500.0
 				},
 				"MAX_FREQ": {
-					"name": "Maximum Frequency (Hz)",
+					"name": "Maximum Frequency",
 					"type": "float",
+					"unit": "Hz",
 					"min": 500.0,
 					"max": 12000.0
 				},
@@ -242,8 +244,9 @@ namespace Adagio
 					"max": 30.0
 				},
 				"MIN_SEMITONE_DISTANCE": {
-					"name": "Min Peak Distance (semitones)",
+					"name": "Min Peak Distance",
 					"type": "float",
+					"unit": "st",
 					"min": 0.25,
 					"max": 3.0
 				},

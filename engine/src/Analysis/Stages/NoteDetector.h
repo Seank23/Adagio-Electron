@@ -69,12 +69,14 @@ namespace Adagio
 				"ERROR_THRESHOLD": {
 					"name": "Error Threshold",
 					"type": "float",	
+					"unit": "\u00a2",
 					"min": 0.0,
 					"max": 50.0
 				},
 				"A440_TUNING": {
 					"name": "A440 Reference",
 					"type": "float",
+					"unit": "Hz",
 					"min": 415.0,
 					"max": 466.0,
 					"persistent": false
@@ -82,6 +84,7 @@ namespace Adagio
 				"TUNING_WINDOW": {
 					"name": "Tuning Error Window",
 					"type": "float",
+					"unit": "s",
 					"min": 0.5,
 					"max": 5.0
 				}

@@ -56,8 +56,9 @@ namespace Adagio
 		{
 			return nlohmann::json::parse(R"({
 				"MATCH_CENTS": {
-					"name": "Match Cents",
+					"name": "Match Tolerance",
 					"type": "int",
+					"unit": "\u00a2",
 					"min": 5,
 					"max": 50
 				}

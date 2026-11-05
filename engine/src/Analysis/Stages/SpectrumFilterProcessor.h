@@ -70,24 +70,28 @@ namespace Adagio
 				"LOW_CUT_C1": {
 					"name": "Low Cut C1",
 					"type": "float",	
+					"unit": "Hz",
 					"min": 0.0,
 					"max": 20000.0
 				},
 				"LOW_CUT_C2": {
 					"name": "Low Cut C2",
 					"type": "float",	
+					"unit": "Hz",
 					"min": 0.0,
 					"max": 20000.0
 				},
 				"HIGH_CUT_C1": {
 					"name": "High Cut C1",
 					"type": "float",	
+					"unit": "Hz",
 					"min": 0.0,
 					"max": 20000.0
 				},
 				"HIGH_CUT_C2": {
 					"name": "High Cut C2",
 					"type": "float",	
+					"unit": "Hz",
 					"min": 0.0,
 					"max": 20000.0
 				}	
