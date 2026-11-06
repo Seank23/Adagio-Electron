@@ -1,0 +1,45 @@
+name: Release
+
+# Pushing a version tag publishes a GitHub release whose body is that version's
+# section of CHANGELOG.md. Adagio's tags carry no "v" (0.1.0), but both forms match.
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish release notes for, e.g. 0.2.0
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Extract Release Notes from Changelog
+        id: release_notes
+        uses: octivi/release-notes-from-changelog@v1.0.0
+        with:
+          tag: ${{ env.TAG }}
+          changelog: CHANGELOG.md
+          release_notes: release-notes.md
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          body_path: ${{ steps.release_notes.outputs.release_notes }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
