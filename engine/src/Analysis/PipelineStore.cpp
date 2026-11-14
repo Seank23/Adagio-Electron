@@ -1,4 +1,5 @@
 #include "PipelineStore.h"
+#include "AnalysisPipeline.h"
 #include "Stages/ChordPredictor.h"
 #include "Stages/FFTProcessor.h"
 #include "Stages/HPSDownsamplerProcessor.h"
@@ -11,6 +12,7 @@
 #include "Stages/NoteSelector.h"
 #include "Stages/PresenceFilter.h"
 #include "../Core/MessageQueue.h"
+#include "../Util/JsonUtils.h"
 #include "Protocol.generated.h"
 
 #include <algorithm>
@@ -59,6 +61,55 @@ namespace Adagio
 
 	namespace
 	{
+		template<typename TStage>
+		StageEntry BuiltInStage(typename TStage::SettingsType defaults = {})
+		{
+			const nlohmann::json chosen = defaults;
+			const nlohmann::json stock = typename TStage::SettingsType{};
+
+			nlohmann::json overrides = nlohmann::json::object();
+			for (const auto& [key, value] : chosen.items())
+			{
+				if (!IsSameValue(value, stock.at(key)))
+					overrides[key] = value;
+			}
+			return StageEntry{ std::string(TStage::Name), nlohmann::json::object(), std::move(overrides) };
+		}
+
+		nlohmann::json StockDefaults(const std::string& stageId)
+		{
+			std::unique_ptr<AnalysisStage> stage = CreateStage(stageId);
+			if (!stage)
+				return nlohmann::json::object();
+			stage->Initialise();
+
+			nlohmann::json defaults = nlohmann::json::object();
+			for (const auto& [key, definition] : stage->GetSettingsSchema().items())
+			{
+				if (definition.contains("default"))
+					defaults[key] = definition.at("default");
+			}
+			return defaults;
+		}
+
+		// Version 1 stored every value in force, so one equal to the stage's own default reads as left alone.
+		void ConvertVersion1(std::vector<PipelineDefinition>& inOutPipelines)
+		{
+			for (PipelineDefinition& pipeline : inOutPipelines)
+			{
+				for (StageEntry& stage : pipeline.Stages)
+				{
+					const nlohmann::json stock = StockDefaults(stage.StageID);
+					for (const auto& [key, value] : stock.items())
+					{
+						const auto stored = stage.Settings.find(key);
+						if (stored != stage.Settings.end() && IsSameValue(*stored, value))
+							stage.Settings.erase(stored);
+					}
+				}
+			}
+		}
+
 		bool ReadPipeline(const nlohmann::json& entry, PipelineDefinition& outPipeline, std::string& outError)
 		{
 			const auto id = entry.find("id");
@@ -117,7 +168,7 @@ namespace Adagio
 
 		// A built-in in the file only gives the values of the stages it still has; any other id is a custom pipeline,
 		// appended as written. Fails on the first problem, since a pipeline dropped here would be gone at the next save.
-		bool ReadFile(const std::filesystem::path& path, std::vector<PipelineDefinition>& inOutPipelines, std::string& outActiveId, std::string& outError)
+		bool ReadFile(const std::filesystem::path& path, int fileVersion, std::vector<PipelineDefinition>& inOutPipelines, std::string& outActiveId, bool& outConverted, std::string& outError)
 		{
 			std::ifstream file(path, std::ios::binary);
 			if (!file)
@@ -138,6 +189,23 @@ namespace Adagio
 			if (!root.is_object() || active == root.end() || !active->is_string() || pipelines == root.end() || !pipelines->is_array())
 			{
 				outError = "not in the correct format: { active, pipelines: [...] }";
+				return false;
+			}
+
+			int version = 1;
+			const auto versionEntry = root.find("version");
+			if (versionEntry != root.end())
+			{
+				if (!versionEntry->is_number_integer() || versionEntry->get<int>() < 1)
+				{
+					outError = "its version isn't a number Adagio uses";
+					return false;
+				}
+				version = versionEntry->get<int>();
+			}
+			if (version > fileVersion)
+			{
+				outError = "it was written by a newer Adagio (version " + std::to_string(version) + ")";
 				return false;
 			}
 
@@ -185,6 +253,10 @@ namespace Adagio
 				}
 				inOutPipelines.push_back(std::move(stored));
 			}
+
+			outConverted = version == 1;
+			if (outConverted)
+				ConvertVersion1(inOutPipelines);
 
 			outActiveId = active->get<std::string>();
 			return true;
@@ -247,15 +319,16 @@ namespace Adagio
 
 		std::vector<PipelineDefinition> pipelines = builtin;
 		std::string activeId;
+		bool converted = false;
 		std::string error;
-		if (!ReadFile(m_FilePath, pipelines, activeId, error))
+		if (!ReadFile(m_FilePath, FILE_VERSION, pipelines, activeId, converted, error))
 			return { SetAside(m_FilePath, error) };
 
 		m_Pipelines = std::move(pipelines);
 		if (Find(activeId))
 		{
 			m_ActivePipelineId = activeId;
-			m_IsDirty = false;
+			m_IsDirty = converted;
 		}
 		return {};
 	}
@@ -376,14 +449,14 @@ namespace Adagio
 				.Description = "The original pipeline: multiplies downsampled spectra so fundamentals stand out, then picks peaks.",
 				.BuiltIn = true,
 				.Stages = {
-					StageEntry{ std::string(FFTProcessor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(SpectrumFilterProcessor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(HPSDownsamplerProcessor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(PeakExtractor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(PresenceFilter::Name), nlohmann::json::object() },
-					StageEntry{ std::string(NoteDetector::Name), nlohmann::json::object() },
-					StageEntry{ std::string(KeyDetector::Name), nlohmann::json::object() },
-					StageEntry{ std::string(ChordPredictor::Name), nlohmann::json::object() }
+					BuiltInStage<FFTProcessor>(),
+					BuiltInStage<SpectrumFilterProcessor>(),
+					BuiltInStage<HPSDownsamplerProcessor>(),
+					BuiltInStage<PeakExtractor>(),
+					BuiltInStage<PresenceFilter>(),
+					BuiltInStage<NoteDetector>(),
+					BuiltInStage<KeyDetector>(),
+					BuiltInStage<ChordPredictor>()
 				}
 			},
 			PipelineDefinition{
@@ -392,15 +465,15 @@ namespace Adagio
 				.Description = "Finds partials, groups them into harmonic series and picks notes by salience.",
 				.BuiltIn = true,
 				.Stages = {
-					StageEntry{ std::string(FFTProcessor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(SpectrumFilterProcessor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(PartialExtractor::Name), nlohmann::json::object() },
-					StageEntry{ std::string(HarmonicGrouper::Name), nlohmann::json::object() },
-					StageEntry{ std::string(NoteSelector::Name), nlohmann::json::object() },
-					StageEntry{ std::string(PresenceFilter::Name), nlohmann::json::object() },
-					StageEntry{ std::string(NoteDetector::Name), nlohmann::json::object() },
-					StageEntry{ std::string(KeyDetector::Name), nlohmann::json::object() },
-					StageEntry{ std::string(ChordPredictor::Name), nlohmann::json::object() }
+					BuiltInStage<FFTProcessor>(),
+					BuiltInStage<SpectrumFilterProcessor>(),
+					BuiltInStage<PartialExtractor>(),
+					BuiltInStage<HarmonicGrouper>(),
+					BuiltInStage<NoteSelector>(),
+					BuiltInStage<PresenceFilter>(),
+					BuiltInStage<NoteDetector>(),
+					BuiltInStage<KeyDetector>(),
+					BuiltInStage<ChordPredictor>()
 				}
 			}
 		};

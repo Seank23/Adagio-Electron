@@ -1,6 +1,7 @@
 #include "AnalysisPipeline.h"
 #include "AnalysisStage.h"
 #include "Protocol.generated.h"
+#include "../Util/JsonUtils.h"
 
 #include <chrono>
 #include <algorithm>
@@ -29,8 +30,9 @@ namespace Adagio
 	void AnalysisPipeline::AddStage(std::unique_ptr<AnalysisStage> stage)
 	{
 		stage->Initialise();
+		m_Defaults[stage->GetName()] = nlohmann::json::object();
 		{
-			// Holds only what SetSetting has changed; ApplySettings keeps the stage's own default for the rest.
+			// Holds only what SetSetting has changed; the rest follow the pipeline's default, then the stage's own.
 			std::lock_guard<std::mutex> lock(m_SettingsMutex);
 			m_Settings[stage->GetName()] = nlohmann::json::object();
 		}
@@ -55,9 +57,12 @@ namespace Adagio
 		{
 			if (settingsUpdated)
 			{
-				std::lock_guard<std::mutex> lock(m_SettingsMutex);
-				const nlohmann::json& stageSettings = m_Settings.at(stage->GetName());
-				stage->ApplySettings(stageSettings);
+				nlohmann::json merged = m_Defaults.at(stage->GetName());
+				{
+					std::lock_guard<std::mutex> lock(m_SettingsMutex);
+					merged.update(m_Settings.at(stage->GetName()));
+				}
+				stage->ApplySettings(merged);
 			}
 			stage->Execute(context.get());
 		}
@@ -86,6 +91,16 @@ namespace Adagio
 		return nullptr;
 	}
 
+	nlohmann::json AnalysisPipeline::DefaultsFor(const AnalysisStage& stage) const
+	{
+		const nlohmann::json& overrides = m_Defaults.at(stage.GetName());
+
+		nlohmann::json defaults = nlohmann::json::object();
+		for (const auto& [key, definition] : stage.GetSettingsSchema().items())
+			defaults[key] = overrides.value(key, definition.value("default", nlohmann::json()));
+		return defaults;
+	}
+
 	nlohmann::json AnalysisPipeline::GetSchemaJson() const
 	{
 		nlohmann::json stages = nlohmann::json::array();
@@ -95,6 +110,7 @@ namespace Adagio
 		{
 			const std::string name = stage->GetName();
 			const nlohmann::json& values = m_Settings.at(name);
+			const nlohmann::json defaults = DefaultsFor(*stage);
 
 			const nlohmann::json definitions = stage->GetSettingsSchema();
 
@@ -103,7 +119,8 @@ namespace Adagio
 			{
 				nlohmann::json entry = definition.value();
 				entry["key"] = definition.key();
-				entry["value"] = values.value(definition.key(), entry.value("default", nlohmann::json()));
+				entry["default"] = defaults.at(definition.key());
+				entry["value"] = values.value(definition.key(), entry["default"]);
 				settings.push_back(std::move(entry));
 			}
 
@@ -126,12 +143,17 @@ namespace Adagio
 		{
 			const std::string& name = stage->GetName();
 			const nlohmann::json& values = m_Settings.at(name);
+			const nlohmann::json defaults = DefaultsFor(*stage);
 
 			nlohmann::json settings = nlohmann::json::object();
 			for (const auto& [key, definition] : stage->GetSettingsSchema().items())
 			{
-				if (IsNotPersistent(definition) == perTrack)
-					settings[key] = values.value(key, definition.value("default", nlohmann::json()));
+				if (IsNotPersistent(definition) != perTrack)
+					continue;
+				if (perTrack)
+					settings[key] = values.value(key, defaults.at(key));
+				else if (values.contains(key))
+					settings[key] = values.at(key);
 			}
 			if (!perTrack || !settings.empty())
 				stages[name] = std::move(settings);
@@ -149,6 +171,35 @@ namespace Adagio
 		return CollectValues(true);
 	}
 
+	bool AnalysisPipeline::SetDefault(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
+	{
+		const AnalysisStage* target = FindStage(stage);
+		if (!target)
+		{
+			outError = "Unknown analysis stage '" + stage + "'.";
+			return false;
+		}
+
+		const nlohmann::json& definitions = target->GetSettingsSchema();
+		if (!definitions.contains(key))
+		{
+			outError = "Stage '" + stage + "' has no setting '" + key + "'.";
+			return false;
+		}
+
+		const nlohmann::json& definition = definitions.at(key);
+		if (IsNotPersistent(definition))
+		{
+			outError = "Setting '" + key + "' is per track and can't have a pipeline default.";
+			return false;
+		}
+		if (!CheckSetting(definition, key, value, outError))
+			return false;
+
+		m_Defaults[stage][key] = value;
+		return true;
+	}
+
 	bool AnalysisPipeline::SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError)
 	{
 		const AnalysisStage* target = FindStage(stage);
@@ -158,14 +209,28 @@ namespace Adagio
 			return false;
 		}
 
-		const nlohmann::json definitions = target->GetSettingsSchema();
+		const nlohmann::json& definitions = target->GetSettingsSchema();
 		if (!definitions.contains(key))
 		{
 			outError = "Stage '" + stage + "' has no setting '" + key + "'.";
 			return false;
 		}
+		if (!CheckSetting(definitions.at(key), key, value, outError))
+			return false;
 
-		const nlohmann::json& definition = definitions.at(key);
+		const bool isDefault = IsSameValue(value, DefaultsFor(*target).at(key));
+
+		std::lock_guard<std::mutex> lock(m_SettingsMutex);
+		if (isDefault)
+			m_Settings[stage].erase(key);
+		else
+			m_Settings[stage][key] = value;
+		m_SettingsVersion++;
+		return true;
+	}
+
+	bool AnalysisPipeline::CheckSetting(const nlohmann::json& definition, const std::string& key, const nlohmann::json& value, std::string& outError)
+	{
 		const std::string type = definition.value("type", std::string());
 		if (type == "int" && !value.is_number_integer())
 		{
@@ -197,16 +262,12 @@ namespace Adagio
 				return false;
 			}
 		}
-
-		std::lock_guard<std::mutex> lock(m_SettingsMutex);
-		m_Settings[stage][key] = value;
-		m_SettingsVersion++;
 		return true;
 	}
 
 	void AnalysisPipeline::ResetSetting(const std::string& stage, const std::string& key)
 	{
-		// m_Settings holds only what was changed, so dropping the key restores the stage's default.
+		// m_Settings holds only what was changed, so dropping the key restores the pipeline's default.
 		std::lock_guard<std::mutex> lock(m_SettingsMutex);
 		if (!m_Settings.contains(stage) || !m_Settings[stage].contains(key))
 			return;

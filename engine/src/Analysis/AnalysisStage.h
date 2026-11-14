@@ -55,6 +55,8 @@ namespace Adagio
 	class ConfigurableStage : public AnalysisStage
 	{
 	public:
+		using SettingsType = TSettings;
+
 		virtual void ApplySettings(const nlohmann::json& values) override
 		{
 			m_Settings = values.get<TSettings>();

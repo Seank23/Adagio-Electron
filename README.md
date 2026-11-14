@@ -36,7 +36,7 @@ The sidebar has two tabs, **Analysis** (key and chords) and **Settings**. Settin
   - the presence window and octave hold that steady the notes from frame to frame
   - the window the key and chords look back over, and the score a chord needs before it is shown
 - **Changes apply immediately**, between frames, and show only once the engine has accepted them. A value outside a setting's range is refused, with the reason in the status bar. While paused, the current frame is analysed again, so you see the effect without pressing play.
-- **Resetting**: a dot on a stage's header means one of its settings differs from its default. The ↺ button beside a changed setting puts back that one setting (hover over it to see the default). **Reset all** returns every setting in the pipeline to its default, A4 included.
+- **Resetting**: a dot on a stage's header means one of its settings differs from its default. The ↺ button beside a changed setting puts back that one setting (hover over it to see the default). **Reset all** returns every setting to the pipeline's defaults, A4 included.
 - **Saved automatically**: each pipeline's settings are saved in `%APPDATA%\Adagio\pipelines.json` and are still there the next time you open the app. The A4 reference is the one exception: it belongs to the track, so every file opens at 440 Hz.
 
 App-wide choices live in Preferences rather than here: the theme, the analysis sample rate, frame size and hop, and the spectrum's smoothing.

@@ -266,7 +266,7 @@ TEST_CASE("a stored value a stage refuses is a warning, and the stage keeps its 
 	CHECK(FindSetting(schema, "NoteDetector", "TUNING_WINDOW").at("value") == doctest::Approx(2.0));
 }
 
-TEST_CASE("the stored values are every setting but A4, and A4 alone is per track")
+TEST_CASE("the stored values are the changes, and A4 alone is per track")
 {
 	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
 	std::string error;
@@ -276,7 +276,8 @@ TEST_CASE("the stored values are every setting but A4, and A4 alone is per track
 	// { stage: { key: value } }, as PipelineStore keeps them, with every stage listed.
 	const nlohmann::json values = pipeline->GetValuesJson();
 	CHECK(values.size() == 3);
-	CHECK(values.at("FFTProcessor").at("WINDOW") == "Hamming");
+	CHECK(values.at("FFTProcessor") == nlohmann::json::object());
+	CHECK(values.at("NoteDetector").size() == 1);
 	CHECK(values.at("NoteDetector").at("ERROR_THRESHOLD") == doctest::Approx(10.0));
 	CHECK_FALSE(values.at("NoteDetector").contains("A440_TUNING"));
 
@@ -298,7 +299,7 @@ TEST_CASE("restoring every default leaves the pipeline readable and running")
 	const nlohmann::json schema = pipeline->GetSchemaJson();
 	CHECK(FindSetting(schema, "FFTProcessor", "WINDOW").at("value") == "Hamming");
 	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(440.0));
-	CHECK(pipeline->GetValuesJson().at("PeakExtractor").at("MAX_PEAKS") != 1);
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor") == nlohmann::json::object());
 	CHECK(pipeline->ProcessFrame(frame)->Context->Peaks.size() > 1);
 	CHECK(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 2, error));
 }
@@ -320,4 +321,129 @@ TEST_CASE("a pipeline switch carries the A4 reference over")
 	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(442.0));
 	// Only the per-track value: the rest are the new pipeline's own.
 	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("value") == doctest::Approx(25.0));
+}
+
+TEST_CASE("a pipeline default is what the schema reports and what the first frame runs with")
+{
+	const Adagio::AudioFrame frame = MakeToneFrame(440.0f, 8000, 4096);
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	REQUIRE(pipeline->SetDefault("PeakExtractor", "MAX_PEAKS", 1, error));
+
+	const nlohmann::json maxPeaks = FindSetting(pipeline->GetSchemaJson(), "PeakExtractor", "MAX_PEAKS");
+	CHECK(maxPeaks.at("default") == 1);
+	CHECK(maxPeaks.at("value") == 1);
+	// Nothing was changed, so nothing would be stored.
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor") == nlohmann::json::object());
+
+	// The first frame, with no change ever made: it used to skip ApplySettings until the version moved.
+	CHECK(pipeline->ProcessFrame(frame)->Context->Peaks.size() == 1);
+}
+
+TEST_CASE("a reset returns to the pipeline's default, not the stage's")
+{
+	const Adagio::AudioFrame frame = MakeToneFrame(440.0f, 8000, 4096);
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	REQUIRE(pipeline->SetDefault("PeakExtractor", "MAX_PEAKS", 1, error));
+
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 3, error));
+	REQUIRE(pipeline->ProcessFrame(frame)->Context->Peaks.size() > 1);
+	pipeline->ResetSetting("PeakExtractor", "MAX_PEAKS");
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "PeakExtractor", "MAX_PEAKS").at("value") == 1);
+	CHECK(pipeline->ProcessFrame(frame)->Context->Peaks.size() == 1);
+
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 3, error));
+	REQUIRE(pipeline->ProcessFrame(frame)->Context->Peaks.size() > 1);
+	pipeline->ResetAllSettings();
+	CHECK(FindSetting(pipeline->GetSchemaJson(), "PeakExtractor", "MAX_PEAKS").at("value") == 1);
+	CHECK(pipeline->ProcessFrame(frame)->Context->Peaks.size() == 1);
+}
+
+TEST_CASE("a pipeline default is checked like a setting, and A4 can't have one")
+{
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+
+	CHECK_FALSE(pipeline->SetDefault("NoSuchStage", "MAX_PEAKS", 1, error));
+	CHECK(error.find("NoSuchStage") != std::string::npos);
+
+	CHECK_FALSE(pipeline->SetDefault("PeakExtractor", "NO_SUCH_KEY", 1, error));
+	CHECK(error.find("NO_SUCH_KEY") != std::string::npos);
+
+	CHECK_FALSE(pipeline->SetDefault("PeakExtractor", "MAX_PEAKS", 0, error));
+	CHECK(error.find("between") != std::string::npos);
+
+	CHECK_FALSE(pipeline->SetDefault("NoteDetector", "A440_TUNING", 442.0, error));
+	CHECK(error.find("per track") != std::string::npos);
+
+	// None of them took effect.
+	const nlohmann::json schema = pipeline->GetSchemaJson();
+	CHECK(FindSetting(schema, "PeakExtractor", "MAX_PEAKS").at("default") == 16);
+	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("default") == doctest::Approx(440.0));
+}
+
+TEST_CASE("a value equal to the default is not a change, even widened from a float")
+{
+	std::unique_ptr<Adagio::AnalysisPipeline> pipeline = MakePipeline();
+	std::string error;
+	// 0.05f reaches the schema as the double 0.0500000007; a client that types 0.05 sends 0.05.
+	REQUIRE(pipeline->SetDefault("PeakExtractor", "SCORE_THRESHOLD", 0.05f, error));
+	const nlohmann::json widened = FindSetting(pipeline->GetSchemaJson(), "PeakExtractor", "SCORE_THRESHOLD").at("default");
+	REQUIRE(widened.get<double>() != 0.05);
+
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "SCORE_THRESHOLD", 0.3, error));
+	REQUIRE(pipeline->GetValuesJson().at("PeakExtractor").contains("SCORE_THRESHOLD"));
+
+	// Setting the default back, as the Settings tab's reset does, erases the change.
+	CHECK(pipeline->SetSetting("PeakExtractor", "SCORE_THRESHOLD", widened, error));
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor") == nlohmann::json::object());
+
+	REQUIRE(pipeline->SetSetting("PeakExtractor", "SCORE_THRESHOLD", 0.3, error));
+	CHECK(pipeline->SetSetting("PeakExtractor", "SCORE_THRESHOLD", 0.05, error));
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor") == nlohmann::json::object());
+
+	// And the stage's own default is a change once the pipeline has another.
+	CHECK(pipeline->SetSetting("PeakExtractor", "SCORE_THRESHOLD", 0.25, error));
+	CHECK(pipeline->GetValuesJson().at("PeakExtractor").at("SCORE_THRESHOLD") == doctest::Approx(0.25));
+}
+
+TEST_CASE("a built pipeline takes its defaults before its stored values")
+{
+	const Adagio::PipelineDefinition definition{
+		.ID = "mine",
+		.Name = "Mine",
+		.Stages = { { "NoteDetector", { {"ERROR_THRESHOLD", 12.0}, {"TUNING_WINDOW", 2.0} }, { {"ERROR_THRESHOLD", 12.0}, {"A440_TUNING", 442.0} } } }
+	};
+	std::vector<std::string> warnings;
+	const std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::BuildPipeline(definition, warnings);
+
+	REQUIRE(warnings.size() == 1);
+	CHECK(warnings[0].rfind("Ignoring default mine / NoteDetector / A440_TUNING: ", 0) == 0);
+
+	const nlohmann::json schema = pipeline->GetSchemaJson();
+	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("default") == doctest::Approx(12.0));
+	CHECK(FindSetting(schema, "NoteDetector", "TUNING_WINDOW").at("value") == doctest::Approx(2.0));
+	// The stored 12 is the pipeline's default, so it's no longer a change.
+	CHECK(pipeline->GetValuesJson().at("NoteDetector") == nlohmann::json{ {"TUNING_WINDOW", 2.0} });
+}
+
+TEST_CASE("a pipeline switch brings the new pipeline's defaults and carries A4 over")
+{
+	Adagio::AnalysisService service(MakePipeline());
+	std::string error;
+	REQUIRE(service.SetSetting("NoteDetector", "A440_TUNING", 442.0, error));
+
+	const Adagio::PipelineDefinition definition{
+		.ID = "mine",
+		.Name = "Mine",
+		.Stages = { { "NoteDetector", nlohmann::json::object(), { {"ERROR_THRESHOLD", 12.0} } } }
+	};
+	std::vector<std::string> warnings;
+	service.SwitchPipeline(Adagio::AnalysisService::BuildPipeline(definition, warnings));
+	REQUIRE(warnings.empty());
+
+	const nlohmann::json schema = service.GetSchemaJson();
+	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("value") == doctest::Approx(12.0));
+	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("value") == doctest::Approx(442.0));
 }

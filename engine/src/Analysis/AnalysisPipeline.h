@@ -143,6 +143,8 @@ namespace Adagio
 		nlohmann::json GetValuesJson() const;
 		nlohmann::json GetPerTrackValuesJson() const;
 
+		// Only while the pipeline is being built: m_Defaults has no lock, so nothing may be running.
+		bool SetDefault(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
 		bool SetSetting(const std::string& stage, const std::string& key, const nlohmann::json& value, std::string& outError);
 		void ResetSetting(const std::string& stage, const std::string& key);
 		void ResetAllSettings();
@@ -151,15 +153,20 @@ namespace Adagio
 		static nlohmann::json GetResultJson(const AnalysisResult& result);
 
 	private:
+		static bool CheckSetting(const nlohmann::json& definition, const std::string& key, const nlohmann::json& value, std::string& outError);
+
 		const AnalysisStage* FindStage(const std::string& name) const;
+		nlohmann::json DefaultsFor(const AnalysisStage& stage) const;
 		nlohmann::json CollectValues(bool perTrack) const;
 
 		std::vector<std::unique_ptr<AnalysisStage>> m_Stages;
+		// { stage: { key: value } }, only the keys this pipeline gives a default other than the stage's own.
+		nlohmann::json m_Defaults;
 		// Written by the command thread, read by the analysis thread once per frame.
 		mutable std::mutex m_SettingsMutex;
 		nlohmann::json m_Settings;
 		std::atomic<int> m_SettingsVersion{ 0 };
-		int m_CurrentSettingsVersion = 0;
+		int m_CurrentSettingsVersion = -1;
 
 		std::unique_ptr<PersistentData> m_PersistentData;
 	};

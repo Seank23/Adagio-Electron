@@ -189,6 +189,8 @@ TEST_CASE("A file it can't use is copied aside whole, and the built-ins load wit
 	SUBCASE("an unknown stage") { text = R"({ "active": "hps", "pipelines": [ { "id": "mine", "name": "Mine", "stages": [ { "stage": "Nope" } ] } ] })"; }
 	SUBCASE("a stage listed twice") { text = R"({ "active": "hps", "pipelines": [ { "id": "mine", "name": "Mine", "stages": [ { "stage": "FFTProcessor" }, { "stage": "FFTProcessor" } ] } ] })"; }
 	SUBCASE("settings that aren't an object") { text = R"({ "active": "hps", "pipelines": [ { "id": "hps", "stages": [ { "stage": "FFTProcessor", "settings": [] } ] } ] })"; }
+	SUBCASE("a newer version") { text = R"({ "version": 3, "active": "hps", "pipelines": [] })"; }
+	SUBCASE("a version that isn't a number") { text = R"({ "version": "2", "active": "hps", "pipelines": [] })"; }
 
 	TempFolder folder;
 	const std::filesystem::path file = folder.File("pipelines.json");
@@ -381,4 +383,87 @@ TEST_CASE("The summary lists every pipeline in order, the custom ones after the 
 		CHECK(store.Find(pipeline.at("id").get<std::string>()) != nullptr);
 	}
 	CHECK(summary.back() == nlohmann::json{ {"id", "mine"}, {"name", "Mine"}, {"description", "Peaks only"} });
+}
+
+TEST_CASE("A version 1 file keeps only the values that differ from the stage's own default, and is saved as version 2")
+{
+	TempFolder folder;
+	const std::filesystem::path file = folder.File("pipelines.json");
+	WriteText(file, R"({
+		"version": 1,
+		"active": "mine",
+		"pipelines": [
+			{ "id": "hps", "builtIn": true, "stages": [
+				{ "stage": "FFTProcessor", "settings": { "WINDOW": "Hamming" } },
+				{ "stage": "KeyDetector", "settings": { "ROLLING_WINDOW": 6.0, "ALGORITHM": "Krumhansl" } },
+				{ "stage": "ChordPredictor", "settings": { "ROLLING_WINDOW": 0.5, "SCORE_THRESHOLD": 0.10000000149011612 } }
+			] },
+			{ "id": "mine", "name": "Mine", "stages": [
+				{ "stage": "PeakExtractor", "settings": { "MAX_PEAKS": 16, "MIN_SNR": 3.5 } }
+			] }
+		]
+	})");
+
+	PipelineStore store(file);
+	REQUIRE(store.Load().empty());
+
+	const PipelineDefinition* hps = store.Find("hps");
+	REQUIRE(hps != nullptr);
+	CHECK(*FindSettings(*hps, "FFTProcessor") == nlohmann::json::object());
+	CHECK(FindSettings(*hps, "KeyDetector")->at("ROLLING_WINDOW") == doctest::Approx(6.0));
+	// The float default as 0.2.0 wrote it, widened to a double, reads as the default.
+	CHECK(*FindSettings(*hps, "ChordPredictor") == nlohmann::json::object());
+	// A custom pipeline is converted the same way.
+	CHECK(*FindSettings(*store.Find("mine"), "PeakExtractor") == nlohmann::json{ {"MIN_SNR", 3.5} });
+
+	// Converting marks the store dirty, so the file is rewritten at the current version without any other change.
+	store.Save();
+	const nlohmann::json saved = nlohmann::json::parse(ReadText(file));
+	CHECK(saved.at("version") == 2);
+	CHECK(saved.at("active") == "mine");
+
+	PipelineStore reloaded(file);
+	REQUIRE(reloaded.Load().empty());
+	CHECK(FindSettings(*reloaded.Find("hps"), "KeyDetector")->at("ROLLING_WINDOW") == doctest::Approx(6.0));
+}
+
+TEST_CASE("A version 2 file is not converted, and loading it is not a change")
+{
+	TempFolder folder;
+	const std::filesystem::path file = folder.File("pipelines.json");
+	WriteText(file, R"({
+		"version": 2,
+		"active": "hps",
+		"pipelines": [
+			{ "id": "hps", "stages": [ { "stage": "FFTProcessor", "settings": { "WINDOW": "Hamming" } } ] }
+		]
+	})");
+
+	PipelineStore store(file);
+	REQUIRE(store.Load().empty());
+	CHECK(*FindSettings(*store.Find("hps"), "FFTProcessor") == nlohmann::json{ {"WINDOW", "Hamming"} });
+
+	std::filesystem::remove(file);
+	store.Save();
+	CHECK_FALSE(std::filesystem::exists(file));
+}
+
+TEST_CASE("Save writes the current version and never a built-in's defaults")
+{
+	TempFolder folder;
+	const std::filesystem::path file = folder.File("pipelines.json");
+
+	PipelineStore store(file);
+	store.Load();
+	store.SetValues("hps", { {"KeyDetector", { {"ROLLING_WINDOW", 6.0} }} });
+	store.Save();
+
+	const nlohmann::json saved = nlohmann::json::parse(ReadText(file));
+	CHECK(saved.at("version") == 2);
+	for (const auto& pipeline : saved.at("pipelines"))
+	{
+		for (const auto& stage : pipeline.at("stages"))
+			CHECK(stage.size() == 2);
+	}
+	CHECK(ReadText(file).find("efaults") == std::string::npos);
 }

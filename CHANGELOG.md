@@ -2,6 +2,18 @@
 
 All notable changes to Adagio are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and Adagio uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Each built-in pipeline can have its own defaults.** A built-in pipeline can now override a stage's default settings, and the Settings tab's changed dot, ↺ button and **Reset all** follow the pipeline's defaults. Both built-in pipelines keep today's values for now.
+- **`pipelines.json` keeps only the settings you changed** (file version 2), so a future change to a default reaches every setting you left alone. Setting a value back to its default, by ↺ or by typing it, removes it from the file. 0.2.0's file is converted on first launch: values equal to their default are dropped and the rest are kept. A file from a newer Adagio is set aside as `pipelines.json.bad` rather than misread.
+
+### Tests
+
+- Engine unit tests for pipeline defaults (schema, first frame, resets, refused defaults including the per-track A4, erase-on-default with widened floats, switching) and for `pipelines.json` versions (converting a version 1 file, leaving a version 2 file alone, setting aside a newer one, and never saving defaults).
+- `smoke.ps1` and the end-to-end Reset all test now check that an unchanged setting is absent from the file.
+
 ## [0.2.0] - 2026-11-05
 
 ### Added

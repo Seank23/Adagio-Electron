@@ -628,8 +628,9 @@ const readPipelines = userData => {
         return null;
     }
 };
-const storedValue = (file, pipeline, stage, key) =>
-    file?.pipelines.find(entry => entry.id === pipeline)?.stages.find(entry => entry.stage === stage)?.settings[key];
+const storedSettings = (file, pipeline, stage) =>
+    file?.pipelines.find(entry => entry.id === pipeline)?.stages.find(entry => entry.stage === stage)?.settings;
+const storedValue = (file, pipeline, stage, key) => storedSettings(file, pipeline, stage)?.[key];
 
 test('settings: a switch while playing refills the analysis, and the pipeline and its values survive a restart until Reset all', async () => {
     session = await launch();
@@ -680,7 +681,8 @@ test('settings: a switch while playing refills the analysis, and the pipeline an
     await page.getByRole('button', { name: 'Reset all' }).click();
     await expect(keyWindow(page)).toHaveValue('20.0');
     await expect(page.getByRole('button', { name: 'Reset all' })).toBeDisabled();
-    await expect.poll(() => storedValue(readPipelines(userData), 'partialTracking', 'KeyDetector', 'ROLLING_WINDOW')).toBe(20);
+    // pipelines.json keeps only changes, so the stage's entry is left empty rather than holding the default.
+    await expect.poll(() => storedSettings(readPipelines(userData), 'partialTracking', 'KeyDetector')).toEqual({});
     await close(app);
 
     // The sidebar shows only with a track open: the drop card stands in for it.

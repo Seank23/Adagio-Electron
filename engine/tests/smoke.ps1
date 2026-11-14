@@ -516,13 +516,14 @@ try {
         if ($schema.stages.Count -ne 8) { throw "expected 8 stages, got $($schema.stages.Count)" }
     }
 
-    Test-Case 'pipelines.json holds the values in force, and never the A4 reference' {
+    Test-Case 'pipelines.json holds the changed values, and never the A4 reference' {
         Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'NoteDetector'; key = 'A440_TUNING'; value = 442.0 } | Out-Null
         $file = Read-PipelinesFile { param($f) (Get-FileSetting $f 'hps' 'FFTProcessor' 'WINDOW') -eq 'Hann' }
         if ($null -eq $file) { throw "$pipelinesPath did not get the Hann window within 2 s" }
         if ($file.active -ne 'hps') { throw "expected active hps, got $($file.active)" }
-        # Unchanged values are stored too, so the file reads as the whole configuration.
-        if ($null -eq (Get-FileSetting $file 'hps' 'NoteDetector' 'ERROR_THRESHOLD')) { throw 'the file leaves out an unchanged value' }
+        # Only changes are stored, so a later default reaches every setting left alone.
+        if ($file.version -ne 2) { throw "expected file version 2, got $($file.version)" }
+        if ($null -ne (Get-FileSetting $file 'hps' 'NoteDetector' 'ERROR_THRESHOLD')) { throw 'the file stores an unchanged value' }
         if ($null -ne (Get-FileSetting $file 'hps' 'NoteDetector' 'A440_TUNING')) { throw 'the file stores the per-track A4 reference' }
     }
 
@@ -560,7 +561,8 @@ try {
         $window = Get-SchemaSetting $reply.value 'KeyDetector' 'ROLLING_WINDOW'
         if ($window.value -ne $window.default) { throw "expected the default $($window.default), got $($window.value)" }
         if ((Get-SchemaSetting $reply.value 'NoteDetector' 'A440_TUNING').value -ne 440) { throw 'the A4 reference was not restored' }
-        $file = Read-PipelinesFile { param($f) (Get-FileSetting $f 'partialTracking' 'KeyDetector' 'ROLLING_WINDOW') -eq $window.default } 1500
+        # The default is no change, so the restored value leaves the file rather than being written as the default.
+        $file = Read-PipelinesFile { param($f) $f.active -eq 'partialTracking' -and $null -eq (Get-FileSetting $f 'partialTracking' 'KeyDetector' 'ROLLING_WINDOW') } 1500
         if ($null -eq $file) { throw 'the file did not follow within 1.5 s' }
     }
     # The cases below run on the default pipeline, as they did before there was a choice.

@@ -12,6 +12,7 @@ namespace Adagio
 	{
 		std::string StageID;
 		nlohmann::json Settings;
+		nlohmann::json Defaults = nlohmann::json::object();
 	};
 
 	struct PipelineDefinition
@@ -32,7 +33,7 @@ namespace Adagio
 	{
 	private:
 		static constexpr std::chrono::milliseconds SAVE_DELAY_MS{ 500 };
-		static constexpr int FILE_VERSION = 1;
+		static constexpr int FILE_VERSION = 2;
 
 	public:
 		explicit PipelineStore(const std::filesystem::path& path);

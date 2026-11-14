@@ -75,6 +75,12 @@ namespace Adagio
 			}
 			pipeline->AddStage(std::move(stage));
 
+			for (const auto& [key, value] : entry.Defaults.items())
+			{
+				std::string error;
+				if (!pipeline->SetDefault(entry.StageID, key, value, error))
+					outWarnings.push_back("Ignoring default " + definition.ID + " / " + entry.StageID + " / " + key + ": " + error);
+			}
 			for (const auto& [key, value] : entry.Settings.items())
 			{
 				std::string error;
