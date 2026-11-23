@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { formatHz, makeAxis, spectrumMaxHz } from '../src/utils/frequencyAxis';
+import { binToHz, formatHz, hzToBin, makeAxis, spectrumMaxHz } from '../src/utils/frequencyAxis';
 import { clamp } from '../src/utils/math';
 import { barWidths, formatPercent } from '../src/utils/bars';
 import { formatCents, midiOf, tuningBand } from '../src/utils/music';
@@ -36,6 +36,18 @@ describe('frequency axis', () => {
         expect(spectrumMaxHz(null, 0)).toBe(0);
         const frame = { count: 2048, resolution: 8000 / 4096, data: new Uint16Array(2048) };
         expect(spectrumMaxHz(frame, 0)).toBeCloseTo(4000);
+    });
+
+    it('places linear and log bins, and takes the top of a log frame from its last bin', () => {
+        const linear = { kind: BINARY_FRAME.KIND.SPECTRUM, count: 4, resolution: 2, startHz: 0, data: new Uint16Array(4) };
+        expect(binToHz(linear, 3)).toBe(6);
+        expect(hzToBin(linear, 5)).toBe(2.5);
+
+        const log = { kind: BINARY_FRAME.KIND.LOG_SPECTRUM, count: 25, resolution: 12, startHz: 110, data: new Uint16Array(25) };
+        expect(binToHz(log, 12)).toBeCloseTo(220);
+        expect(hzToBin(log, 440)).toBeCloseTo(24);
+        expect(hzToBin(log, binToHz(log, 7.5))).toBeCloseTo(7.5);
+        expect(spectrumMaxHz(log, 8000)).toBeCloseTo(440);
     });
 
     it('labels kHz compactly', () => {
@@ -106,6 +118,7 @@ const encode = ({ kind, elementType, generation = 0, values }) => {
     view.setFloat32(OFFSET.resolution, 1.953125, true);
     view.setFloat32(OFFSET.maxMagnitude, 2, true);
     view.setUint32(OFFSET.count, values.length, true);
+    view.setFloat32(OFFSET.startHz, 55, true);
     const Data = size === 2 ? Uint16Array : Float32Array;
     new Data(buffer, HEADER_SIZE, values.length).set(values);
     return buffer;
@@ -115,7 +128,7 @@ describe('binary frames', () => {
     it('decodes the header at the offsets protocol.json gives', () => {
         const { KIND, ELEMENT_TYPE } = BINARY_FRAME;
         const frame = decodeFrame(encode({ kind: KIND.SPECTRUM, elementType: ELEMENT_TYPE.UINT16, generation: 7, values: [1, 65535] }));
-        expect(frame).toMatchObject({ kind: KIND.SPECTRUM, seekGeneration: 7, timestamp: 1.5, resolution: 1.953125, maxMagnitude: 2, count: 2 });
+        expect(frame).toMatchObject({ kind: KIND.SPECTRUM, seekGeneration: 7, timestamp: 1.5, resolution: 1.953125, maxMagnitude: 2, count: 2, startHz: 55 });
         expect(Array.from(frame.data)).toEqual([1, 65535]);
     });
 

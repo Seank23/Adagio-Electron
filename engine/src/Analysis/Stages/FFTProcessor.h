@@ -1,6 +1,7 @@
 #pragma once
 #include "../AnalysisStage.h"
 #include "../AnalysisPipeline.h"
+#include "../FrequencyAxis.h"
 
 #include <kfr/dsp.hpp>
 #include <kfr/dft.hpp>
@@ -46,8 +47,9 @@ namespace Adagio
 
 			for (int i = 0; i < fftOutputComplex.size(); i++)
 				fftOutputMagnitude.push_back(std::abs(fftOutputComplex[i]));
+			
+			context->FreqAxis = std::make_unique<LinearFrequencyAxis>((float)context->Frame.SampleRate / (float)frameLength, 0.0f);
 
-			context->BinHz = context->Frame.SampleRate / (float)fftOutputMagnitude.size();
 			fftOutputMagnitude = fftOutputMagnitude.truncate(fftOutputMagnitude.size() / 2);
 			context->Spectrum = std::move(fftOutputComplex);
 			context->Magnitudes = std::move(fftOutputMagnitude);

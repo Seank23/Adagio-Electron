@@ -37,7 +37,7 @@ namespace Adagio
 				kfr::univector<float> filtered(frameLength);
 				for (size_t i = 0; i < frameLength; i++)
 				{
-					float freq = i * context->BinHz;
+					float freq = context->FreqAxis->BinToHz(i);
 					if (freq < lowCutC1)
 						filtered[i] = 0.0f;
 					else if (freq < lowCutC2)

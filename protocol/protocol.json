@@ -1,5 +1,5 @@
 {
-    "version": 2,
+    "version": 3,
     "transport": {
         "host": "127.0.0.1",
         "port": 9001,
@@ -51,11 +51,12 @@
         { "name": "paused", "cpp": "Paused", "js": "PAUSED" }
     ],
     "binaryFrames": {
-        "comment": "High-rate data travels as binary WebSocket messages: a fixed little-endian header, then count elements. Every field is naturally aligned, so the data can be viewed in place at headerSize. resolution is binHz for a spectrum and frames per peak for a waveform. A spectrum is Uint16 of magnitude / maxMagnitude.",
+        "comment": "High-rate data travels as binary WebSocket messages: a fixed little-endian header, then count elements. Every field is naturally aligned, so the data can be viewed in place at headerSize. A spectrum has linear bins: bin i is at i * resolution Hz, and startHz is 0. A logSpectrum has log bins, as a constant-Q stage makes: resolution is bins per octave and bin i is at startHz * 2^(i / resolution). For a waveform, resolution is frames per peak. Both spectrum kinds are Uint16 of magnitude / maxMagnitude.",
         "headerSize": 32,
         "kinds": [
             { "name": "spectrum", "cpp": "Spectrum", "js": "SPECTRUM", "value": 1 },
-            { "name": "waveform", "cpp": "Waveform", "js": "WAVEFORM", "value": 2 }
+            { "name": "waveform", "cpp": "Waveform", "js": "WAVEFORM", "value": 2 },
+            { "name": "logSpectrum", "cpp": "LogSpectrum", "js": "LOG_SPECTRUM", "value": 3 }
         ],
         "elementTypes": [
             { "name": "float32", "cpp": "Float32", "js": "FLOAT32", "value": 1 },
@@ -70,7 +71,7 @@
             { "name": "resolution", "cpp": "Resolution", "type": "f32", "byteOffset": 16 },
             { "name": "maxMagnitude", "cpp": "MaxMagnitude", "type": "f32", "byteOffset": 20 },
             { "name": "count", "cpp": "Count", "type": "u32", "byteOffset": 24 },
-            { "name": "reserved", "cpp": "Reserved", "type": "u32", "byteOffset": 28 }
+            { "name": "startHz", "cpp": "StartHz", "type": "f32", "byteOffset": 28 }
         ]
     },
     "limits": {

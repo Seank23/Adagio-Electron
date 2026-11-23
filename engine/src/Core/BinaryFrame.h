@@ -23,7 +23,7 @@ namespace Adagio
 		float Resolution = 0.0f;
 		float MaxMagnitude = 0.0f;
 		uint32_t Count = 0;
-		uint32_t Reserved = 0;
+		float StartHz = 0.0f;
 	};
 
 	static_assert(std::endian::native == std::endian::little);
@@ -36,7 +36,7 @@ namespace Adagio
 	static_assert(offsetof(BinaryFrameHeader, Resolution) == Protocol::Binary::Offset::Resolution);
 	static_assert(offsetof(BinaryFrameHeader, MaxMagnitude) == Protocol::Binary::Offset::MaxMagnitude);
 	static_assert(offsetof(BinaryFrameHeader, Count) == Protocol::Binary::Offset::Count);
-	static_assert(offsetof(BinaryFrameHeader, Reserved) == Protocol::Binary::Offset::Reserved);
+	static_assert(offsetof(BinaryFrameHeader, StartHz) == Protocol::Binary::Offset::StartHz);
 
 	namespace BinaryFrame
 	{
@@ -56,7 +56,7 @@ namespace Adagio
 
 		// Magnitudes as a fraction of their own maximum, which is exactly what the
 		// spectrum canvas plots. A step is 1/65535 of full height, far below a pixel.
-		inline std::string EncodeSpectrum(std::span<const float> magnitudes, float binHz, double timestamp, uint32_t seekGeneration)
+		inline std::string EncodeMagnitudes(BinaryFrameHeader header, std::span<const float> magnitudes)
 		{
 			float maxMagnitude = 0.0f;
 			for (float magnitude : magnitudes)
@@ -70,14 +70,30 @@ namespace Adagio
 					quantised[i] = (uint16_t)std::clamp(magnitudes[i] * scale + 0.5f, 0.0f, 65535.0f);
 			}
 
+			header.ElementType = (uint16_t)Protocol::Binary::ElementType::Uint16;
+			header.MaxMagnitude = maxMagnitude;
+			return Encode<uint16_t>(header, quantised);
+		}
+
+		inline std::string EncodeSpectrum(std::span<const float> magnitudes, float binHz, double timestamp, uint32_t seekGeneration)
+		{
 			BinaryFrameHeader header;
 			header.Kind = (uint8_t)Protocol::Binary::FrameKind::Spectrum;
-			header.ElementType = (uint16_t)Protocol::Binary::ElementType::Uint16;
 			header.SeekGeneration = seekGeneration;
 			header.Timestamp = timestamp;
 			header.Resolution = binHz;
-			header.MaxMagnitude = maxMagnitude;
-			return Encode<uint16_t>(header, quantised);
+			return EncodeMagnitudes(header, magnitudes);
+		}
+
+		inline std::string EncodeLogSpectrum(std::span<const float> magnitudes, int binsPerOctave, float startHz, double timestamp, uint32_t seekGeneration)
+		{
+			BinaryFrameHeader header;
+			header.Kind = (uint8_t)Protocol::Binary::FrameKind::LogSpectrum;
+			header.SeekGeneration = seekGeneration;
+			header.Timestamp = timestamp;
+			header.Resolution = (float)binsPerOctave;
+			header.StartHz = startHz;
+			return EncodeMagnitudes(header, magnitudes);
 		}
 
 		inline std::string EncodeWaveform(std::span<const float> peaks, int framesPerPeak)

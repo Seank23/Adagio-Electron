@@ -24,9 +24,10 @@ It is the spiritual successor to [MusicAnalyser](https://github.com/Seank23/Musi
 
 The sidebar has two tabs, **Analysis** (key and chords) and **Settings**. Settings lets you tweak the parameters used by each analysis stage in the pipeline.
 
-- **Pipeline**: choose the analysis pipeline. There are two built in:
+- **Pipeline**: choose the analysis pipeline. There are three built in:
   - **Harmonic Product Spectrum** (the default): FFT → Spectrum Filter → HPS Downsampler → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. It multiplies downsampled copies of the spectrum so that fundamentals stand out, then picks peaks. This is the original approach, carried over from MusicAnalyser.
   - **Partial Tracking**: FFT → Spectrum Filter → Partial Extractor → Harmonic Grouper → Note Selector → Presence Filter → Note Detector → Key Detector → Chord Predictor. It finds the individual partials, groups them into harmonic series and picks notes by salience.
+  - **Constant-Q**: CQT → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. A constant-Q transform replaces the FFT, so the bins are equally spaced in pitch and higher notes are measured over shorter windows. The frame length limits how low it reaches: at the default 0.512 s frame and 24 bins per octave, about 67 Hz.
 
   Switching pipelines restarts the key and chords. The A4 tuning comes with you to the new pipeline.
 - **Stages**: under the pipeline, each stage is a numbered section in the order it runs. Click a stage's header to open it. Each setting has an appropriate control: a number field with a slider (its unit shown beside it, such as Hz, dB, s or ¢), a switch, or a choice of options. A few examples:

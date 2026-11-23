@@ -1126,7 +1126,7 @@ TEST_CASE("A10: the spectrum leaves the pipeline as SpectrumFilter left it")
 
 	const kfr::univector<float>& want = expected->Context->Magnitudes;
 	const kfr::univector<float>& got = actual->Context->Magnitudes;
-	CHECK(actual->Context->BinHz == expected->Context->BinHz);
+	CHECK(actual->Context->FreqAxis->BinFreq() == expected->Context->FreqAxis->BinFreq());
 	REQUIRE(got.size() == want.size());
 	size_t changed = 0;
 	for (size_t i = 0; i < want.size(); ++i)
@@ -1245,7 +1245,7 @@ TEST_CASE("A10: PartialExtractor finds one partial per harmonic and no sidelobes
 	const std::vector<float> signal = Synthesize(HarmonicTone(c3, 8), 1.0);
 	const std::unique_ptr<Adagio::AnalysisResult> result = RunNoteSelection(FrameAt(signal, signal.size() / 2, 4096));
 	const std::vector<Adagio::Partial>& partials = result->Context->Partials;
-	const float binHz = result->Context->BinHz;
+	const float binHz = result->Context->FreqAxis->BinFreq();
 
 	const int fundamental = NearestPartial(partials, c3);
 	REQUIRE(fundamental >= 0);

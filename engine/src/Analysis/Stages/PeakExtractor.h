@@ -28,6 +28,9 @@ namespace Adagio
 
 	class PeakExtractor : public ConfigurableStage<PeakExtractorSettings>
 	{
+	private:
+		static constexpr float WHITENING_SPAN = 0.4f;
+
 	public:
 		static constexpr std::string_view Name = "PeakExtractor";
 		std::string_view GetStageName() const override { return Name; }
@@ -52,12 +55,12 @@ namespace Adagio
 			const std::string useInterpolatedBins = m_Settings.USE_INTERP_BINS;
 
 			const float sampleRate = static_cast<float>(context->Frame.SampleRate);
-			const float binToFreq = context->BinHz;
+			const FrequencyAxis& axis = *context->FreqAxis;
 			const float nyquist = sampleRate * 0.5f;
 			const float maxFreq = std::min(maxFreqSetting, nyquist);
 
-			const size_t startBin = static_cast<size_t>(std::max(1.0f, std::ceil(minFreq / binToFreq)));
-			const size_t endBin = static_cast<size_t>(std::min(static_cast<float>(bins - 2), std::floor(maxFreq / binToFreq)));
+			const size_t startBin = (size_t)(std::max(1.0f, std::ceil(axis.HzToFractionalBin(minFreq))));
+			const size_t endBin = (size_t)(std::min(static_cast<float>(bins - 2), std::floor(axis.HzToFractionalBin(maxFreq))));
 
 			if (startBin >= endBin)
 			{
@@ -73,7 +76,13 @@ namespace Adagio
 			// Spectral whitening + peak detection in a single pass.
 			// Uses a reusable scratch buffer with nth_element for the
 			// local median instead of allocating a new vector per bin.
-			const size_t maxWindow = std::max<size_t>(9, static_cast<size_t>(endBin * 0.8f) + 2);
+			// The median window spans WHITENING_SPAN of a bin's frequency either side: 0.4 * i bins on a linear axis.
+			auto halfWidthAt = [&axis](size_t bin)
+			{
+				const float width = axis.HzToFractionalBin(axis.BinToHz((float)bin) * (1.0f + WHITENING_SPAN)) - (float)bin;
+				return std::max<size_t>(4, (size_t)(width + 1e-3f));
+			};
+			const size_t maxWindow = std::max<size_t>(9, 2 * halfWidthAt(endBin) + 2);
 			std::vector<float> scratch(maxWindow);
 
 			struct PeakCandidate
@@ -101,7 +110,7 @@ namespace Adagio
 
 				// Compute whitened value: local median subtraction using a
 				// reusable scratch buffer and O(n) nth_element.
-				const size_t halfWidth = std::max<size_t>(4, static_cast<size_t>(i * 0.4f));
+				const size_t halfWidth = halfWidthAt(i);
 				const size_t lo = (i > halfWidth) ? i - halfWidth : 0;
 				const size_t hi = std::min(bins - 1, i + halfWidth);
 				const size_t windowLen = hi - lo + 1;
@@ -126,7 +135,7 @@ namespace Adagio
 					continue;
 
 				float bin = useInterpolatedBins == "Yes" ? ParabolicInterpolation(spectrum, static_cast<int>(i)) : (float)i;
-				const float freq = bin * binToFreq;
+				const float freq = axis.BinToHz(bin);
 				if (freq < minFreq || freq > maxFreq)
 					continue;
 

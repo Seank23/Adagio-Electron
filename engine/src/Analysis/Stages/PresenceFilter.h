@@ -82,7 +82,7 @@ namespace Adagio
 				kfr::univector<float> maskedMagnitudes(context->Magnitudes.size(), 0.0f);
 				for (const Peak& peak : present)
 				{
-					const int binIndex = (int)std::round(peak.Frequency / context->BinHz);
+					const int binIndex = context->FreqAxis->HzToBin(peak.Frequency);
 					const int minBin = std::max(0, binIndex - m_Settings.MASK_HALF_WIDTH);
 					const int maxBin = std::min((int)maskedMagnitudes.size() - 1, binIndex + m_Settings.MASK_HALF_WIDTH);
 					for (int j = minBin; j <= maxBin; ++j)

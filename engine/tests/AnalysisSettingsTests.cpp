@@ -248,6 +248,11 @@ TEST_CASE("the built-in pipelines' stages keep their settings keys, in pipeline 
 		"NoteSelector", "PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
 	};
 	CHECK(BuiltInStageNames("partialTracking") == partialTracking);
+
+	const std::vector<std::string> constantQ = {
+		"CQTProcessor", "PeakExtractor", "PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
+	};
+	CHECK(BuiltInStageNames("constantQ") == constantQ);
 }
 
 TEST_CASE("a stored value a stage refuses is a warning, and the stage keeps its default")

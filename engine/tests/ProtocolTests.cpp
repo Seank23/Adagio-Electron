@@ -144,7 +144,7 @@ TEST_CASE("A spectrum frame carries its header at the declared offsets and its d
 	CHECK(ReadAt<float>(frame, Binary::Offset::Resolution) == 1.953125f);
 	CHECK(ReadAt<float>(frame, Binary::Offset::MaxMagnitude) == 8.0f);
 	CHECK(ReadAt<uint32_t>(frame, Binary::Offset::Count) == magnitudes.size());
-	CHECK(ReadAt<uint32_t>(frame, Binary::Offset::Reserved) == 0);
+	CHECK(ReadAt<float>(frame, Binary::Offset::StartHz) == 0.0f);
 
 	// Each element is its magnitude as a fraction of the maximum, so the maximum is full scale.
 	std::vector<uint16_t> data(magnitudes.size());
@@ -157,6 +157,23 @@ TEST_CASE("A spectrum frame carries its header at the declared offsets and its d
 		const float decoded = data[i] / 65535.0f * 8.0f;
 		CHECK(decoded == doctest::Approx(magnitudes[i]).epsilon(1e-4));
 	}
+}
+
+TEST_CASE("A log spectrum frame carries its bins per octave and its first bin's frequency")
+{
+	namespace Binary = Adagio::Protocol::Binary;
+	const std::vector<float> magnitudes = { 1.0f, 4.0f, 2.0f };
+	const std::string frame = Adagio::BinaryFrame::EncodeLogSpectrum(magnitudes, 24, 55.0f, 3.25, 2);
+
+	REQUIRE(frame.size() == Binary::HeaderSize + magnitudes.size() * sizeof(uint16_t));
+	CHECK(ReadAt<uint8_t>(frame, Binary::Offset::Kind) == (uint8_t)Binary::FrameKind::LogSpectrum);
+	CHECK(ReadAt<uint16_t>(frame, Binary::Offset::ElementType) == (uint16_t)Binary::ElementType::Uint16);
+	CHECK(ReadAt<uint32_t>(frame, Binary::Offset::SeekGeneration) == 2);
+	CHECK(ReadAt<double>(frame, Binary::Offset::Timestamp) == 3.25);
+	CHECK(ReadAt<float>(frame, Binary::Offset::Resolution) == 24.0f);
+	CHECK(ReadAt<float>(frame, Binary::Offset::StartHz) == 55.0f);
+	CHECK(ReadAt<float>(frame, Binary::Offset::MaxMagnitude) == 4.0f);
+	CHECK(ReadAt<uint16_t>(frame, Binary::HeaderSize + sizeof(uint16_t)) == 65535);
 }
 
 TEST_CASE("A silent spectrum encodes as zeros rather than dividing by a zero maximum")

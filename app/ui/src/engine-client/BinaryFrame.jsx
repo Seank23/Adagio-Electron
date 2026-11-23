@@ -28,6 +28,7 @@ export const decodeFrame = buffer => {
         timestamp: view.getFloat64(OFFSET.timestamp, true),
         resolution: view.getFloat32(OFFSET.resolution, true),
         maxMagnitude: view.getFloat32(OFFSET.maxMagnitude, true),
+        startHz: view.getFloat32(OFFSET.startHz, true),
         count,
         data,
     };

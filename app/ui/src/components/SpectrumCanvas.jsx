@@ -7,7 +7,7 @@ import { measure } from '../utils/devPerf';
 import { useStoreListener } from '../hooks/useStoreListener';
 import { usePalette } from '../hooks/usePalette';
 import { fitToElement, withAlpha } from '../utils/canvas';
-import { formatHz, makeAxis, spectrumMaxHz } from '../utils/frequencyAxis';
+import { binToHz, formatHz, hzToBin, makeAxis, spectrumMaxHz } from '../utils/frequencyAxis';
 import { formatCents, tuningBand } from '../utils/music';
 import { FONTS } from '../theme/tokens';
 import { selectAnalysisRate } from '../store/analysisSlice';
@@ -147,12 +147,11 @@ const SpectrumCanvas = () => {
 
         const drawSpectrum = (spectrum, elementScale, axis, toY, plotHeight) => {
             const data = spectrum.data;
-            const binHz = spectrum.resolution;
             const path = new Path2D();
             let firstX = null;
             let lastX = 0;
             for (let i = 0; i < data.length; i++) {
-                const hz = i * binHz;
+                const hz = binToHz(spectrum, i);
                 if (hz < axis.minHz || hz > axis.maxHz)
                     continue;
                 const x = axis.toX(hz);
@@ -186,7 +185,7 @@ const SpectrumCanvas = () => {
 
         const peakMagnitude = (spectrum, elementScale, hz) => {
             const data = spectrum.data;
-            const centre = Math.round(hz / spectrum.resolution);
+            const centre = Math.round(hzToBin(spectrum, hz));
             let peak = 0;
             for (let i = Math.max(0, centre - PEAK_SEARCH_BINS); i <= Math.min(data.length - 1, centre + PEAK_SEARCH_BINS); i++)
                 peak = Math.max(peak, data[i]);

@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include "AudioFrame.h"
+#include "FrequencyAxis.h"
 
 #include <nlohmann/json.hpp>
 
@@ -99,12 +100,13 @@ namespace Adagio
 		const AudioFrame& Frame;
 		PersistentData* PersistentData = nullptr;
 
+		std::unique_ptr<FrequencyAxis> FreqAxis;
+
 		kfr::univector<float> Samples;
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
 		std::vector<Peak> Peaks;
-		float BinHz = 0.0f;
 		int Harmonics = 0;
 		float NoiseFloor = 0.0f;
 		float GateLevel = 0.0f;

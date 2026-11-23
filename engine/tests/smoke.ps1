@@ -78,6 +78,8 @@ public class AdagioSocket
     private int _positionEvents;
     private int _lastSpectrumCount;
     private float _lastSpectrumResolution;
+    private int _lastSpectrumKind;
+    private float _lastSpectrumStartHz;
 
     public int SpectrumFrames { get { return Volatile.Read(ref _spectrumFrames); } }
     public int WaveformFrames { get { return Volatile.Read(ref _waveformFrames); } }
@@ -87,6 +89,9 @@ public class AdagioSocket
     // The newest spectrum frame's header: its bin count, and its Hz per bin.
     public int LastSpectrumCount { get { return Volatile.Read(ref _lastSpectrumCount); } }
     public float LastSpectrumResolution { get { return Volatile.Read(ref _lastSpectrumResolution); } }
+    // 1 for linear bins, 3 for log bins, whose first bin is at StartHz and whose resolution is bins per octave.
+    public int LastSpectrumKind { get { return Volatile.Read(ref _lastSpectrumKind); } }
+    public float LastSpectrumStartHz { get { return Volatile.Read(ref _lastSpectrumStartHz); } }
     public void ResetCounts()
     {
         Interlocked.Exchange(ref _spectrumFrames, 0);
@@ -136,6 +141,7 @@ public class AdagioSocket
                 int kind = -1;
                 int count = 0;
                 float resolution = 0;
+                float startHz = 0;
                 do
                 {
                     var task = _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancel.Token);
@@ -148,12 +154,13 @@ public class AdagioSocket
                     }
                     if (result.MessageType == WebSocketMessageType.Binary)
                     {
-                        // The header is in the first fragment: kind at 0, resolution at 16, count at 24.
+                        // The header is in the first fragment: kind at 0, resolution at 16, count at 24, startHz at 28.
                         if (!binary && result.Count > 0) kind = buffer[0];
                         if (!binary && result.Count >= 32)
                         {
                             resolution = BitConverter.ToSingle(buffer, 16);
                             count = BitConverter.ToInt32(buffer, 24);
+                            startHz = BitConverter.ToSingle(buffer, 28);
                         }
                         binary = true;
                         continue;
@@ -164,10 +171,12 @@ public class AdagioSocket
 
                 if (binary)
                 {
-                    if (kind == 1)
+                    if (kind == 1 || kind == 3)
                     {
                         Volatile.Write(ref _lastSpectrumCount, count);
                         Volatile.Write(ref _lastSpectrumResolution, resolution);
+                        Volatile.Write(ref _lastSpectrumKind, (int)kind);
+                        Volatile.Write(ref _lastSpectrumStartHz, startHz);
                         Interlocked.Increment(ref _spectrumFrames);
                     }
                     else if (kind == 2) Interlocked.Increment(ref _waveformFrames);
@@ -508,11 +517,11 @@ try {
         return ($Schema.stages | Where-Object { $_.name -eq $Stage }).settings | Where-Object { $_.key -eq $Key }
     }
 
-    Test-Case 'the schema names the pipeline in force and lists both built-ins' {
+    Test-Case 'the schema names the pipeline in force and lists every built-in' {
         $schema = (Invoke-EngineCommand -Cmd 'getAnalysisSchema').value
         if ($schema.activePipeline -ne 'hps') { throw "expected hps in force, got '$($schema.activePipeline)'" }
         $ids = @($schema.pipelines | ForEach-Object { $_.id }) -join ','
-        if ($ids -ne 'hps,partialTracking') { throw "expected hps,partialTracking, got $ids" }
+        if ($ids -ne 'hps,partialTracking,constantQ') { throw "expected hps,partialTracking,constantQ, got $ids" }
         if ($schema.stages.Count -ne 8) { throw "expected 8 stages, got $($schema.stages.Count)" }
     }
 
@@ -796,7 +805,7 @@ try {
             $deadline = (Get-Date).AddMilliseconds(2000)
             while ((Get-Date) -lt $deadline -and $script:Socket.SpectrumFrames -lt 3) { Start-Sleep -Milliseconds 10 }
             if ($script:Socket.SpectrumFrames -lt 3) { throw 'no spectrum frames followed' }
-            return @{ count = $script:Socket.LastSpectrumCount; resolution = $script:Socket.LastSpectrumResolution }
+            return @{ count = $script:Socket.LastSpectrumCount; resolution = $script:Socket.LastSpectrumResolution; kind = $script:Socket.LastSpectrumKind; startHz = $script:Socket.LastSpectrumStartHz }
         }
 
         Test-Case 'values set with no file apply to the next load' {
@@ -864,6 +873,24 @@ try {
             if ($status.state -ne 'playing') { throw "expected playing, got $($status.state)" }
             # 31.25 a second, so about 15 in half a second.
             if ($script:Socket.AnalysisEvents -lt 10) { throw "expected analysis events on the new pipeline, got $($script:Socket.AnalysisEvents)" }
+            $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'hps'
+            if (-not $reply.ok) { throw "switch back refused: $($reply.error)" }
+        }
+
+        Test-Case 'constantQ sends log spectrum frames, and a new bin count mid-play keeps them coming' {
+            $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'constantQ'
+            if (-not $reply.ok) { throw "switch refused: $($reply.error)" }
+            $before = Wait-NewSpectrum
+            if ($before.kind -ne 3) { throw "expected log spectrum frames (kind 3), got kind $($before.kind)" }
+            if ($before.startHz -le 0) { throw "expected a first bin above 0 Hz, got $($before.startHz)" }
+            # Spectrum smoothing averages over frames, so a frame of another size has to restart it rather than read past the old ones.
+            $reply = Invoke-EngineCommand -Cmd 'setAnalysisSetting' -Arguments @{ stage = 'CQTProcessor'; key = 'BINS_PER_OCTAVE'; value = '12' }
+            if (-not $reply.ok) { throw "setting refused: $($reply.error)" }
+            $after = Wait-NewSpectrum
+            if ($after.resolution -ne 12) { throw "expected 12 bins per octave, got $($after.resolution)" }
+            if ($after.count -ge $before.count) { throw "expected fewer bins than $($before.count), got $($after.count)" }
+            if ((Get-Status).state -ne 'playing') { throw 'the track stopped playing' }
+            Invoke-EngineCommand -Cmd 'restorePipelineDefaults' | Out-Null
             $reply = Invoke-EngineCommand -Cmd 'switchPipeline' -Arguments 'hps'
             if (-not $reply.ok) { throw "switch back refused: $($reply.error)" }
         }

@@ -168,6 +168,13 @@ describe('EngineEventRouter events', () => {
         expect(getLatestSpectrum().id).toBe('after seek');
     });
 
+    it('shows a log spectrum frame as it does a linear one', async () => {
+        const { engine } = setup();
+        await flush();
+        act(() => engine.frame({ ...spectrumFrame(5), kind: BINARY_FRAME.KIND.LOG_SPECTRUM, id: 'constant-Q' }));
+        expect(getLatestSpectrum().id).toBe('constant-Q');
+    });
+
     it('restarts the track on endOfPlay with repeat on, and not with it off', async () => {
         const { store, emit, engine } = setup();
         await flush();

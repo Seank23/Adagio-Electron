@@ -129,6 +129,7 @@ export default function EngineEventRouter() {
     useEngineFrames(frame => {
         switch (frame.kind) {
         case BINARY_FRAME.KIND.SPECTRUM:
+        case BINARY_FRAME.KIND.LOG_SPECTRUM:
             publishSpectrum(frame);
             break;
         case BINARY_FRAME.KIND.WAVEFORM:

@@ -31,7 +31,7 @@ namespace Adagio
 			auto& data = context->Magnitudes;
 			const size_t binCount = data.size();
 
-			int startBin = std::max(4, (int)std::ceil(START_FREQ / context->BinHz));
+			int startBin = std::max(4, (int)std::ceil(context->FreqAxis->HzToFractionalBin(START_FREQ)));
 			float noiseFloor = AnalysisUtils::Median(data, startBin, binCount - 1);
 			float gate = std::pow(10.0f, m_Settings.GATE_DB / 20.0f);
 			std::vector<Partial> partials;
@@ -50,8 +50,8 @@ namespace Adagio
 				if (data[b] <= gate * medianInWindow)
 					continue;
 
-				float parabolicFreq = AnalysisUtils::ParabolicInterpolation(data, b);
-				partials.push_back({ b, parabolicFreq * context->BinHz, data[b] });
+				float parabolicBin = AnalysisUtils::ParabolicInterpolation(data, b);
+				partials.push_back({ b, context->FreqAxis->BinToHz(parabolicBin), data[b] });
 			}
 
 			context->Partials = std::move(partials);

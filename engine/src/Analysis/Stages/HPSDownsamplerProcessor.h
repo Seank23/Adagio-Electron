@@ -26,6 +26,9 @@ namespace Adagio
 
 		virtual void Execute(AnalysisContext* context) override
 		{
+			if (context->FreqAxis->IsLog())
+				return;
+
 			auto& data = context->Magnitudes;
 			const size_t frameLength = data.size();
 
@@ -84,7 +87,7 @@ namespace Adagio
 			{
 				kfr::univector<float> interpolated(productSpectrum.size() * interpolationFactor);
 				Interpolate(interpolated, productSpectrum, interpolationFactor);
-				context->BinHz /= (float)interpolationFactor;
+				context->FreqAxis->SetBinFreq(context->FreqAxis->BinFreq() / (float)interpolationFactor);
 				context->Magnitudes.resize(interpolated.size());
 				context->Magnitudes = std::move(interpolated);
 			}

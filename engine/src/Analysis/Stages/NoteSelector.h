@@ -84,8 +84,8 @@ namespace Adagio
 			}
 			std::vector<Peak> selectedNotes;
 			const float maxFreq = std::min(m_Settings.MAX_FREQ, context->Frame.SampleRate / 2.0f);
-			const int startBin = std::max(1, (int)std::ceil(m_Settings.MIN_FREQ / context->BinHz));
-			const int endBin = std::min((int)context->Magnitudes.size() - 2, (int)std::floor(maxFreq / context->BinHz));
+			const int startBin = std::max(1, (int)std::ceil(context->FreqAxis->HzToFractionalBin(m_Settings.MIN_FREQ)));
+			const int endBin = std::min((int)context->Magnitudes.size() - 2, (int)std::floor(context->FreqAxis->HzToFractionalBin(maxFreq)));
 			const float floorDb = AnalysisUtils::ToDb(AnalysisUtils::Median(context->Magnitudes, startBin, endBin));
 			const float maxInBand = AnalysisUtils::MaxOverRange(context->Magnitudes, startBin, endBin);
 			PersistentData& persistent = *context->PersistentData;

@@ -201,6 +201,8 @@ namespace Adagio
 					auto data = result->Context->Magnitudes;
 					if (m_Params.FrameSmoothing > 1)
 					{
+						if (!rollingAvg.empty() && rollingAvg.back().size() != data.size())
+							rollingAvg.clear();
 						rollingAvg.push_back(data);
 						if (rollingAvg.size() > (size_t)m_Params.FrameSmoothing)
 							rollingAvg.erase(rollingAvg.begin());
@@ -274,9 +276,11 @@ namespace Adagio
 	void AnalysisService::PublishSpectrum(const AnalysisResult& result)
 	{
 		const AnalysisContext& context = *result.Context;
-		MessageQueue::GetInstance().PushBinary(BinaryFrame::EncodeSpectrum(
-			std::span<const float>(context.Magnitudes.data(), context.Magnitudes.size()),
-			context.BinHz, result.Timestamp, m_SeekGenerationSeen));
+		const std::span<const float> magnitudes(context.Magnitudes.data(), context.Magnitudes.size());
+		const FrequencyAxis& axis = *context.FreqAxis;
+		MessageQueue::GetInstance().PushBinary(axis.IsLog()
+			? BinaryFrame::EncodeLogSpectrum(magnitudes, axis.BinsPerOctave(), axis.MinFreq(), result.Timestamp, m_SeekGenerationSeen)
+			: BinaryFrame::EncodeSpectrum(magnitudes, axis.BinFreq(), result.Timestamp, m_SeekGenerationSeen));
 	}
 
 	bool AnalysisService::SyncSeekGeneration()

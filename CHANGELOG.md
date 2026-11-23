@@ -4,13 +4,23 @@ All notable changes to Adagio are recorded here. The format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Added
+
+- **Constant-Q pipeline**: CQT → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. Its spectrum comes from a constant-Q transform, so its bins are equally spaced in pitch and higher notes are measured over shorter windows. The new **CQT** stage sets the window, the frequency range, the bins per octave (12, 24, 36 or 48) and a filter scale. The spectrum view draws its log-spaced bins in place.
+
+### Fixed
+
+- Changing a setting that alters the number of spectrum bins while playing (such as the HPS interpolation factor) could make spectrum smoothing read past the end of older frames. Smoothing now starts over when the size changes.
+
 ### Changed
 
-- **Each built-in pipeline can have its own defaults.** A built-in pipeline can now override a stage's default settings, and the Settings tab's changed dot, ↺ button and **Reset all** follow the pipeline's defaults. Both built-in pipelines keep today's values for now.
+- **Each built-in pipeline can have its own defaults.** A built-in pipeline can now override a stage's default settings, and the Settings tab's changed dot, ↺ button and **Reset all** follow the pipeline's defaults. The built-in pipelines keep today's values for now.
 - **`pipelines.json` keeps only the settings you changed** (file version 2), so a future change to a default reaches every setting you left alone. Setting a value back to its default, by ↺ or by typing it, removes it from the file. 0.2.0's file is converted on first launch: values equal to their default are dropped and the rest are kept. A file from a newer Adagio is set aside as `pipelines.json.bad` rather than misread.
 
 ### Tests
 
+- Engine unit tests for the log spectrum frame's header and the Constant-Q pipeline's stage names; `smoke.ps1` switches to it while playing, checks it sends log spectrum frames, and changes its bins per octave mid-play.
+- UI tests for placing linear and log bins, decoding `startHz`, and routing a log spectrum frame.
 - Engine unit tests for pipeline defaults (schema, first frame, resets, refused defaults including the per-track A4, erase-on-default with widened floats, switching) and for `pipelines.json` versions (converting a version 1 file, leaving a version 2 file alone, setting aside a newer one, and never saving defaults).
 - `smoke.ps1` and the end-to-end Reset all test now check that an unchanged setting is absent from the file.
 

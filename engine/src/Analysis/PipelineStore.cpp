@@ -1,6 +1,7 @@
 #include "PipelineStore.h"
 #include "AnalysisPipeline.h"
 #include "Stages/ChordPredictor.h"
+#include "Stages/CQTProcessor.h"
 #include "Stages/FFTProcessor.h"
 #include "Stages/HPSDownsamplerProcessor.h"
 #include "Stages/KeyDetector.h"
@@ -31,6 +32,7 @@ namespace Adagio
 
 		constexpr std::pair<std::string_view, std::unique_ptr<AnalysisStage>(*)()> StageFactories[] = {
 			{ FFTProcessor::Name, &MakeStage<FFTProcessor> },
+			{ CQTProcessor::Name, &MakeStage<CQTProcessor> },
 			{ SpectrumFilterProcessor::Name, &MakeStage<SpectrumFilterProcessor> },
 			{ HPSDownsamplerProcessor::Name, &MakeStage<HPSDownsamplerProcessor> },
 			{ PeakExtractor::Name, &MakeStage<PeakExtractor> },
@@ -470,6 +472,20 @@ namespace Adagio
 					BuiltInStage<PartialExtractor>(),
 					BuiltInStage<HarmonicGrouper>(),
 					BuiltInStage<NoteSelector>(),
+					BuiltInStage<PresenceFilter>(),
+					BuiltInStage<NoteDetector>(),
+					BuiltInStage<KeyDetector>(),
+					BuiltInStage<ChordPredictor>()
+				}
+			},
+			PipelineDefinition{
+				.ID = "constantQ",
+				.Name = "Constant-Q",
+				.Description = "A constant-Q transform: bins equally spaced in pitch, with shorter windows for higher notes, then picks peaks.",
+				.BuiltIn = true,
+				.Stages = {
+					BuiltInStage<CQTProcessor>(),
+					BuiltInStage<PeakExtractor>(),
 					BuiltInStage<PresenceFilter>(),
 					BuiltInStage<NoteDetector>(),
 					BuiltInStage<KeyDetector>(),

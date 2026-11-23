@@ -26,7 +26,6 @@ namespace Adagio
 		virtual void Execute(AnalysisContext* context) override
 		{
 			float nyquist = context->Frame.SampleRate / 2.0f;
-			float minTolerance = MIN_BINS * context->BinHz;
 			float centsRatio = std::pow(2.0f, m_Settings.MATCH_CENTS / 1200.0f) - 1.0f;
 			context->HarmonicGroups.assign(context->Partials.size(), {});
 
@@ -37,7 +36,7 @@ namespace Adagio
 				int k = 2;
 				while (k * candidate.Frequency < nyquist)
 				{
-					int matchIndex = FindMatchIndex(context, k * candidate.Frequency, minTolerance, centsRatio);
+					int matchIndex = FindMatchIndex(context, k * candidate.Frequency, centsRatio);
 					series.push_back(matchIndex);
 					k++;
 				}
@@ -66,9 +65,9 @@ namespace Adagio
 		}
 
 	private:
-		static int FindMatchIndex(AnalysisContext* context, float targetFreq, float minTolerance, float centsRatio)
+		static int FindMatchIndex(AnalysisContext* context, float targetFreq, float centsRatio)
 		{
-			float tolerance = std::max(minTolerance, targetFreq * centsRatio);
+			float tolerance = std::max(MIN_BINS * context->FreqAxis->BinWidthAt(targetFreq), targetFreq * centsRatio);
 			auto closestAboveIt = std::lower_bound(context->Partials.begin(), context->Partials.end(), targetFreq, [](const Partial& p, float freq) { return p.Frequency < freq; });
 			int match = -1;
 			if (closestAboveIt != context->Partials.begin() && targetFreq - std::prev(closestAboveIt)->Frequency <= tolerance)
