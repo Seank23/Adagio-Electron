@@ -106,6 +106,7 @@ namespace Adagio
 		kfr::univector<float> Windowed;
 		kfr::univector<kfr::complex<float>> Spectrum;
 		kfr::univector<float> Magnitudes;
+		std::vector<float> BinSmoothingSeconds;
 		std::vector<Peak> Peaks;
 		int Harmonics = 0;
 		float NoiseFloor = 0.0f;

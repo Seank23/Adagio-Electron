@@ -16,8 +16,9 @@ namespace Adagio
 		std::string WINDOW = "Hamming";
 		float MIN_FREQ = 55.0f;
 		float MAX_FREQ = 4000.0f;
-		std::string BINS_PER_OCTAVE = "24";
+		std::string BINS_PER_OCTAVE = "36";
 		float FILTER_SCALE = 1.0f;
+		float HIGH_FREQ_SMOOTHING = 0.25f;
 
 		bool operator==(const CQTProcessorSettings& other) const
 		{
@@ -25,10 +26,11 @@ namespace Adagio
 				MIN_FREQ == other.MIN_FREQ &&
 				MAX_FREQ == other.MAX_FREQ &&
 				BINS_PER_OCTAVE == other.BINS_PER_OCTAVE &&
-				FILTER_SCALE == other.FILTER_SCALE;
+				FILTER_SCALE == other.FILTER_SCALE &&
+				HIGH_FREQ_SMOOTHING == other.HIGH_FREQ_SMOOTHING;
 		}
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CQTProcessorSettings, WINDOW, MIN_FREQ, MAX_FREQ, BINS_PER_OCTAVE, FILTER_SCALE)
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(CQTProcessorSettings, WINDOW, MIN_FREQ, MAX_FREQ, BINS_PER_OCTAVE, FILTER_SCALE, HIGH_FREQ_SMOOTHING)
 	};
 
 	struct KernelRow
@@ -36,6 +38,7 @@ namespace Adagio
 		kfr::univector<kfr::complex<float>> Values;
 		int StartBin = 0;
 		float CenterFreq = 0.0f;
+		float WindowSeconds = 0.0f;
 	};
 
 	class CQTProcessor : public ConfigurableStage<CQTProcessorSettings>
@@ -88,6 +91,16 @@ namespace Adagio
 			}
 			context->Magnitudes = std::move(cqtMagnitudes);
 
+			const float smoothing = std::clamp(m_Settings.HIGH_FREQ_SMOOTHING, 0.0f, 1.0f);
+			context->BinSmoothingSeconds.clear();
+			if (smoothing > 0.0f && !m_Kernels.empty())
+			{
+				const float longestWindow = m_Kernels.front().WindowSeconds;
+				context->BinSmoothingSeconds.reserve(m_Kernels.size());
+				for (const KernelRow& row : m_Kernels)
+					context->BinSmoothingSeconds.push_back(smoothing * (longestWindow - row.WindowSeconds));
+			}
+
 			const float firstFreq = m_Kernels.empty() ? m_Settings.MIN_FREQ : m_Kernels.front().CenterFreq;
 			context->FreqAxis = std::make_unique<LogFrequencyAxis>(firstFreq, (int)std::clamp(std::stof(m_Settings.BINS_PER_OCTAVE), 12.0f, 48.0f));
 		}
@@ -130,6 +143,12 @@ namespace Adagio
 					"type": "float",
 					"min": 0.25,
 					"max": 1.0
+				},
+				"HIGH_FREQ_SMOOTHING": {
+					"name": "High-Frequency Smoothing",
+					"type": "float",
+					"min": 0.0,
+					"max": 1.0
 				}
 			})");
 		}
@@ -152,11 +171,12 @@ namespace Adagio
 			const double Q = 1.0 / (std::pow(2.0, 1.0 / (double)binsPerOctave) - 1.0);
 			const double centre = frameLength * 0.5f;
 
+			const float scale = std::clamp(m_Settings.FILTER_SCALE, 0.25f, 1.0f);
 			kfr::univector<kfr::complex<float>> kernel(frameLength);
 			for (int k = 0; k < numBins; k++)
 			{
 				const double f_k = minFreq * std::pow(2.0f, k / binsPerOctave);
-				const double N_k = std::ceil(Q * sampleRate / f_k);
+				const double N_k = std::ceil(scale * Q * sampleRate / f_k);
 				if (N_k > frameLength)
 					continue;
 
@@ -195,6 +215,7 @@ namespace Adagio
 				KernelRow row;
 				row.StartBin = first;
 				row.CenterFreq = f_k;
+				row.WindowSeconds = (float)(N_k / sampleRate);
 				row.Values.reserve(last - first + 1);
 				const float scale = 1.0f / frameLength;
 				for (int j = first; j <= last; j++)

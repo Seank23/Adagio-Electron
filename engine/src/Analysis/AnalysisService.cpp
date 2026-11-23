@@ -2,6 +2,7 @@
 #include "AnalysisPipeline.h"
 #include "AnalysisStage.h"
 #include "PipelineStore.h"
+#include "SpectrumSmoother.h"
 #include "../Core/PcmFeeder.h"
 #include "../Core/BinaryFrame.h"
 #include "../Core/HighResolutionTimer.h"
@@ -162,7 +163,7 @@ namespace Adagio
 
 		m_AnalysisThread = std::thread([this]()
 		{
-			std::vector<kfr::univector<float>> rollingAvg;
+			SpectrumSmoother smoother;
 			auto lastAnalysisEvent = std::chrono::steady_clock::now() - AnalysisEventInterval;
 			HighResolutionTimer timer;
 			bool anchored = false;
@@ -171,7 +172,7 @@ namespace Adagio
 				if (m_ResetRequested.exchange(false))
 				{
 					m_Pipeline->ResetPersistentData();
-					rollingAvg.clear();
+					smoother.Reset();
 					MessageQueue::GetInstance().Push(nlohmann::json{ {"type", Protocol::Event::AnalysisReset} }.dump());
 				}
 
@@ -182,7 +183,7 @@ namespace Adagio
 				if (seeked || !anchored || analysisStreamPos < m_LastAnalysisStreamPos)
 				{
 					if (seeked)
-						rollingAvg.clear();
+						smoother.Reset();
 					m_LastAnalysisStreamPos = analysisStreamPos;
 					anchored = true;
 					continue;
@@ -198,23 +199,9 @@ namespace Adagio
 					const double advanceSamples = stalled ? deltaSamples : hopSamples;
 					const double deltaTime = std::min(advanceSamples / m_Params.SampleRate, MaxDeltaSeconds);
 					std::unique_ptr<AnalysisResult> result = ProcessFrameAt(playhead, deltaTime);
-					auto data = result->Context->Magnitudes;
-					if (m_Params.FrameSmoothing > 1)
-					{
-						if (!rollingAvg.empty() && rollingAvg.back().size() != data.size())
-							rollingAvg.clear();
-						rollingAvg.push_back(data);
-						if (rollingAvg.size() > (size_t)m_Params.FrameSmoothing)
-							rollingAvg.erase(rollingAvg.begin());
-						for (size_t i = 0; i < data.size(); i++)
-						{
-							float sum = 0.0f;
-							for (const auto& vec : rollingAvg)
-								sum += vec[i];
-							data[i] = sum / static_cast<float>(rollingAvg.size());
-						}
-						result->Context->Magnitudes = data;
-					}
+					AnalysisContext& context = *result->Context;
+					const double frameSeconds = m_Params.HopSize / (double)m_Params.SampleRate;
+					smoother.Apply(context.Magnitudes, context.BinSmoothingSeconds, m_Params.FrameSmoothing, frameSeconds, deltaTime / m_Playback->GetSpeed());
 					PublishSpectrum(*result);
 
 					// The interval is added rather than reset to now, so frames that land just past it don't stretch every
