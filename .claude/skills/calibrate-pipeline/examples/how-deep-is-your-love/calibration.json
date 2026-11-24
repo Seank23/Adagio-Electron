@@ -1,0 +1,5 @@
+{
+  "wav": "HowDeepIsYourLove_Analysis.wav",
+  "pipeline": "constantQ",
+  "engine": {"sampleRate": 8000, "frameLength": 8192, "hopSize": 64}
+}

@@ -1,0 +1,14 @@
+{
+ "name": "HDIYL-100",
+ "comment": "iteration 100 (0.8535) spelled out. These are constantQ's built-in defaults since 2026-11-23, so {\"a4\": 441} alone reproduces it.",
+ "pipeline": "constantQ",
+ "engine": {"sampleRate": 8000, "frameLength": 8192, "hopSize": 64},
+ "a4": 441,
+ "settings": {
+  "PeakExtractor": {"SCORE_THRESHOLD": 0.0, "MIN_PROMINENCE": 0.3, "MAX_FREQ": 1000.0, "MIN_SEMITONE_DISTANCE": 0.75, "MIN_SNR": 2.0},
+  "PresenceFilter": {"OCTAVE_HOLD": 0.7},
+  "NoteDetector": {"ERROR_THRESHOLD": 50.0},
+  "KeyDetector": {"ALGORITHM": "Scale Match", "ROLLING_WINDOW": 50},
+  "ChordPredictor": {"SCORE_THRESHOLD": 0.06, "ROLLING_WINDOW": 0.65}
+ }
+}
