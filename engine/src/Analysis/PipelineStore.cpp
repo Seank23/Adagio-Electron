@@ -12,6 +12,7 @@
 #include "Stages/HarmonicGrouper.h"
 #include "Stages/NoteSelector.h"
 #include "Stages/PresenceFilter.h"
+#include "Stages/CQTHarmonicSuppressor.h"
 #include "../Core/MessageQueue.h"
 #include "../Util/JsonUtils.h"
 #include "Protocol.generated.h"
@@ -33,6 +34,7 @@ namespace Adagio
 		constexpr std::pair<std::string_view, std::unique_ptr<AnalysisStage>(*)()> StageFactories[] = {
 			{ FFTProcessor::Name, &MakeStage<FFTProcessor> },
 			{ CQTProcessor::Name, &MakeStage<CQTProcessor> },
+			{ CQTHarmonicSuppressor::Name, &MakeStage<CQTHarmonicSuppressor> },
 			{ SpectrumFilterProcessor::Name, &MakeStage<SpectrumFilterProcessor> },
 			{ HPSDownsamplerProcessor::Name, &MakeStage<HPSDownsamplerProcessor> },
 			{ PeakExtractor::Name, &MakeStage<PeakExtractor> },
@@ -485,11 +487,12 @@ namespace Adagio
 				.BuiltIn = true,
 				.Stages = {
 					BuiltInStage<CQTProcessor>(),
-					BuiltInStage<PeakExtractor>(),
-					BuiltInStage<PresenceFilter>(),
-					BuiltInStage<NoteDetector>(),
-					BuiltInStage<KeyDetector>(),
-					BuiltInStage<ChordPredictor>()
+					BuiltInStage<CQTHarmonicSuppressor>(),
+					BuiltInStage<PeakExtractor>({ .MAX_FREQ = 1000.0f, .MIN_PROMINENCE = 0.3f, .MIN_SNR_DB = 0.0f, .MIN_SEMITONE_DISTANCE = 0.75f, .SCORE_THRESHOLD = 0.0f }),
+					BuiltInStage<PresenceFilter>({ .OCTAVE_HOLD = 0.7f }),
+					BuiltInStage<NoteDetector>({ .ERROR_THRESHOLD = 50.0f }),
+					BuiltInStage<KeyDetector>({ .ROLLING_WINDOW = 50.0f, .ALGORITHM = "Scale Match" }),
+					BuiltInStage<ChordPredictor>({ .ROLLING_WINDOW = 0.65f, .SCORE_THRESHOLD = 0.06f })
 				}
 			}
 		};

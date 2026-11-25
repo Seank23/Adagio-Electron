@@ -399,7 +399,7 @@ TEST_CASE("A version 1 file keeps only the values that differ from the stage's o
 				{ "stage": "ChordPredictor", "settings": { "ROLLING_WINDOW": 0.5, "SCORE_THRESHOLD": 0.10000000149011612 } }
 			] },
 			{ "id": "mine", "name": "Mine", "stages": [
-				{ "stage": "PeakExtractor", "settings": { "MAX_PEAKS": 16, "MIN_SNR": 3.5 } }
+				{ "stage": "PeakExtractor", "settings": { "MAX_PEAKS": 16, "MIN_PROMINENCE": 3.5 } }
 			] }
 		]
 	})");
@@ -414,7 +414,7 @@ TEST_CASE("A version 1 file keeps only the values that differ from the stage's o
 	// The float default as 0.2.0 wrote it, widened to a double, reads as the default.
 	CHECK(*FindSettings(*hps, "ChordPredictor") == nlohmann::json::object());
 	// A custom pipeline is converted the same way.
-	CHECK(*FindSettings(*store.Find("mine"), "PeakExtractor") == nlohmann::json{ {"MIN_SNR", 3.5} });
+	CHECK(*FindSettings(*store.Find("mine"), "PeakExtractor") == nlohmann::json{ {"MIN_PROMINENCE", 3.5} });
 
 	// Converting marks the store dirty, so the file is rewritten at the current version without any other change.
 	store.Save();

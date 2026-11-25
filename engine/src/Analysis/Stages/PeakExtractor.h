@@ -17,13 +17,13 @@ namespace Adagio
 		float MIN_FREQ = 50.0f;
 		float MAX_FREQ = 4000.0f;
 		float MIN_PROMINENCE = 1.5f;
-		float MIN_SNR = 0.2f;
+		float MIN_SNR_DB = 6.0f;
 		float MIN_SEMITONE_DISTANCE = 0.5f;
 		int MAX_PEAKS = 16;
 		float SCORE_THRESHOLD = 0.25f;
 		std::string USE_INTERP_BINS = "Yes";
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PeakExtractorSettings, MIN_FREQ, MAX_FREQ, MIN_PROMINENCE, MIN_SNR, MIN_SEMITONE_DISTANCE, MAX_PEAKS, SCORE_THRESHOLD, USE_INTERP_BINS)
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(PeakExtractorSettings, MIN_FREQ, MAX_FREQ, MIN_PROMINENCE, MIN_SNR_DB, MIN_SEMITONE_DISTANCE, MAX_PEAKS, SCORE_THRESHOLD, USE_INTERP_BINS)
 	};
 
 	class PeakExtractor : public ConfigurableStage<PeakExtractorSettings>
@@ -50,12 +50,13 @@ namespace Adagio
 			const float minSemitoneDistance = m_Settings.MIN_SEMITONE_DISTANCE;
 			const int maxPeaks = m_Settings.MAX_PEAKS;
 			const float minProminence = m_Settings.MIN_PROMINENCE;
-			const float minSnr = m_Settings.MIN_SNR;
+			const float minSnrDb = m_Settings.MIN_SNR_DB;
 			const float scoreThreshold = m_Settings.SCORE_THRESHOLD;
 			const std::string useInterpolatedBins = m_Settings.USE_INTERP_BINS;
 
 			const float sampleRate = static_cast<float>(context->Frame.SampleRate);
 			const FrequencyAxis& axis = *context->FreqAxis;
+			const bool isLogAxis = axis.IsLog();
 			const float nyquist = sampleRate * 0.5f;
 			const float maxFreq = std::min(maxFreqSetting, nyquist);
 
@@ -92,7 +93,7 @@ namespace Adagio
 				float mag;
 				float specVal;
 				float prominence;
-				float whitened;
+				float floorDb;
 				float score;
 			};
 
@@ -103,14 +104,29 @@ namespace Adagio
 				if (!(spectrum[i] > spectrum[i - 1] && spectrum[i] >= spectrum[i + 1]))
 					continue;
 
-				// Prominence: how far this peak rises above its immediate neighbours
-				const float prominence = spectrum[i] - std::max(spectrum[i - 1], spectrum[i + 1]);
-				if (prominence < 0.05) // Global prominence rejection
+				const size_t halfWidth = halfWidthAt(i);
+
+				float bin = (float)i;
+				float height = spectrum[i];
+				if (useInterpolatedBins == "Yes" && isLogAxis)
+				{
+					const InterpolatedPeak top = AnalysisUtils::LogParabolicPeak(spectrum, (int)i);
+					bin = top.Bin;
+					height = top.Magnitude;
+				}
+				else if (useInterpolatedBins == "Yes")
+					bin = AnalysisUtils::ParabolicInterpolation(spectrum, (int)i);
+
+				// Prominence: how far this peak rises above its immediate neighbours. On a log axis they sit on its shoulders, higher
+				// the further the note is from a bin, so there it is measured down to the valleys instead.
+				const float prominence = isLogAxis
+					? height - AnalysisUtils::HigherValley(spectrum, i, halfWidth)
+					: spectrum[i] - std::max(spectrum[i - 1], spectrum[i + 1]);
+				if (prominence <= 0.0f)
 					continue;
 
-				// Compute whitened value: local median subtraction using a
+				// The local floor: the median over the whitening window, using a
 				// reusable scratch buffer and O(n) nth_element.
-				const size_t halfWidth = halfWidthAt(i);
 				const size_t lo = (i > halfWidth) ? i - halfWidth : 0;
 				const size_t hi = std::min(bins - 1, i + halfWidth);
 				const size_t windowLen = hi - lo + 1;
@@ -124,22 +140,22 @@ namespace Adagio
 					float lower = *std::max_element(scratch.data(), scratch.data() + mid);
 					localMedian = (lower + localMedian) * 0.5f;
 				}
-				const float whitened = spectrum[i] - localMedian;
-
-				// SNR: whitened value above local median envelope
-				if (whitened < minSnr)
+				// Both gates are ratios to the local floor, so neither moves with the recording's level, the frame length or the
+				// transform's scale.
+				const float floorDb = AnalysisUtils::ToDb(localMedian);
+				const float snrDb = (AnalysisUtils::ToDb(height) - floorDb) / (float)(context->Harmonics + 1);
+				if (snrDb < minSnrDb)
 					continue;
 
 				// Local prominence rejection
 				if (prominence < minProminence * localMedian)
 					continue;
 
-				float bin = useInterpolatedBins == "Yes" ? ParabolicInterpolation(spectrum, static_cast<int>(i)) : (float)i;
 				const float freq = axis.BinToHz(bin);
 				if (freq < minFreq || freq > maxFreq)
 					continue;
 
-				candidates.push_back({ i, freq, data[i], spectrum[i], prominence, whitened, 0.0f });
+				candidates.push_back({ i, freq, height, height, prominence, floorDb, 0.0f });
 			}
 
 			if (candidates.empty())
@@ -148,22 +164,22 @@ namespace Adagio
 				return;
 			}
 
-			// Score each candidate against references that belong to the frame rather
-			// than to the candidate set. This keeps Score comparable between frames,
-			// which is what the key and chord histograms accumulate.
-			const float noiseFloorDb = AnalysisUtils::ToDb(AnalysisUtils::Median(spectrum, startBin, endBin));
+			// Score each candidate against its own local floor and the frame's maximum, not against the candidate set, so Score
+			// stays comparable between frames for the key and chord histograms.
 			float maxSpec = spectrum[startBin];
 			for (size_t i = startBin; i <= endBin; ++i)
 				maxSpec = std::max(maxSpec, spectrum[i]);
+			for (const PeakCandidate& c : candidates)
+				maxSpec = std::max(maxSpec, c.specVal);
 
 			constexpr float wSnr = 0.25f;
 			constexpr float wMag = 0.30f;
 			constexpr float wProm = 0.45f;
 			for (auto& c : candidates)
 			{
-				const float normSnr = AnalysisUtils::NormaliseAboveFloor(c.whitened, noiseFloorDb, context->Harmonics);
+				const float normSnr = AnalysisUtils::NormaliseAboveFloor(c.specVal, c.floorDb, context->Harmonics);
 				const float normMag = (maxSpec > 0.0f) ? std::min(1.0f, c.specVal / maxSpec) : 0.0f;
-				const float normProm = AnalysisUtils::NormaliseAboveFloor(c.prominence, noiseFloorDb, context->Harmonics);
+				const float normProm = AnalysisUtils::NormaliseAboveFloor(c.prominence, c.floorDb, context->Harmonics);
 				c.score = wSnr * normSnr + wMag * normMag + wProm * normProm;
 			}
 
@@ -246,11 +262,12 @@ namespace Adagio
 					"min": 0.001,
 					"max": 20.0
 				},
-				"MIN_SNR": {
+				"MIN_SNR_DB": {
 					"name": "Min SNR Above Local Floor",
 					"type": "float",
-					"min": 0.001,
-					"max": 30.0
+					"unit": "dB",
+					"min": 0.0,
+					"max": 40.0
 				},
 				"MIN_SEMITONE_DISTANCE": {
 					"name": "Min Peak Distance",
@@ -277,24 +294,6 @@ namespace Adagio
 					"options": ["Yes","No"]
 				}
 			})json");
-		}
-
-	private:
-		float ParabolicInterpolation(const std::vector<float>& data, int k) const
-		{
-			if (k <= 0 || k >= static_cast<int>(data.size()) - 1)
-				return static_cast<float>(k);
-
-			const float alpha = data[k - 1];
-			const float beta = data[k];
-			const float gamma = data[k + 1];
-
-			const float denominator = alpha - 2.0f * beta + gamma;
-			if (std::abs(denominator) < 1e-6f)
-				return static_cast<float>(k);
-
-			const float delta = 0.5f * (alpha - gamma) / denominator;
-			return static_cast<float>(k) + delta;
 		}
 	};
 }

@@ -111,6 +111,7 @@ TEST_CASE("A number carries its unit in the schema, and a count or a choice carr
 	CHECK(FindSetting(schema, "NoteDetector", "A440_TUNING").at("unit") == "Hz");
 	CHECK(FindSetting(schema, "NoteDetector", "TUNING_WINDOW").at("unit") == "s");
 	CHECK(FindSetting(schema, "PeakExtractor", "MIN_SEMITONE_DISTANCE").at("unit") == "st");
+	CHECK(FindSetting(schema, "PeakExtractor", "MIN_SNR_DB").at("unit") == "dB");
 	// The schema spells the cents sign as a JSON escape, since MSVC reads the source without /utf-8; it parses to UTF-8.
 	CHECK(FindSetting(schema, "NoteDetector", "ERROR_THRESHOLD").at("unit") == "\xC2\xA2");
 
@@ -137,7 +138,7 @@ TEST_CASE("A setting is checked against the stage's own schema")
 	// MAX_PEAKS is declared an int, so 4.5 is not a value it can hold.
 	CHECK_FALSE(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 4.5, error));
 	CHECK(pipeline->SetSetting("PeakExtractor", "MAX_PEAKS", 4, error));
-	CHECK(pipeline->SetSetting("PeakExtractor", "MIN_SNR", 1.5, error));
+	CHECK(pipeline->SetSetting("PeakExtractor", "MIN_SNR_DB", 1.5, error));
 }
 
 TEST_CASE("A changed setting reaches the stage on the next frame")
@@ -250,7 +251,7 @@ TEST_CASE("the built-in pipelines' stages keep their settings keys, in pipeline 
 	CHECK(BuiltInStageNames("partialTracking") == partialTracking);
 
 	const std::vector<std::string> constantQ = {
-		"CQTProcessor", "PeakExtractor", "PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
+		"CQTProcessor", "CQTHarmonicSuppressor", "PeakExtractor", "PresenceFilter", "NoteDetector", "KeyDetector", "ChordPredictor"
 	};
 	CHECK(BuiltInStageNames("constantQ") == constantQ);
 }

@@ -6,7 +6,7 @@ All notable changes to Adagio are recorded here. The format follows [Keep a Chan
 
 ### Added
 
-- **Constant-Q pipeline**: CQT → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. Its spectrum comes from a constant-Q transform, so its bins are equally spaced in pitch and higher notes are measured over shorter windows. The new **CQT** stage sets the window, the frequency range, the bins per octave (12, 24, 36 or 48) and a filter scale. The spectrum view draws its log-spaced bins in place.
+- **Constant-Q pipeline**: CQT → Peak Extractor → Presence Filter → Note Detector → Key Detector → Chord Predictor. Its spectrum comes from a constant-Q transform, so its bins are equally spaced in pitch and higher notes are measured over shorter windows. The new **CQT** stage sets the window, the frequency range, the bins per octave (12, 24, 36 or 48) and a filter scale. The spectrum view draws its log-spaced bins in place. Its defaults for the later stages were calibrated against a transcribed recording: much looser peak picking, a wider note-tuning tolerance, a longer octave hold, a 50 s Scale Match key and a lower chord threshold. It needs a frame of 8192 at 8 kHz (or 4096 at 4 kHz): a shorter frame loses notes below about 100 Hz. On its spectrum the Peak Extractor reads each peak's pitch and level from a fit in decibels and measures how far it stands out down to the valleys either side, so a note scores the same however the track is tuned. Before, a note between two bins lost up to a third of its weight in the key and chord, read up to 2 cents off, and could be missed altogether.
 
 ### Fixed
 
@@ -14,11 +14,13 @@ All notable changes to Adagio are recorded here. The format follows [Keep a Chan
 
 ### Changed
 
-- **Each built-in pipeline can have its own defaults.** A built-in pipeline can now override a stage's default settings, and the Settings tab's changed dot, ↺ button and **Reset all** follow the pipeline's defaults. The built-in pipelines keep today's values for now.
+- **Each built-in pipeline can have its own defaults.** A built-in pipeline can now override a stage's default settings, and the Settings tab's changed dot, ↺ button and **Reset all** follow the pipeline's defaults. Harmonic Product Spectrum and Partial Tracking keep today's values; Constant-Q has its own.
 - **`pipelines.json` keeps only the settings you changed** (file version 2), so a future change to a default reaches every setting you left alone. Setting a value back to its default, by ↺ or by typing it, removes it from the file. 0.2.0's file is converted on first launch: values equal to their default are dropped and the rest are kept. A file from a newer Adagio is set aside as `pipelines.json.bad` rather than misread.
+- **The Peak Extractor no longer depends on how loud the recording is.** Its thresholds and scores are now measured against the spectrum around each peak, so a quieter recording, a different frame size or another pipeline's spectrum finds the same peaks. Before, a quiet recording lost its weaker notes, and a peak scored lower when something elsewhere in the spectrum got busier. **Min SNR Above Local Floor** is now in decibels (default 6 dB, 0 dB in Constant-Q), and a value you changed under the old scale is ignored rather than misread. The scores in every pipeline that uses the Peak Extractor have moved, so their score thresholds may need retuning.
 
 ### Tests
 
+- Engine unit tests for the Peak Extractor on a log spectrum: a tone moved from a bin to halfway to the next keeps its score, its level and its pitch to within a cent, a broad peak counts on a log axis and still doesn't on a linear one, and the valley and dB-fit helpers. A spectrum 80 dB quieter gives the same peaks and scores on either axis, and a peak's score doesn't change when the spectrum far from it does.
 - Engine unit tests for the log spectrum frame's header and the Constant-Q pipeline's stage names; `smoke.ps1` switches to it while playing, checks it sends log spectrum frames, and changes its bins per octave mid-play.
 - UI tests for placing linear and log bins, decoding `startHz`, and routing a log spectrum frame.
 - Engine unit tests for pipeline defaults (schema, first frame, resets, refused defaults including the per-track A4, erase-on-default with widened floats, switching) and for `pipelines.json` versions (converting a version 1 file, leaving a version 2 file alone, setting aside a newer one, and never saving defaults).

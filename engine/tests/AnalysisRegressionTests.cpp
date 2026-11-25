@@ -10,6 +10,8 @@
 #include "../src/Analysis/AnalysisUtils.h"
 #include "../src/Analysis/AudioFrame.h"
 #include "../src/Analysis/PipelineStore.h"
+#include "../src/Analysis/Stages/CQTHarmonicSuppressor.h"
+#include "../src/Analysis/Stages/CQTProcessor.h"
 #include "../src/Analysis/Stages/ChordPredictor.h"
 #include "../src/Analysis/Stages/FFTProcessor.h"
 #include "../src/Analysis/Stages/KeyDetector.h"
@@ -35,6 +37,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -1354,3 +1357,210 @@ TEST_CASE("A10: NoteSelector's salience is the plan's worked example")
 	}
 }
 #endif
+
+// HARMONIC-SUPPRESSOR-PLAN.md: CQTHarmonicSuppressor through the whole constantQ pipeline. The
+// cases on the stage alone are in CQTHarmonicSuppressorTests.cpp.
+namespace
+{
+	const std::string ConstantQPipeline = "constantQ";
+
+	// constantQ as the engine builds it, without the suppressor: the pipeline as it was before the stage.
+	std::unique_ptr<Adagio::AnalysisPipeline> ConstantQWithoutSuppressor()
+	{
+		Adagio::PipelineStore store(std::filesystem::path{});
+		store.Load();
+		const Adagio::PipelineDefinition* builtIn = store.Find(ConstantQPipeline);
+		REQUIRE(builtIn != nullptr);
+		Adagio::PipelineDefinition definition = *builtIn;
+		const size_t removed = std::erase_if(definition.Stages, [](const Adagio::StageEntry& entry)
+		{
+			return entry.StageID == Adagio::CQTHarmonicSuppressor::Name;
+		});
+		REQUIRE(removed == 1);
+
+		std::vector<std::string> warnings;
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = Adagio::AnalysisService::BuildPipeline(definition, warnings);
+		CHECK(warnings.empty());
+		return pipeline;
+	}
+
+	std::unique_ptr<Adagio::AnalysisPipeline> ConstantQAtStrength(float strength)
+	{
+		std::unique_ptr<Adagio::AnalysisPipeline> pipeline = BuiltInPipeline(ConstantQPipeline);
+		std::string error;
+		REQUIRE(pipeline->SetSetting(std::string(Adagio::CQTHarmonicSuppressor::Name), "STRENGTH", strength, error));
+		return pipeline;
+	}
+
+	// How many frames hold one of the notes.
+	size_t FramesWithNote(const std::vector<std::vector<Adagio::Note>>& frames, const std::set<int>& midi)
+	{
+		size_t count = 0;
+		for (const std::vector<Adagio::Note>& notes : frames)
+		{
+			for (const Adagio::Note& note : notes)
+			{
+				if (midi.count(note.Midi) == 1)
+				{
+					++count;
+					break;
+				}
+			}
+		}
+		return count;
+	}
+}
+
+TEST_CASE("CQTHarmonicSuppressor: through constantQ, C3 with 8 harmonics loses its harmonics")
+{
+	// Without the stage, PeakExtractor reports every harmonic of C3 as a note of its own. With it,
+	// none is left, and C3 stays in every frame. The frame isn't C3 alone: constantQ's loose peak
+	// picking also keeps a D3, about two semitones over C3, in nearly every frame with or without
+	// the stage, and that is no harmonic.
+	const std::vector<float> signal = Synthesize(HarmonicTone(PitchHz(48), 8), 4.0);
+	const std::set<int> harmonics = { 60, 67, 72, 76, 79, 82, 84 };
+
+	const auto without = DetectNotes(*ConstantQWithoutSuppressor(), signal);
+	CHECK(FramesWithNote(without, harmonics) == without.size());
+
+	const auto frames = DetectNotes(*BuiltInPipeline(ConstantQPipeline), signal);
+	REQUIRE_FALSE(frames.empty());
+	CHECK(FramesWithNote(frames, harmonics) == 0);
+	CHECK(FramesWithNote(frames, { 48 }) == frames.size());
+}
+
+TEST_CASE("CQTHarmonicSuppressor: through constantQ, a C major triad's harmonics add no B, D or G-sharp")
+{
+	// The HDIYL failure in miniature: E3's 3rd harmonic is B4, G3's is D5, E3's 5th is G-sharp 5,
+	// and G3's 5th and E3's 6th are B5. Without the stage all four are notes in every frame. With
+	// it none is. A D4 still turns up in a few frames: the same side peak as C3's D3, two
+	// semitones over C4, which no series explains.
+	const std::vector<float> signal = Synthesize(Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) }), 4.0);
+	const std::set<int> foreign = { 71, 74, 80, 83 };
+
+	const auto without = DetectNotes(*ConstantQWithoutSuppressor(), signal);
+	CHECK(FramesWithNote(without, foreign) == without.size());
+
+	const auto frames = DetectNotes(*BuiltInPipeline(ConstantQPipeline), signal);
+	REQUIRE_FALSE(frames.empty());
+	CHECK(FramesWithNote(frames, foreign) == 0);
+	size_t missing = 0;
+	for (const std::vector<Adagio::Note>& notes : frames)
+	{
+		if (!HasNote(notes, 48) || !HasNote(notes, 52) || !HasNote(notes, 55))
+			++missing;
+	}
+	CHECK(missing == 0);
+}
+
+TEST_CASE("CQTHarmonicSuppressor: through constantQ, a tone as loud as C3 on its 3rd partial is kept")
+{
+	// G4 tuned exactly to C3's 3rd partial, in phase with it: 11.5 dB over C3's envelope there, so
+	// it loses only 1.4 dB and stays a note.
+	const double c3 = PitchHz(48);
+	const auto frames = DetectNotes(*BuiltInPipeline(ConstantQPipeline), Synthesize(Mix({ HarmonicTone(c3, 8), HarmonicTone(3.0 * c3, 8) }), 4.0));
+	REQUIRE_FALSE(frames.empty());
+
+	size_t missing = 0;
+	for (const std::vector<Adagio::Note>& notes : frames)
+	{
+		if (!HasNote(notes, 48) || !HasNote(notes, 67))
+			++missing;
+	}
+	CHECK(missing == 0);
+}
+
+TEST_CASE("CQTHarmonicSuppressor: through constantQ, that tone 15 dB down is taken for C3's harmonic")
+{
+	// Only 3.2 dB over C3's envelope, inside KEEP_DB's 6, so C3's series is credited with all of it.
+	// A known limit of the rule, pinned so a fix shows up.
+	const double c3 = PitchHz(48);
+	const auto frames = DetectNotes(*BuiltInPipeline(ConstantQPipeline), Synthesize(Mix({ HarmonicTone(c3, 8), HarmonicTone(3.0 * c3, 8, 0.178f) }), 4.0));
+	REQUIRE_FALSE(frames.empty());
+
+	CHECK(FramesWithNote(frames, { 67 }) == 0);
+}
+
+TEST_CASE("CQTHarmonicSuppressor: through constantQ, a tone with only odd harmonics loses them" * doctest::should_fail())
+{
+	// A clarinet-like tone. Each odd harmonic's neighbours are even ones, which are empty, so its
+	// envelope is the noise and nothing is credited to the series: G4, E5 and B-flat 5 stay. A
+	// known limit of the rule; the decoration goes when a change fixes it.
+	const auto frames = DetectNotes(*BuiltInPipeline(ConstantQPipeline), Synthesize(Tone(PitchHz(48), 8, [](int k) { return k % 2 == 1 ? 1.0f / k : 0.0f; }), 4.0));
+	REQUIRE_FALSE(frames.empty());
+
+	CHECK(FramesWithNote(frames, { 67, 76, 82 }) == 0);
+}
+
+TEST_CASE("CQTHarmonicSuppressor: the spectrum leaves constantQ as the suppressor left it")
+{
+	// The view draws the pipeline's final Magnitudes, so it shows the suppressor's output, and no
+	// stage after the suppressor writes it.
+	const std::vector<float> signal = Synthesize(Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) }), 1.0);
+	const Adagio::AudioFrame frame = FrameAt(signal, signal.size() / 2, 4096);
+
+	Adagio::AnalysisPipeline transform;
+	transform.AddStage(std::make_unique<Adagio::CQTProcessor>());
+	const std::unique_ptr<Adagio::AnalysisResult> raw = transform.ProcessFrame(frame);
+
+	Adagio::AnalysisPipeline shaped;
+	shaped.AddStage(std::make_unique<Adagio::CQTProcessor>());
+	shaped.AddStage(std::make_unique<Adagio::CQTHarmonicSuppressor>());
+	const std::unique_ptr<Adagio::AnalysisResult> expected = shaped.ProcessFrame(frame);
+	const std::unique_ptr<Adagio::AnalysisResult> actual = BuiltInPipeline(ConstantQPipeline)->ProcessFrame(frame);
+
+	const kfr::univector<float>& want = expected->Context->Magnitudes;
+	const kfr::univector<float>& got = actual->Context->Magnitudes;
+	REQUIRE(got.size() == want.size());
+	REQUIRE(raw->Context->Magnitudes.size() == want.size());
+	CHECK(actual->Context->FreqAxis->MinFreq() == expected->Context->FreqAxis->MinFreq());
+	CHECK(actual->Context->FreqAxis->BinsPerOctave() == expected->Context->FreqAxis->BinsPerOctave());
+
+	size_t shapedBins = 0;
+	size_t changed = 0;
+	for (size_t i = 0; i < want.size(); ++i)
+	{
+		if (want[i] != raw->Context->Magnitudes[i])
+			++shapedBins;
+		if (got[i] != want[i])
+			++changed;
+	}
+	CHECK(shapedBins > 0);
+	CHECK(changed == 0);
+}
+
+TEST_CASE("CQTHarmonicSuppressor: at STRENGTH 0 constantQ gives what it gave without the stage")
+{
+	const std::vector<std::vector<Component>> signals = {
+		HarmonicTone(PitchHz(48), 8),
+		Mix({ HarmonicTone(PitchHz(48), 8), HarmonicTone(PitchHz(52), 8), HarmonicTone(PitchHz(55), 8) }),
+	};
+
+	for (size_t s = 0; s < signals.size(); ++s)
+	{
+		CAPTURE(s);
+		const std::vector<float> signal = Synthesize(signals[s], 4.0);
+		const auto without = DetectNotes(*ConstantQWithoutSuppressor(), signal);
+		const auto off = DetectNotes(*ConstantQAtStrength(0.0f), signal);
+		REQUIRE(off.size() == without.size());
+
+		size_t differ = 0;
+		for (size_t f = 0; f < off.size(); ++f)
+		{
+			if (off[f].size() != without[f].size())
+			{
+				++differ;
+				continue;
+			}
+			for (size_t n = 0; n < off[f].size(); ++n)
+			{
+				if (off[f][n].Midi != without[f][n].Midi || off[f][n].PeakInfo.Magnitude != without[f][n].PeakInfo.Magnitude)
+				{
+					++differ;
+					break;
+				}
+			}
+		}
+		CHECK(differ == 0);
+	}
+}
